@@ -280,10 +280,7 @@ Production: https://your-worker.workers.dev/analytics.html
 
 ### Documentation
 
-- **[Quick Start Guide](docs/ANALYTICS_QUICK_START.md)** - 5-minute setup
-- **[Full Dashboard Guide](docs/ANALYTICS_DASHBOARD.md)** - Complete features
-- **[Analytics Setup](docs/ANALYTICS_SETUP.md)** - Configure Analytics Engine
-- **[SQL Examples](docs/ANALYTICS.md)** - Pre-built queries
+- **[Analytics Guide](docs/ANALYTICS.md)** - Complete analytics documentation with dashboard usage, SQL examples, and setup instructions
 
 ### Example Queries
 
@@ -439,33 +436,24 @@ WORKER_URL=https://your-worker.workers.dev npm run test:e2e
 ```
 
 **Test Coverage:**
-- **342 tests passing** (100% success rate)
-- **287 unit tests**: Validators, pattern detectors, integration
-- **51 E2E tests**: Fraud detection, API endpoints
-- **15 performance tests**: Load testing, latency metrics, throughput
+- **287 tests passing** (100% success rate)
+- **157 unit tests**: Validators, pattern detectors, algorithms
+- **130 integration tests**: End-to-end validation, comprehensive fraud detection
 
 **Test Categories:**
-- **Unit Tests** (287 tests, ~4s):
+- **Unit Tests** (157 tests, ~3.8s):
   - Email validators (20 tests)
   - Pattern detectors (37 tests)
   - N-Gram analysis (29 tests)
   - TLD risk profiling (37 tests)
   - Benford's Law (34 tests)
-  - Integration tests (130 tests)
 
-- **E2E Tests** (51 tests, ~25s):
-  - Fraud detection across 11 pattern types
-  - API endpoint validation
-  - Disposable domain detection
-  - Free provider flagging
-  - Response structure verification
-
-- **Performance Tests** (15 tests, ~40s):
-  - Sequential/parallel processing
-  - Latency metrics (P50/P95/P99)
-  - Throughput benchmarking
-  - Stress testing (up to 1000 emails)
-  - Detection accuracy under load
+- **Integration Tests** (130 tests):
+  - Validation endpoint tests
+  - Comprehensive email validation
+  - Fraudulent email detection
+  - Pattern-specific detection
+  - Multi-factor scoring accuracy
 
 **See [docs/history/TEST_MIGRATION_SUMMARY.md](docs/history/TEST_MIGRATION_SUMMARY.md) for detailed testing documentation.**
 
@@ -510,7 +498,7 @@ WORKER_URL=https://your-worker.workers.dev npm run test:e2e
 
 ## Development Roadmap
 
-See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) for detailed roadmap.
+See [docs/archive/IMPLEMENTATION_PLAN.md](docs/archive/IMPLEMENTATION_PLAN.md) for detailed roadmap.
 
 ### Current Phase: Detection & Testing (Complete)
 - ✅ Format validation
