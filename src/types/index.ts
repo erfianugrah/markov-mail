@@ -16,6 +16,24 @@ export interface ValidationSignals {
   isDisposableDomain?: boolean;
   isFreeProvider?: boolean;
   domainReputationScore?: number;
+  // Pattern detection signals
+  patternFamily?: string;
+  patternType?: string;
+  patternConfidence?: number;
+  patternRiskScore?: number;
+  normalizedEmail?: string;
+  hasPlusAddressing?: boolean;
+  hasKeyboardWalk?: boolean;
+  keyboardWalkType?: string;
+  // Phase 6A signals
+  isGibberish?: boolean;
+  gibberishConfidence?: number;
+  tldRiskScore?: number;
+  // Phase 7: Markov Chain signals
+  markovDetected?: boolean;
+  markovConfidence?: number;
+  markovCrossEntropyLegit?: number;
+  markovCrossEntropyFraud?: number;
 }
 
 export interface EmailValidationResult {

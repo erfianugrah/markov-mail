@@ -79,3 +79,11 @@ export {
   formatBenfordAnalysis,
   type BenfordsLawAnalysis
 } from './benfords-law';
+
+// Markov Chain pattern detection (Phase 7)
+export {
+  DynamicMarkovChain,
+  detectMarkovPattern,
+  trainMarkovModels,
+  type MarkovResult
+} from './markov-chain';

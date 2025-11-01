@@ -17,10 +17,14 @@ import {
 	getNGramRiskScore,
 	detectGibberish,
 	analyzeTLDRisk,
-	isHighRiskTLD
+	isHighRiskTLD,
+	detectMarkovPattern,
+	DynamicMarkovChain,
+	type MarkovResult
 } from './detectors/index';
 import { getConfig } from './config';
 import adminRoutes from './routes/admin';
+import { retrainMarkovModels } from './training/online-learning';
 
 /**
  * Bogus Email Pattern Recognition Worker
@@ -34,9 +38,40 @@ import adminRoutes from './routes/admin';
  * - Domain reputation scoring
  * - N-Gram analysis (gibberish detection) - Phase 6A
  * - TLD risk profiling (40+ TLD categories) - Phase 6A
+ * - Markov Chain detection (Phase 7) - Dynamic character transition models
  * - Structured logging with Pino
  * - Metrics collection with Analytics Engine
  */
+
+// Global Markov Chain model cache (loaded once per worker instance)
+let markovLegitModel: DynamicMarkovChain | null = null;
+let markovFraudModel: DynamicMarkovChain | null = null;
+let markovModelsLoaded = false;
+
+/**
+ * Load Markov Chain models from KV storage
+ * Models are cached globally for the lifetime of the worker instance
+ */
+async function loadMarkovModels(env: Env): Promise<boolean> {
+	if (markovModelsLoaded) return true;
+
+	try {
+		const legitData = await env.CONFIG.get('markov_legit_model', 'json');
+		const fraudData = await env.CONFIG.get('markov_fraud_model', 'json');
+
+		if (legitData && fraudData) {
+			markovLegitModel = DynamicMarkovChain.fromJSON(legitData);
+			markovFraudModel = DynamicMarkovChain.fromJSON(fraudData);
+			markovModelsLoaded = true;
+			console.log('Markov Chain models loaded successfully');
+			return true;
+		}
+	} catch (error) {
+		console.error('Failed to load Markov models:', error);
+	}
+
+	return false;
+}
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -150,6 +185,28 @@ app.post('/validate', async (c) => {
 			);
 		}
 
+		// Markov Chain detection (Phase 7)
+		let markovResult: MarkovResult | undefined;
+		let markovRiskScore = 0;
+
+		if (emailValidation.valid && config.features.enableMarkovChainDetection) {
+			// Load models on first request (cached globally)
+			await loadMarkovModels(env);
+
+			if (markovLegitModel && markovFraudModel) {
+				markovResult = detectMarkovPattern(
+					body.email,
+					markovLegitModel,
+					markovFraudModel
+				);
+
+				// Use Markov risk weighted by confidence
+				if (markovResult.isLikelyFraudulent) {
+					markovRiskScore = markovResult.confidence;
+				}
+			}
+		}
+
 		// Calculate risk score with domain and pattern signals
 		let riskScore = 0;
 		let blockReason = '';
@@ -165,18 +222,21 @@ app.post('/validate', async (c) => {
 			riskScore = emailValidation.signals.entropyScore;
 			blockReason = 'high_entropy';
 		} else {
-			// Enhanced risk scoring with pattern analysis (Phase 6A updated)
+			// Enhanced risk scoring with pattern analysis (Phase 7 updated)
 			// Use configurable risk weights from KV configuration
 
 			const entropyRisk = emailValidation.signals.entropyScore * config.riskWeights.entropy;
 			const domainRisk = domainReputationScore * config.riskWeights.domainReputation;
 			const tldRisk = tldRiskScore * config.riskWeights.tldRisk;
 			const combinedPatternRisk = patternRiskScore * config.riskWeights.patternDetection;
+			const markovRisk = markovRiskScore * config.riskWeights.markovChain;
 
-			riskScore = Math.min(entropyRisk + domainRisk + tldRisk + combinedPatternRisk, 1.0);
+			riskScore = Math.min(entropyRisk + domainRisk + tldRisk + combinedPatternRisk + markovRisk, 1.0);
 
 			// Set block reason based on highest risk factor
-			if (patternRiskScore > 0.6) {
+			if (markovRiskScore > 0.6) {
+				blockReason = 'markov_chain_fraud';
+			} else if (patternRiskScore > 0.6) {
 				if (gibberishResult?.isGibberish) {
 					blockReason = 'gibberish_detected';
 				} else if (patternFamilyResult?.patternType === 'sequential') {
@@ -243,6 +303,13 @@ app.post('/validate', async (c) => {
 					isGibberish: gibberishResult?.isGibberish || false,
 					gibberishConfidence: gibberishResult ? Math.round(gibberishResult.confidence * 100) / 100 : undefined,
 					tldRiskScore: Math.round(tldRiskScore * 100) / 100,
+				}),
+				// Phase 7: Markov Chain signals
+				...(config.features.enableMarkovChainDetection && markovResult && {
+					markovDetected: markovResult.isLikelyFraudulent,
+					markovConfidence: Math.round(markovResult.confidence * 100) / 100,
+					markovCrossEntropyLegit: Math.round(markovResult.crossEntropyLegit * 100) / 100,
+					markovCrossEntropyFraud: Math.round(markovResult.crossEntropyFraud * 100) / 100,
 				})
 			},
 			decision,
@@ -303,6 +370,17 @@ app.post('/validate', async (c) => {
 			tldRiskScore: result.signals.tldRiskScore,
 			domainReputationScore: result.signals.domainReputationScore,
 			patternConfidence: result.signals.patternConfidence,
+			// Phase 7: Markov Chain data
+			markovDetected: result.signals.markovDetected,
+			markovConfidence: result.signals.markovConfidence,
+			markovCrossEntropyLegit: result.signals.markovCrossEntropyLegit,
+			markovCrossEntropyFraud: result.signals.markovCrossEntropyFraud,
+			// Phase 8: Online Learning data
+			clientIp: fingerprint.ip,               // For fraud pattern analysis
+			userAgent: fingerprint.userAgent,       // For bot detection
+			modelVersion: 'production',             // A/B testing: will be dynamic later
+			excludeFromTraining: false,             // Security: will check IP reputation later
+			ipReputationScore: 0,                   // Will implement IP reputation checks later
 		});
 
 		// Build response
@@ -410,7 +488,7 @@ app.post('/validate', async (c) => {
  *   return new Response('Email rejected', { status: 400 });
  * }
  */
-export class FraudDetectionService extends WorkerEntrypoint<Env> {
+class FraudDetectionService extends WorkerEntrypoint<Env> {
 	/**
 	 * RPC method: Validate an email address for fraud patterns
 	 * @param request Email validation request with optional headers for fingerprinting
@@ -474,6 +552,15 @@ export class FraudDetectionService extends WorkerEntrypoint<Env> {
 	}
 }
 
-// Export Hono app as default for HTTP (required for tests and standard HTTP usage)
-// Export FraudDetectionService as named export for RPC (Service Bindings)
-export default app;
+// Export module with fetch handler (HTTP) and scheduled handler (Cron)
+// Also export FraudDetectionService for RPC (Service Bindings)
+export default {
+	fetch: app.fetch.bind(app),
+	scheduled: async (event: ScheduledEvent, env: Env, ctx: ExecutionContext) => {
+		console.log('⏰ Cron trigger fired:', event.cron);
+		console.log('🎓 Starting online learning training pipeline...');
+		ctx.waitUntil(retrainMarkovModels(env));
+	}
+};
+
+export { FraudDetectionService };

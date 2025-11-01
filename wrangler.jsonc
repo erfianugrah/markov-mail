@@ -26,7 +26,12 @@
 			"binding": "CONFIG",
 			"id": "e24fcc002bc64157a1940650c348d335",
 			"remote": true
-		}
+		},
+		{
+			"binding": "MARKOV_MODEL",
+			"id": "fcfe1c2f322a43a7b242eff4c8fb91ce",
+			"remote": true
+		},
 	],
 	/**
 	 * Analytics Engine
@@ -37,6 +42,14 @@
 			"binding": "ANALYTICS"
 		}
 	],
+	/**
+	 * Cron Triggers
+	 * Schedule online learning model retraining every 6 hours
+	 * https://developers.cloudflare.com/workers/configuration/cron-triggers/
+	 */
+	"triggers": {
+		"crons": ["0 */6 * * *"]  // Every 6 hours at :00 (12am, 6am, 12pm, 6pm UTC)
+	},
 	/**
 	 * Static Assets
 	 * https://developers.cloudflare.com/workers/static-assets/binding/

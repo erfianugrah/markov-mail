@@ -27,6 +27,17 @@ export interface ValidationMetric {
   tldRiskScore?: number;
   domainReputationScore?: number;
   patternConfidence?: number;
+  // Phase 7: Markov Chain data
+  markovDetected?: boolean;
+  markovConfidence?: number;
+  markovCrossEntropyLegit?: number;
+  markovCrossEntropyFraud?: number;
+  // Phase 8: Online Learning data (NEW)
+  clientIp?: string;            // For fraud pattern analysis
+  userAgent?: string;           // For bot detection
+  modelVersion?: string;        // For A/B testing (e.g., "A", "B")
+  excludeFromTraining?: boolean;  // Flag suspicious traffic
+  ipReputationScore?: number;   // 0-100 (0=good, 100=bad)
 }
 
 /**
@@ -58,6 +69,12 @@ export function writeValidationMetric(
         metric.hasKeyboardWalk ? 'yes' : 'no',                // blob12
         metric.isGibberish ? 'yes' : 'no',                    // blob13
         metric.emailLocalPart || 'unknown',                   // blob14
+        // Phase 8: Online Learning fields (NEW)
+        metric.clientIp || 'unknown',                         // blob15 (for fraud pattern analysis)
+        metric.userAgent || 'unknown',                        // blob16 (for bot detection)
+        metric.modelVersion || 'production',                  // blob17 (for A/B testing: "A", "B", "production")
+        metric.excludeFromTraining ? 'exclude' : 'include',   // blob18 (security: flag suspicious traffic)
+        metric.markovDetected ? 'yes' : 'no',                 // blob19 (Phase 7 - MOVED from blob15)
       ],
       // Numeric data (up to 20 doubles)
       doubles: [
@@ -69,6 +86,10 @@ export function writeValidationMetric(
         metric.tldRiskScore || 0,                             // double6
         metric.domainReputationScore || 0,                    // double7
         metric.patternConfidence || 0,                        // double8
+        metric.markovConfidence || 0,                         // double9 (Phase 7)
+        metric.markovCrossEntropyLegit || 0,                  // double10 (Phase 7)
+        metric.markovCrossEntropyFraud || 0,                  // double11 (Phase 7)
+        metric.ipReputationScore || 0,                        // double12 (Phase 8: 0-100, 0=good, 100=bad)
       ],
       // Indexed string for filtering (only 1 index allowed!)
       indexes: [

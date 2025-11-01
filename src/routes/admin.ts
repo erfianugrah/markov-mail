@@ -8,6 +8,7 @@ import { Hono } from 'hono';
 import { requireApiKey } from '../middleware/auth';
 import { getConfig, saveConfig, clearConfigCache, DEFAULT_CONFIG, validateConfig } from '../config';
 import type { FraudDetectionConfig } from '../config';
+import { retrainMarkovModels } from '../training/online-learning';
 
 const admin = new Hono<{ Bindings: Env }>();
 
@@ -324,7 +325,7 @@ admin.get('/analytics', async (c) => {
 			throw new Error(`Cloudflare API error: ${response.status} - ${errorText}`);
 		}
 
-		const data = await response.json();
+		const data = await response.json() as { data?: unknown };
 
 		return c.json({
 			success: true,
@@ -346,6 +347,11 @@ admin.get('/analytics', async (c) => {
 				blob12: 'has_keyboard_walk',
 				blob13: 'is_gibberish',
 				blob14: 'email_local_part',
+				blob15: 'client_ip',                        // Phase 8: NEW
+				blob16: 'user_agent',                       // Phase 8: NEW
+				blob17: 'model_version',                    // Phase 8: NEW (A/B testing)
+				blob18: 'exclude_from_training',            // Phase 8: NEW (security)
+				blob19: 'markov_detected',                  // Phase 7: MOVED from blob15
 				double1: 'risk_score',
 				double2: 'entropy_score',
 				double3: 'bot_score',
@@ -354,6 +360,10 @@ admin.get('/analytics', async (c) => {
 				double6: 'tld_risk_score',
 				double7: 'domain_reputation_score',
 				double8: 'pattern_confidence',
+				double9: 'markov_confidence',               // Phase 7
+				double10: 'markov_cross_entropy_legit',     // Phase 7
+				double11: 'markov_cross_entropy_fraud',     // Phase 7
+				double12: 'ip_reputation_score',            // Phase 8: NEW
 				index1: 'fingerprint_hash',
 			},
 		});
@@ -588,6 +598,172 @@ LIMIT 20
 		queries,
 		usage: 'Use the SQL from any query with GET /admin/analytics?query=<url_encoded_sql>',
 	});
+});
+
+/**
+ * POST /admin/markov/train
+ * Manually trigger Markov Chain model retraining
+ *
+ * This endpoint initiates the online learning training pipeline:
+ * 1. Fetches high-confidence data from Analytics Engine (last 7 days)
+ * 2. Runs anomaly detection to check for data poisoning attacks
+ * 3. Trains new models on fraud vs legitimate samples
+ * 4. Validates new models against production
+ * 5. Saves candidate model to KV with SHA-256 checksum
+ *
+ * Returns the training result including success status, metrics, and any errors.
+ */
+admin.post('/markov/train', async (c) => {
+	try {
+		console.log('📋 Manual training triggered via admin API');
+
+		// Check for required configuration
+		const accountId = c.env.CLOUDFLARE_ACCOUNT_ID;
+		const apiToken = c.env.CLOUDFLARE_API_TOKEN;
+
+		if (!accountId || !apiToken) {
+			return c.json(
+				{
+					error: 'Analytics Engine not configured',
+					message: 'CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN secrets must be set',
+					setup: 'Run: wrangler secret put CLOUDFLARE_ACCOUNT_ID and wrangler secret put CLOUDFLARE_API_TOKEN',
+				},
+				503
+			);
+		}
+
+		// Trigger training pipeline
+		const result = await retrainMarkovModels(c.env);
+
+		if (result.success) {
+			return c.json({
+				success: true,
+				message: 'Training completed successfully',
+				result,
+			});
+		} else {
+			return c.json(
+				{
+					success: false,
+					message: 'Training failed',
+					error: result.error,
+					result,
+				},
+				500
+			);
+		}
+	} catch (error) {
+		console.error('Training error:', error);
+		return c.json(
+			{
+				error: 'Training failed',
+				message: error instanceof Error ? error.message : 'Unknown error',
+			},
+			500
+		);
+	}
+});
+
+/**
+ * GET /admin/markov/status
+ * Get current status of Markov Chain models and recent training runs
+ *
+ * Returns:
+ * - Production model metadata (version, accuracy, traffic %, checksum)
+ * - Candidate model metadata (version, accuracy, status)
+ * - Last 5 training runs (timestamps, success/failure, metrics)
+ */
+admin.get('/markov/status', async (c) => {
+	try {
+		// Get training history from CONFIG KV
+		const history = await c.env.CONFIG.get('markov_training_history', 'json') as Array<unknown> | null;
+
+		// Get candidate model metadata from MARKOV_MODEL KV
+		const candidateData = c.env.MARKOV_MODEL ? await c.env.MARKOV_MODEL.getWithMetadata('markov_model_candidate') : null;
+
+		// Get production model metadata
+		// Note: Currently loading from CONFIG, but will migrate to MARKOV_MODEL in Phase 2
+		const productionData = await c.env.CONFIG.getWithMetadata('markov_legit_model');
+
+		// Get training lock status
+		const lockStatus = await c.env.CONFIG.get('markov_training_lock');
+
+		return c.json({
+			production: {
+				modelVersion: productionData?.metadata || null,
+				status: 'active',
+				traffic_percent: 100,
+				note: 'Production models currently stored in CONFIG KV (will migrate to MARKOV_MODEL in Phase 2)',
+			},
+			candidate: candidateData?.metadata ? {
+				...candidateData.metadata,
+				status: 'candidate',
+				traffic_percent: 0,
+			} : null,
+			trainingStatus: {
+				locked: !!lockStatus,
+				lockInfo: lockStatus ? 'Training in progress' : 'No training running',
+			},
+			recentTraining: history ? history.slice(0, 5) : [],
+			kvNamespaces: {
+				CONFIG: 'Stores config, production models (legacy), training history',
+				MARKOV_MODEL: 'Stores candidate models with metadata',
+			},
+		});
+	} catch (error) {
+		return c.json(
+			{
+				error: 'Failed to get training status',
+				message: error instanceof Error ? error.message : 'Unknown error',
+			},
+			500
+		);
+	}
+});
+
+/**
+ * GET /admin/markov/history
+ * Get detailed training history (last 20 runs)
+ *
+ * Each entry includes:
+ * - Timestamp
+ * - Success/failure status
+ * - Training duration
+ * - Sample counts (fraud/legit)
+ * - Model version ID
+ * - Validation metrics (accuracy, precision, recall)
+ * - Anomaly detection results
+ * - Error messages (if failed)
+ */
+admin.get('/markov/history', async (c) => {
+	try {
+		// Get full training history from CONFIG KV
+		const history = await c.env.CONFIG.get('markov_training_history', 'json') as Array<unknown> | null;
+
+		if (!history || history.length === 0) {
+			return c.json({
+				success: true,
+				message: 'No training history found',
+				history: [],
+				note: 'Trigger training via POST /admin/markov/train or wait for cron (every 6 hours)',
+			});
+		}
+
+		return c.json({
+			success: true,
+			count: history.length,
+			history: history.slice(0, 20), // Last 20 runs
+			cronSchedule: '0 */6 * * * (every 6 hours at :00)',
+		});
+	} catch (error) {
+		return c.json(
+			{
+				error: 'Failed to get training history',
+				message: error instanceof Error ? error.message : 'Unknown error',
+			},
+			500
+		);
+	}
 });
 
 export default admin;

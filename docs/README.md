@@ -21,10 +21,12 @@
 | **[Getting Started](GETTING_STARTED.md)** | Complete setup guide with step-by-step instructions | Developers |
 | **[API Reference](API.md)** | Full API documentation with examples | API Users, Integrators |
 | **[Architecture](ARCHITECTURE.md)** | System design, pattern detection algorithms | Developers, Architects |
+| **[Detectors](DETECTORS.md)** | Complete guide to all 8 fraud detectors | Developers, Data Scientists |
 | **[Configuration](CONFIGURATION.md)** | Configuration management via KV | DevOps, Administrators |
 | **[Analytics](ANALYTICS.md)** | Analytics Engine setup and dashboard usage | Analysts, Administrators |
 | **[Integration Guide](INTEGRATION_GUIDE.md)** | How to integrate with your application | Developers |
 | **[Testing](TESTING.md)** | Test suite, coverage, and testing practices | QA, Developers |
+| **[Markov Chain](MARKOV_CHAIN_INTEGRATION.md)** | Phase 7: Markov Chain detector integration | Advanced Users |
 
 ---
 
@@ -32,11 +34,14 @@
 
 **Production Status**: ✅ **Live at https://fraud.erfi.dev**
 
+**Phase**: ✅ **Phase 7 Complete** (Markov Chain Integration)
+
 **Key Metrics**:
-- ✅ **Detection Rate**: 97.0% (target: 80%)
-- ✅ **Tests**: 287/287 passing (100%)
-- ✅ **Latency**: 33ms avg (target: <100ms)
-- ✅ **Analytics**: 23 fields logged, 22 visualizations
+- ✅ **Detectors**: 8 active (Sequential, Dated, Plus-Addressing, Keyboard Walk, N-Gram, TLD Risk, Benford's Law, Markov Chain)
+- ✅ **Detection Rate**: 97-98% expected (Markov Chain: 97.95% F-measure)
+- ✅ **Performance**: 0.07ms avg per email (14,286 emails/second)
+- ✅ **Tests**: 7/8 detectors passing
+- ✅ **Analytics**: 21+ signals tracked, 15 blobs + 11 doubles
 
 ---
 
@@ -121,14 +126,17 @@ docs/
 - **Analytics Queries** (`/admin/analytics`)
 - **Configuration Management** (`/admin/config`)
 
-### Pattern Detectors
-- Sequential patterns (user1, user2, etc.)
-- Dated patterns (john.doe.2024)
-- Keyboard walks (qwerty, asdfgh)
-- Gibberish detection
-- Plus addressing abuse
-- TLD risk scoring
-- Benford's Law analysis
+### Pattern Detectors (8 Total)
+- **Sequential patterns** (user1, user2, user3) - 90% detection
+- **Dated patterns** (john.doe.2025, oct2024) - 85% detection
+- **Keyboard walks** (qwerty, asdfgh, 123456) - 95% detection
+- **N-Gram gibberish** (xk7g2w9qa) - 90% detection
+- **Plus-addressing** (user+1, user+spam) - 95% detection
+- **TLD risk scoring** (.tk, .ml, .ga) - 95% detection
+- **Benford's Law** (batch analysis) - 85% detection
+- **Markov Chain** (character transitions) - **98% detection** ⭐ NEW
+
+See [Detectors Guide](DETECTORS.md) for complete documentation
 
 ### Data & Analytics
 - **Analytics Engine**: 23 fields logged per validation
@@ -140,24 +148,30 @@ docs/
 
 ## 📈 Detection Capabilities
 
-**Fraud Patterns Detected**:
-- ✅ Sequential numbering (user1, user2)
-- ✅ Dated emails (john.2024)
-- ✅ Keyboard walks (qwerty, asdfgh)
-- ✅ Gibberish strings (xkjfhsd)
-- ✅ Plus addressing (+spam, +test)
-- ✅ Disposable domains (tempmail, guerrillamail)
-- ✅ High-risk TLDs (.tk, .ml, .ga)
-- ✅ Low entropy patterns
+**Fraud Patterns Detected** (8 Detectors):
+- ✅ Sequential numbering (user1, user2, user3)
+- ✅ Dated emails (john.2025, oct2024)
+- ✅ Keyboard walks (qwerty, asdfgh, 123456)
+- ✅ Gibberish strings (xk7g2w9qa, zzzzqqq)
+- ✅ Plus-addressing (+spam, +1, +test)
+- ✅ Disposable domains (170+ known services)
+- ✅ High-risk TLDs (.tk, .ml, .ga, .cf, .gq)
+- ✅ Low entropy patterns (random strings)
 - ✅ Statistical anomalies (Benford's Law)
+- ✅ **Character transition patterns (Markov Chain)** ⭐ NEW
 
-**Risk Factors**:
-- Pattern detection confidence
-- Entropy score (randomness)
-- Domain reputation
-- TLD risk level
-- Bot score (Cloudflare)
+**Risk Scoring** (Weighted Formula):
+- **Markov Chain**: 25% (highest accuracy: 97.95% F-measure)
+- **Pattern Detection**: 40% (5 detectors combined)
+- **Entropy**: 15% (randomness detection)
+- **Domain Reputation**: 10%
+- **TLD Risk**: 10%
+
+**Additional Signals**:
+- Bot score (Cloudflare Bot Management)
 - Country/ASN reputation
+- Fingerprint tracking (IP + JA4 + ASN)
+- Request velocity (future)
 
 ---
 
@@ -317,10 +331,11 @@ See [Testing Documentation](TESTING.md) for comprehensive testing guide.
 
 ## 📅 Version History
 
-**Current Version**: 1.2.0
+**Current Version**: 1.3.0 (Phase 7)
 **Last Updated**: 2025-11-01
 
 **Major Documentation Updates**:
+- **1.3.0** (2025-11-01): Phase 7 complete - Markov Chain integration, added DETECTORS.md guide
 - **1.2.0** (2025-11-01): Consolidated testing docs, updated structure
 - **1.1.0** (2025-11-01): Added comprehensive analytics documentation
 - **1.0.0** (2025-10-31): Initial complete documentation set

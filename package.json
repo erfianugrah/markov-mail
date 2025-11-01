@@ -3,7 +3,10 @@
 	"version": "0.0.0",
 	"private": true,
 	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"predeploy": "npm run typecheck",
 		"deploy": "wrangler deploy",
+		"deploy:skip-checks": "wrangler deploy",
 		"dev": "wrangler dev",
 		"start": "wrangler dev",
 		"cf-typegen": "wrangler types",

@@ -24,11 +24,17 @@
         }
 
         [data-theme="dark"] {
-            --bg-primary: #0d1117;
-            --bg-card: #161b22;
-            --text-primary: #c9d1d9;
-            --text-secondary: #8b949e;
-            --border: #30363d;
+            /* Lovelace theme - dark with good contrast */
+            --bg-primary: #1c1c1c;
+            --bg-card: #2b2b2b;
+            --text-primary: #e8e8e8;
+            --text-secondary: #b0b0b0;
+            --border: #404040;
+            --accent: #bb86fc;
+            --success: #4caf50;
+            --warning: #ffb74d;
+            --danger: #ef5350;
+            --shadow: 0 2px 12px rgba(0,0,0,0.4);
         }
 
         body {
@@ -831,15 +837,37 @@ LIMIT 100</textarea>
             }
 
             const ctx = canvas.getContext('2d');
+
+            // Add scale configuration to prevent negative numbers for bar and line charts
+            const scalesConfig = config.type === 'bar' || config.type === 'line' ? {
+                y: {
+                    beginAtZero: true,
+                    min: 0,
+                    ticks: {
+                        callback: function(value) {
+                            // Ensure only non-negative integers are displayed
+                            return value < 0 ? '' : Math.round(value);
+                        }
+                    }
+                }
+            } : {};
+
             charts[id] = new Chart(ctx, {
                 ...config,
                 options: {
                     ...config.options,
                     responsive: true,
                     maintainAspectRatio: false,
+                    scales: {
+                        ...scalesConfig,
+                        ...config.options?.scales,
+                    },
                     plugins: {
                         ...config.options?.plugins,
                         zoom: {
+                            limits: {
+                                y: { min: 0, max: 'original' },
+                            },
                             pan: {
                                 enabled: true,
                                 mode: 'xy',
@@ -877,13 +905,13 @@ LIMIT 100</textarea>
             let totalRisk = 0, totalLatency = 0, riskCount = 0;
 
             data.data.forEach(row => {
-                const count = row.count || 0;
+                const count = parseInt(row.count, 10) || 0;
                 total += count;
                 if (row.decision === 'block') blocked += count;
                 else if (row.decision === 'warn') warned += count;
                 else if (row.decision === 'allow') allowed += count;
-                totalRisk += (row.avg_risk || 0) * count;
-                totalLatency += (row.avg_latency || 0) * count;
+                totalRisk += parseFloat(row.avg_risk || 0) * count;
+                totalLatency += parseFloat(row.avg_latency || 0) * count;
                 riskCount += count;
             });
 
@@ -942,7 +970,7 @@ LIMIT 100</textarea>
                 data: {
                     labels: data.data.map(r => r.decision),
                     datasets: [{
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: data.data.map(r => colorMap[r.decision] || '#667eea'),
                     }],
                 },
@@ -973,7 +1001,7 @@ LIMIT 100</textarea>
                     labels: data.data.map(r => r.risk_bucket),
                     datasets: [{
                         label: 'Count',
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: '#667eea',
                     }],
                 },
@@ -1005,7 +1033,7 @@ LIMIT 100</textarea>
                 if (!grouped[row.decision]) {
                     grouped[row.decision] = {};
                 }
-                grouped[row.decision][row.hour] = row.count;
+                grouped[row.decision][row.hour] = parseInt(row.count, 10) || 0;
             });
 
             // Get all unique hours
@@ -1059,7 +1087,7 @@ LIMIT 100</textarea>
                     labels: data.data.map(r => r.country),
                     datasets: [{
                         label: 'Validations',
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: '#667eea',
                     }],
                 },
@@ -1093,7 +1121,7 @@ LIMIT 100</textarea>
                     labels: data.data.map(r => r.pattern_type),
                     datasets: [{
                         label: 'Detections',
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: '#dc3545',
                     }],
                 },
@@ -1128,7 +1156,7 @@ LIMIT 100</textarea>
                     labels: data.data.map(r => r.block_reason),
                     datasets: [{
                         label: 'Count',
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: '#dc3545',
                     }],
                 },
@@ -1161,7 +1189,7 @@ LIMIT 100</textarea>
                     labels: data.data.map(r => r.domain),
                     datasets: [{
                         label: 'Validations',
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: '#667eea',
                     }],
                 },
@@ -1195,7 +1223,7 @@ LIMIT 100</textarea>
                     labels: data.data.map(r => r.tld),
                     datasets: [{
                         label: 'Count',
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: '#667eea',
                     }],
                 },
@@ -1228,7 +1256,7 @@ LIMIT 100</textarea>
                 data: {
                     labels: data.data.map(r => r.pattern_family),
                     datasets: [{
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: [
                             '#667eea', '#dc3545', '#28a745', '#ffc107',
                             '#17a2b8', '#6c757d', '#e83e8c', '#fd7e14'
@@ -1260,7 +1288,7 @@ LIMIT 100</textarea>
                 data: {
                     labels: data.data.map(r => r.is_disposable),
                     datasets: [{
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: ['#28a745', '#dc3545'],
                     }],
                 },
@@ -1289,7 +1317,7 @@ LIMIT 100</textarea>
                 data: {
                     labels: data.data.map(r => r.is_free),
                     datasets: [{
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: ['#28a745', '#ffc107'],
                     }],
                 },
@@ -1318,7 +1346,7 @@ LIMIT 100</textarea>
                 data: {
                     labels: data.data.map(r => r.has_plus === 'yes' ? 'With Plus (+)' : 'Normal'),
                     datasets: [{
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: ['#ffc107', '#28a745'],
                     }],
                 },
@@ -1347,7 +1375,7 @@ LIMIT 100</textarea>
                 data: {
                     labels: data.data.map(r => r.has_keyboard_walk === 'yes' ? 'Keyboard Walk' : 'Normal'),
                     datasets: [{
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: ['#dc3545', '#28a745'],
                     }],
                 },
@@ -1369,14 +1397,19 @@ LIMIT 100</textarea>
                 FROM ANALYTICS
                 WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR
                 GROUP BY is_gibberish
+                ORDER BY is_gibberish DESC
             `);
+
+            // Map data to ensure consistent ordering (Gibberish first, Normal second)
+            const gibberishCount = data.data.find(r => r.is_gibberish === 'yes')?.count || 0;
+            const normalCount = data.data.find(r => r.is_gibberish !== 'yes')?.count || 0;
 
             createChart('gibberish', {
                 type: 'doughnut',
                 data: {
-                    labels: data.data.map(r => r.is_gibberish === 'yes' ? 'Gibberish' : 'Normal'),
+                    labels: ['Gibberish', 'Normal'],
                     datasets: [{
-                        data: data.data.map(r => r.count),
+                        data: [parseInt(gibberishCount, 10) || 0, parseInt(normalCount, 10) || 0],
                         backgroundColor: ['#dc3545', '#28a745'],
                     }],
                 },
@@ -1404,10 +1437,10 @@ LIMIT 100</textarea>
             createChart('entropy', {
                 type: 'bar',
                 data: {
-                    labels: data.data.map(r => `${r.entropy_bucket.toFixed(1)}-${(r.entropy_bucket + 0.2).toFixed(1)}`),
+                    labels: data.data.map(r => `${parseFloat(r.entropy_bucket).toFixed(1)}-${(parseFloat(r.entropy_bucket) + 0.2).toFixed(1)}`),
                     datasets: [{
                         label: 'Count',
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: '#667eea',
                     }],
                 },
@@ -1447,7 +1480,7 @@ LIMIT 100</textarea>
                     labels,
                     datasets: [{
                         label: 'Count',
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: '#667eea',
                     }],
                 },
@@ -1477,7 +1510,7 @@ LIMIT 100</textarea>
                     labels: data.data.map(r => r.decision),
                     datasets: [{
                         label: 'Avg Latency (ms)',
-                        data: data.data.map(r => r.avg_latency),
+                        data: data.data.map(r => parseFloat(r.avg_latency) || 0),
                         backgroundColor: '#28a745',
                     }],
                 },
@@ -1510,7 +1543,7 @@ LIMIT 100</textarea>
                     labels: data.data.map(r => `AS${r.asn}`),
                     datasets: [{
                         label: 'Validations',
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: '#667eea',
                     }],
                 },
@@ -1544,7 +1577,7 @@ LIMIT 100</textarea>
                     labels: data.data.map(r => r.tld),
                     datasets: [{
                         label: 'Avg TLD Risk Score',
-                        data: data.data.map(r => r.avg_risk),
+                        data: data.data.map(r => parseFloat(r.avg_risk) || 0),
                         backgroundColor: '#dc3545',
                     }],
                 },
@@ -1574,10 +1607,10 @@ LIMIT 100</textarea>
             createChart('domain-reputation', {
                 type: 'bar',
                 data: {
-                    labels: data.data.map(r => `${r.reputation_bucket.toFixed(1)}-${(r.reputation_bucket + 0.2).toFixed(1)}`),
+                    labels: data.data.map(r => `${parseFloat(r.reputation_bucket).toFixed(1)}-${(parseFloat(r.reputation_bucket) + 0.2).toFixed(1)}`),
                     datasets: [{
                         label: 'Count',
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: '#28a745',
                     }],
                 },
@@ -1606,10 +1639,10 @@ LIMIT 100</textarea>
             createChart('pattern-confidence', {
                 type: 'bar',
                 data: {
-                    labels: data.data.map(r => `${r.confidence_bucket.toFixed(1)}-${(r.confidence_bucket + 0.2).toFixed(1)}`),
+                    labels: data.data.map(r => `${parseFloat(r.confidence_bucket).toFixed(1)}-${(parseFloat(r.confidence_bucket) + 0.2).toFixed(1)}`),
                     datasets: [{
                         label: 'Count',
-                        data: data.data.map(r => r.count),
+                        data: data.data.map(r => parseInt(r.count, 10) || 0),
                         backgroundColor: '#667eea',
                     }],
                 },
@@ -1674,9 +1707,9 @@ LIMIT 100</textarea>
                                 <td>${row.block_reason || '-'}</td>
                                 <td>${row.pattern_type || 'none'}</td>
                                 <td>${row.country || 'N/A'}</td>
-                                <td>${(row.risk_score || 0).toFixed(3)}</td>
-                                <td>${(row.entropy_score || 0).toFixed(3)}</td>
-                                <td>${(row.bot_score || 0).toFixed(0)}</td>
+                                <td>${parseFloat(row.risk_score || 0).toFixed(3)}</td>
+                                <td>${parseFloat(row.entropy_score || 0).toFixed(3)}</td>
+                                <td>${parseFloat(row.bot_score || 0).toFixed(0)}</td>
                                 <td>${new Date(row.timestamp).toLocaleString()}</td>
                             </tr>
                         `).join('')}
@@ -1773,6 +1806,27 @@ LIMIT 100</textarea>
                 }
 
                 const columns = Object.keys(data.data[0]);
+
+                // Helper function to format cell values
+                const formatCell = (column, value) => {
+                    if (value === null || value === undefined) return 'N/A';
+                    if (column === 'decision' || column === 'blob1') {
+                        const badgeClass = value === 'block' ? 'badge-danger' : value === 'warn' ? 'badge-warning' : 'badge-success';
+                        return `<span class="badge ${badgeClass}">${value}</span>`;
+                    }
+                    if (column === 'timestamp' || column.includes('time')) {
+                        try {
+                            return new Date(value).toLocaleString();
+                        } catch (e) {
+                            return value;
+                        }
+                    }
+                    if (typeof value === 'number') {
+                        return value.toLocaleString();
+                    }
+                    return value;
+                };
+
                 const html = `
                     <table>
                         <thead>
@@ -1780,7 +1834,7 @@ LIMIT 100</textarea>
                         </thead>
                         <tbody>
                             ${data.data.map(row => `
-                                <tr>${columns.map(c => `<td>${row[c]}</td>`).join('')}</tr>
+                                <tr>${columns.map(c => `<td>${formatCell(c, row[c])}</td>`).join('')}</tr>
                             `).join('')}
                         </tbody>
                     </table>
@@ -1874,15 +1928,18 @@ LIMIT 100</textarea>
         async function loadExplorer() {
             const view = document.getElementById('explorer-view').value;
             const timeMinutes = parseInt(document.getElementById('explorer-time').value);
-            const limit = document.getElementById('explorer-limit').value;
+            const limit = parseInt(document.getElementById('explorer-limit').value);
 
+            // Convert minutes to proper SQL interval
             let timeInterval = '';
             if (timeMinutes < 60) {
                 timeInterval = `'${timeMinutes}' MINUTE`;
             } else if (timeMinutes < 1440) {
-                timeInterval = `'${timeMinutes / 60}' HOUR`;
+                const hours = Math.floor(timeMinutes / 60);
+                timeInterval = `'${hours}' HOUR`;
             } else {
-                timeInterval = `'${timeMinutes / 1440}' DAY`;
+                const days = Math.floor(timeMinutes / 1440);
+                timeInterval = `'${days}' DAY`;
             }
 
             let sql = '';
@@ -1966,6 +2023,34 @@ LIMIT 100</textarea>
                 }
 
                 const columns = Object.keys(data.data[0]);
+
+                // Helper function to format cell values
+                const formatValue = (column, value) => {
+                    if (value === null || value === undefined) return 'N/A';
+                    if (column === 'decision') {
+                        const badgeClass = value === 'block' ? 'badge-danger' : value === 'warn' ? 'badge-warning' : 'badge-success';
+                        return `<span class="badge ${badgeClass}">${value}</span>`;
+                    }
+                    if (column === 'timestamp') {
+                        try {
+                            return new Date(value).toLocaleString();
+                        } catch (e) {
+                            return value;
+                        }
+                    }
+                    // Format numeric values (risk scores, entropy, etc.)
+                    if (typeof value === 'number') {
+                        if (column.includes('score') || column.includes('confidence') || column.includes('entropy')) {
+                            return value.toFixed(3);
+                        }
+                        if (column === 'latency_ms') {
+                            return value.toFixed(1) + 'ms';
+                        }
+                        return value.toLocaleString();
+                    }
+                    return value;
+                };
+
                 const html = `
                     <table>
                         <thead>
@@ -1973,17 +2058,7 @@ LIMIT 100</textarea>
                         </thead>
                         <tbody>
                             ${data.data.map(row => `
-                                <tr>${columns.map(c => {
-                                    const value = row[c];
-                                    if (c === 'decision') {
-                                        const badgeClass = value === 'block' ? 'badge-danger' : value === 'warn' ? 'badge-warning' : 'badge-success';
-                                        return `<td><span class="badge ${badgeClass}">${value}</span></td>`;
-                                    }
-                                    if (c === 'timestamp') {
-                                        return `<td>${new Date(value).toLocaleString()}</td>`;
-                                    }
-                                    return `<td>${value}</td>`;
-                                }).join('')}</tr>
+                                <tr>${columns.map(c => `<td>${formatValue(c, row[c])}</td>`).join('')}</tr>
                             `).join('')}
                         </tbody>
                     </table>

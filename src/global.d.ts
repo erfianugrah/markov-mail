@@ -5,13 +5,19 @@
  */
 
 declare global {
-	// Extend the Env interface to include optional Worker secrets
+	// Extend the Env interface to include optional Worker secrets and bindings
 	interface Env {
-		// Admin API Key secret (set via: wrangler secret put ADMIN_API_KEY)
+		// Secrets (set via wrangler secret put)
 		ADMIN_API_KEY?: string;
-
-		// Origin URL secret (set via: wrangler secret put ORIGIN_URL)
 		ORIGIN_URL?: string;
+		CLOUDFLARE_ACCOUNT_ID?: string;  // For Analytics Engine API access
+		CLOUDFLARE_API_TOKEN?: string;   // For Analytics Engine API access
+
+		// KV Namespaces (defined in wrangler.jsonc)
+		MARKOV_MODEL?: KVNamespace;  // Separate namespace for model storage
+
+		// Feature flags (optional, for Phase 2)
+		AUTO_PROMOTE_TO_CANARY?: string;  // Set to "true" to enable auto-promotion
 	}
 }
 
