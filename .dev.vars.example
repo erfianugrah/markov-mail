@@ -1,0 +1,14 @@
+# Development Environment Variables
+# Copy this file to .dev.vars and fill in your values
+# DO NOT commit .dev.vars to git (it's in .gitignore)
+
+# Admin API Key (required to access /admin/* endpoints)
+# Generate a secure random key:
+#   openssl rand -hex 32
+# Or use:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+ADMIN_API_KEY=your-secret-admin-api-key-here
+
+# Origin URL (optional - for forwarding requests with fraud headers)
+# Only needed if you want to forward validation requests to another service
+# ORIGIN_URL=https://your-origin-service.com/api/validate

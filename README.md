@@ -166,6 +166,71 @@ Returns fingerprinting signals from the request.
 }
 ```
 
+### RPC (Worker-to-Worker)
+
+For Worker-to-Worker communication, use RPC instead of HTTP for 5-10x lower latency:
+
+**Setup in consuming worker's `wrangler.jsonc`:**
+```jsonc
+{
+  "services": [{
+    "binding": "FRAUD_DETECTOR",
+    "service": "bogus-email-pattern-recognition",
+    "entrypoint": "FraudDetectionService"
+  }]
+}
+```
+
+**Usage (with fingerprinting):**
+```typescript
+const result = await env.FRAUD_DETECTOR.validate({
+  email: "user@example.com",
+  consumer: "MY_APP",
+  flow: "SIGNUP_EMAIL_VERIFY",
+  headers: {
+    'cf-connecting-ip': request.headers.get('cf-connecting-ip'),
+    'user-agent': request.headers.get('user-agent'),
+    'cf-ipcountry': request.headers.get('cf-ipcountry')
+  }
+});
+
+if (result.decision === 'block') {
+  return new Response('Email rejected', { status: 400 });
+}
+```
+
+**Benefits:** Lower latency, type safety, full fingerprinting support.
+**See [API.md - RPC Integration](docs/API.md#rpc-integration-service-bindings) for comprehensive documentation.**
+
+### Admin API
+
+Manage configuration at runtime (requires `ADMIN_API_KEY` secret):
+
+```bash
+# Get current configuration
+GET /admin/config
+
+# Get default configuration
+GET /admin/config/defaults
+
+# Update configuration (full replacement)
+PUT /admin/config
+
+# Validate configuration without saving
+POST /admin/config/validate
+
+# Reset to defaults
+POST /admin/config/reset
+
+# Clear configuration cache
+DELETE /admin/config/cache
+
+# Health check
+GET /admin/health
+```
+
+**See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for complete Admin API documentation.**
+
 ## Installation
 
 ```bash
@@ -188,21 +253,54 @@ npm run deploy
 
 ## Configuration
 
-Environment variables (set in `wrangler.jsonc`):
+**Zero Configuration Required** - The worker starts with sensible defaults and requires no setup.
 
-```json
-{
-  "vars": {
-    "RISK_THRESHOLD_BLOCK": "0.6",    // Block threshold
-    "RISK_THRESHOLD_WARN": "0.3",     // Warn threshold
-    "ENABLE_MX_CHECK": "false",        // MX validation (not implemented yet)
-    "ENABLE_DISPOSABLE_CHECK": "true", // Disposable domain checking
-    "ENABLE_PATTERN_CHECK": "true",    // Pattern detection
-    "LOG_ALL_VALIDATIONS": "true",     // Log all requests
-    "LOG_LEVEL": "info"                // Log level (debug, info, warn, error)
-  }
-}
+### KV-Based Runtime Configuration
+
+Configuration is managed via Cloudflare Workers KV and can be updated at runtime without redeployment:
+
+```bash
+# View current configuration
+curl https://your-worker.dev/admin/config \
+  -H "X-API-Key: your-admin-api-key"
+
+# Update configuration
+curl -X PUT https://your-worker.dev/admin/config \
+  -H "X-API-Key: your-admin-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"riskThresholds": {"block": 0.7, "warn": 0.4}}'
 ```
+
+**Configuration includes:**
+- Risk thresholds (block/warn)
+- Feature toggles (pattern detection, disposable check, etc.)
+- Risk scoring weights
+- Logging settings
+- Action overrides
+
+**See:**
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) - Complete configuration guide
+- [examples/CONFIG_EXAMPLES.md](examples/CONFIG_EXAMPLES.md) - Ready-to-use configuration examples
+
+### Setup (Optional)
+
+1. **Create KV Namespace** (for runtime configuration):
+   ```bash
+   wrangler kv namespace create CONFIG
+   ```
+
+2. **Set Admin API Key** (to enable configuration management):
+   ```bash
+   wrangler secret put ADMIN_API_KEY
+   ```
+
+3. **Configure via Admin API** (change settings without redeployment):
+   ```bash
+   curl -X PUT https://your-worker.dev/admin/config \
+     -H "X-API-Key: your-secret-key" \
+     -H "Content-Type: application/json" \
+     -d @examples/config.json
+   ```
 
 ## Risk Scoring Algorithm
 

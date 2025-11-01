@@ -1,0 +1,47 @@
+{
+  "riskThresholds": {
+    "block": 0.8,
+    "warn": 0.5
+  },
+  "features": {
+    "enableMxCheck": false,
+    "enableDisposableCheck": true,
+    "enablePatternCheck": true,
+    "enableNGramAnalysis": false,
+    "enableTLDRiskProfiling": false,
+    "enableBenfordsLaw": false,
+    "enableKeyboardWalkDetection": true
+  },
+  "logging": {
+    "logAllValidations": false,
+    "logLevel": "error",
+    "logBlocks": true
+  },
+  "headers": {
+    "enableResponseHeaders": true,
+    "enableOriginHeaders": false,
+    "originUrl": ""
+  },
+  "actionOverride": "allow",
+  "riskWeights": {
+    "entropy": 0.3,
+    "domainReputation": 0.2,
+    "tldRisk": 0.1,
+    "patternDetection": 0.4
+  },
+  "patternThresholds": {
+    "sequential": 0.9,
+    "dated": 0.8,
+    "plusAddressing": 0.7,
+    "keyboardWalk": 0.9,
+    "gibberish": 0.95
+  },
+  "rateLimiting": {
+    "enabled": false,
+    "maxValidationsPerMinute": 60,
+    "maxValidationsPerHour": 1000
+  },
+  "admin": {
+    "enabled": true
+  }
+}

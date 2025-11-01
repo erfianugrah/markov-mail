@@ -8,6 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **KV-Based Configuration System**: Runtime-editable configuration without redeployment
+  - **Zero Configuration Required**: Worker starts with sensible defaults out of the box
+  - **Workers KV Storage**: Configuration persists in KV namespace (`CONFIG` binding)
+  - **Worker Secrets Integration**: `ADMIN_API_KEY` and `ORIGIN_URL` secrets
+  - **Admin API**: 8 endpoints for configuration management
+    - `GET /admin/health` - Health check
+    - `GET /admin/config` - View current configuration
+    - `GET /admin/config/defaults` - View default configuration
+    - `PUT /admin/config` - Update full configuration
+    - `POST /admin/config/validate` - Validate configuration without saving
+    - `POST /admin/config/reset` - Reset to defaults
+    - `DELETE /admin/config/cache` - Clear configuration cache
+    - `GET /admin/config/defaults` - View defaults
+  - **Configuration Hierarchy**: Defaults → KV → Secrets (priority order)
+  - **In-Memory Caching**: 1-minute cache for performance
+  - **Validation**: Comprehensive config validation (thresholds, weights, enums)
+  - **API Key Authentication**: Admin endpoints protected with `X-API-Key` header
+  - **Configurable Options**:
+    - Risk thresholds (block/warn)
+    - Feature toggles (pattern detection, disposable checks, etc.)
+    - Risk scoring weights (must sum to 1.0)
+    - Logging settings (verbosity, what to log)
+    - Action overrides (escalate warn → block)
+    - Custom headers (response/origin)
+  - **Backward Compatible**: Old environment variable system removed, fully migrated to KV
+  - See `docs/CONFIGURATION.md` for complete guide (480 lines of documentation)
+
 - **Custom Headers**: Configurable fraud detection headers for downstream integration
   - **Response Headers** (Worker → Client): Add fraud signals to API responses
     - Core decision headers: `X-Risk-Score`, `X-Fraud-Decision`, `X-Fraud-Reason`

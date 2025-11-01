@@ -104,81 +104,106 @@ npx tsc --noEmit
 
 ## Configuration
 
-### Environment Variables
+**Zero Configuration Required** - The worker starts with sensible defaults out of the box.
 
-Configuration is in `wrangler.jsonc`:
+### KV-Based Runtime Configuration
 
-```jsonc
-{
-  "name": "bogus-email-pattern-recognition",
-  "main": "src/index.ts",
-  "compatibility_date": "2025-10-11",
+Configuration is managed via Cloudflare Workers KV and can be updated at runtime without redeployment.
 
-  "vars": {
-    // Risk thresholds
-    "RISK_THRESHOLD_BLOCK": "0.6",    // Block if risk > 0.6
-    "RISK_THRESHOLD_WARN": "0.3",     // Warn if risk > 0.3
+#### Configuration Structure
 
-    // Feature flags
-    "ENABLE_DISPOSABLE_CHECK": "true",  // Check disposable domains
-    "ENABLE_PATTERN_CHECK": "true",     // Run pattern detection
-    "ENABLE_MX_CHECK": "false",         // MX validation (not implemented)
+The configuration system includes:
 
-    // Logging
-    "LOG_ALL_VALIDATIONS": "true",      // Log every validation
-    "LOG_LEVEL": "info"                 // debug|info|warn|error
-  },
+- **Risk Thresholds**: Block and warn thresholds (default: block 0.6, warn 0.3)
+- **Feature Toggles**: Enable/disable pattern detection, disposable checks, etc.
+- **Risk Weights**: Configurable weights for entropy, domain reputation, TLD risk, and pattern detection
+- **Logging Settings**: Control log verbosity and what gets logged
+- **Action Overrides**: Escalate decisions (e.g., warn → block)
 
-  "analytics_engine_datasets": [
-    {
-      "binding": "ANALYTICS",
-      "dataset": "email_validations"
-    }
-  ]
-}
+#### Setup KV Configuration (Optional)
+
+1. **Create KV Namespace**:
+   ```bash
+   wrangler kv namespace create CONFIG
+   wrangler kv namespace create CONFIG --preview
+   ```
+
+2. **Update `wrangler.jsonc`** with namespace IDs:
+   ```jsonc
+   {
+     "kv_namespaces": [
+       {
+         "binding": "CONFIG",
+         "id": "your-namespace-id",
+         "preview_id": "your-preview-id"
+       }
+     ]
+   }
+   ```
+
+3. **Set Admin API Key** (enables configuration management):
+   ```bash
+   # For production
+   wrangler secret put ADMIN_API_KEY
+
+   # For local development, create .dev.vars:
+   echo "ADMIN_API_KEY=your-secret-key" > .dev.vars
+   ```
+
+#### Configuration Options
+
+**Risk Thresholds:**
+- `block`: 0.6 (emails with risk > 0.6 are blocked)
+- `warn`: 0.3 (emails with risk 0.3-0.6 get warning)
+
+**Feature Flags:**
+- `enableDisposableCheck`: true (checks 170+ disposable domains)
+- `enablePatternCheck`: true (sequential, dated, plus-addressing, keyboard walks)
+- `enableNGramAnalysis`: true (gibberish detection)
+- `enableTLDRiskProfiling`: true (TLD risk scoring)
+- `enableKeyboardWalkDetection`: true (keyboard pattern detection)
+- `enableBenfordsLaw`: true (statistical batch detection)
+
+**Risk Weights** (must sum to 1.0):
+- `entropy`: 0.20 (random string detection)
+- `domainReputation`: 0.10 (disposable/free providers)
+- `tldRisk`: 0.10 (TLD risk profiling)
+- `patternDetection`: 0.50 (pattern-based detection)
+
+**Logging:**
+- `logAllValidations`: true (log every validation)
+- `logLevel`: "info" (debug, info, warn, error)
+- `logBlocks`: true (log blocked emails separately)
+
+#### Manage Configuration via Admin API
+
+**View current configuration:**
+```bash
+curl https://your-worker.dev/admin/config \
+  -H "X-API-Key: your-admin-api-key"
 ```
 
-### Configuration Options Explained
+**Update configuration:**
+```bash
+curl -X PUT https://your-worker.dev/admin/config \
+  -H "X-API-Key: your-admin-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "riskThresholds": {"block": 0.7, "warn": 0.4},
+    "features": {
+      "enableDisposableCheck": true,
+      "enablePatternCheck": true
+    }
+  }'
+```
 
-#### Risk Thresholds
+**Reset to defaults:**
+```bash
+curl -X POST https://your-worker.dev/admin/config/reset \
+  -H "X-API-Key: your-admin-api-key"
+```
 
-- **RISK_THRESHOLD_BLOCK** (default: 0.6)
-  - Emails with risk > 0.6 are blocked
-  - Recommended: 0.5-0.7 range
-  - Lower = more strict, Higher = more lenient
-
-- **RISK_THRESHOLD_WARN** (default: 0.3)
-  - Emails with risk 0.3-0.6 get warning
-  - Recommended: 0.2-0.4 range
-  - Creates middle ground for review
-
-#### Feature Flags
-
-- **ENABLE_DISPOSABLE_CHECK** (default: true)
-  - Checks against 170+ disposable domains
-  - Highly recommended to keep enabled
-  - Catches throwaway email services
-
-- **ENABLE_PATTERN_CHECK** (default: true)
-  - Enables all pattern detection:
-    - Sequential patterns (user1, user2, ...)
-    - Dated patterns (john.2024, user_2025)
-    - Plus-addressing (user+1@gmail.com)
-    - Keyboard walks (qwerty, asdfgh)
-    - N-Gram gibberish detection (Phase 6A)
-  - Must be enabled for Phase 6A features
-
-- **LOG_ALL_VALIDATIONS** (default: true)
-  - Logs every validation request
-  - Useful for debugging and analytics
-  - Disable in high-traffic production for performance
-
-#### Logging Levels
-
-- **debug**: Verbose output, all details
-- **info**: Standard operational messages
-- **warn**: Warnings and potential issues
-- **error**: Only errors and critical issues
+**See [CONFIGURATION.md](CONFIGURATION.md) for complete guide with all admin endpoints, examples, and troubleshooting.**
 
 ---
 
@@ -559,6 +584,62 @@ async function validateWithCustomThreshold(email, blockThreshold = 0.7) {
 }
 ```
 
+### Example 5: Worker-to-Worker RPC (Service Bindings)
+
+If you're calling from another Cloudflare Worker, use RPC for better performance:
+
+**Setup `wrangler.jsonc` in your consuming worker:**
+
+```jsonc
+{
+  "name": "my-app",
+  "services": [{
+    "binding": "FRAUD_DETECTOR",
+    "service": "bogus-email-pattern-recognition",
+    "entrypoint": "FraudDetectionService"
+  }]
+}
+```
+
+**Usage in your Worker (with fingerprinting):**
+
+```typescript
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const { email } = await request.json();
+
+    // Direct RPC call with original headers for fingerprinting
+    const result = await env.FRAUD_DETECTOR.validate({
+      email: email,
+      consumer: "MY_APP",
+      flow: "SIGNUP_EMAIL_VERIFY",
+      // Pass original request headers for accurate fingerprinting
+      headers: {
+        'cf-connecting-ip': request.headers.get('cf-connecting-ip'),
+        'user-agent': request.headers.get('user-agent'),
+        'cf-ipcountry': request.headers.get('cf-ipcountry'),
+        'cf-ray': request.headers.get('cf-ray')
+      }
+    });
+
+    if (result.decision === 'block') {
+      return new Response('Email rejected', { status: 400 });
+    }
+
+    return new Response('Email accepted', { status: 200 });
+  }
+};
+```
+
+**Benefits:**
+- 5-10x lower latency (~2-5ms vs ~15-25ms)
+- No JSON serialization overhead
+- TypeScript type safety across Workers
+- Full fingerprinting support when passing headers
+- Perfect for high-throughput applications
+
+**See [API.md - RPC Integration](API.md#rpc-integration-service-bindings) for comprehensive examples.**
+
 ---
 
 ## Troubleshooting
@@ -631,15 +712,14 @@ async function validateWithCustomThreshold(email, blockThreshold = 0.7) {
 
 **Solutions**:
 
-1. **Disable excessive logging**:
-   ```jsonc
-   "LOG_ALL_VALIDATIONS": "false"
+1. **Disable excessive logging via Admin API**:
+   ```bash
+   curl -X PUT https://your-worker.dev/admin/config \
+     -H "X-API-Key: your-key" \
+     -d '{"logging": {"logAllValidations": false}}'
    ```
 
-2. **Check pattern detection**:
-   ```jsonc
-   "ENABLE_PATTERN_CHECK": "true"  // This is fast, keep enabled
-   ```
+2. **Pattern detection is fast and should remain enabled**
 
 3. **Monitor Analytics**:
    - Check p95 latency in dashboard
@@ -651,9 +731,11 @@ async function validateWithCustomThreshold(email, blockThreshold = 0.7) {
 
 **Solutions**:
 
-1. **Adjust thresholds**:
-   ```jsonc
-   "RISK_THRESHOLD_BLOCK": "0.7"  // Increase from 0.6
+1. **Adjust thresholds via Admin API**:
+   ```bash
+   curl -X PUT https://your-worker.dev/admin/config \
+     -H "X-API-Key: your-key" \
+     -d '{"riskThresholds": {"block": 0.7, "warn": 0.4}}'
    ```
 
 2. **Check signals**:

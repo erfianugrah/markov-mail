@@ -6,27 +6,22 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "bogus-email-pattern-recognition",
 	"main": "src/index.ts",
-	"compatibility_date": "2025-10-11",
+	"compatibility_date": "2025-10-11", // RPC enabled (requires 2024-04-03+)
 	"observability": {
 		"enabled": true
 	},
 	/**
-	 * Environment Variables
-	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
+	 * KV Namespaces
+	 * Configuration is stored in KV under the "config.json" key
+	 * https://developers.cloudflare.com/kv/
 	 */
-	"vars": {
-		"RISK_THRESHOLD_BLOCK": "0.6",
-		"RISK_THRESHOLD_WARN": "0.3",
-		"ENABLE_MX_CHECK": "false",
-		"ENABLE_DISPOSABLE_CHECK": "true",
-		"ENABLE_PATTERN_CHECK": "true",
-		"LOG_ALL_VALIDATIONS": "true",
-		"LOG_LEVEL": "info",
-		// Custom Headers Configuration
-		"ENABLE_RESPONSE_HEADERS": "true",
-		"ENABLE_ORIGIN_HEADERS": "false",
-		"ORIGIN_URL": ""
-	},
+	"kv_namespaces": [
+		{
+			"binding": "CONFIG",
+			"id": "e24fcc002bc64157a1940650c348d335",
+			"remote": true
+		}
+	],
 	/**
 	 * Analytics Engine
 	 * https://developers.cloudflare.com/analytics/analytics-engine/

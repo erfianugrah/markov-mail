@@ -18,10 +18,18 @@ This API provides inline email validation to prevent fake account signups by ana
 
 ## Authentication
 
-Currently, this API is open (no authentication required). For production use, consider adding:
-- API key authentication
-- Rate limiting per API key
-- IP whitelisting
+**Validation Endpoints** (`/validate`, `/debug`): Open (no authentication required)
+
+**Admin Endpoints** (`/admin/*`): Require API key authentication via `X-API-Key` header or `Authorization: Bearer` header.
+
+Set up authentication:
+```bash
+# Production
+wrangler secret put ADMIN_API_KEY
+
+# Local development (.dev.vars)
+ADMIN_API_KEY=your-secret-key
+```
 
 ## Endpoints
 
@@ -192,6 +200,439 @@ curl -X POST https://your-worker.dev/validate \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com"}'
 ```
+
+## RPC Integration (Service Bindings)
+
+For Workers-to-Workers communication, you can use Cloudflare's RPC system instead of HTTP. This provides:
+- **Lower latency** - No HTTP overhead, direct JavaScript function calls
+- **Type safety** - TypeScript types preserved across Workers
+- **Simpler code** - No need to serialize/deserialize JSON
+- **Promise pipelining** - Multiple RPC calls can be batched
+
+### Setup
+
+#### 1. Configure the Consuming Worker
+
+In your consuming worker's `wrangler.jsonc`, add a service binding:
+
+```jsonc
+{
+  "name": "my-app",
+  "services": [{
+    "binding": "FRAUD_DETECTOR",
+    "service": "bogus-email-pattern-recognition",
+    "entrypoint": "FraudDetectionService"
+  }]
+}
+```
+
+#### 2. Add TypeScript Types
+
+In your consuming worker's types file:
+
+```typescript
+interface Env {
+  FRAUD_DETECTOR: {
+    validate(request: {
+      email: string;
+      consumer?: string;
+      flow?: string;
+    }): Promise<{
+      valid: boolean;
+      riskScore: number;
+      decision: 'allow' | 'warn' | 'block';
+      signals: Record<string, any>;
+      message: string;
+    }>;
+  };
+}
+```
+
+### Usage Examples
+
+#### Basic Validation (without fingerprinting)
+
+```typescript
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const { email } = await request.json();
+
+    // Call fraud detection via RPC
+    const result = await env.FRAUD_DETECTOR.validate({
+      email: email,
+      consumer: "MY_APP",
+      flow: "SIGNUP_EMAIL_VERIFY"
+    });
+
+    if (result.decision === 'block') {
+      return new Response('Email rejected due to fraud risk', {
+        status: 400
+      });
+    }
+
+    // Continue with signup...
+    return new Response('Email accepted', { status: 200 });
+  }
+};
+```
+
+#### With Fingerprinting (Recommended)
+
+Pass original request headers to preserve IP, User-Agent, and Cloudflare signals:
+
+```typescript
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const { email } = await request.json();
+
+    // Call fraud detection via RPC with original headers for fingerprinting
+    const result = await env.FRAUD_DETECTOR.validate({
+      email: email,
+      consumer: "MY_APP",
+      flow: "SIGNUP_EMAIL_VERIFY",
+      headers: {
+        'cf-connecting-ip': request.headers.get('cf-connecting-ip'),
+        'user-agent': request.headers.get('user-agent'),
+        'cf-ipcountry': request.headers.get('cf-ipcountry'),
+        'cf-ray': request.headers.get('cf-ray'),
+        'x-real-ip': request.headers.get('x-real-ip')
+      }
+    });
+
+    if (result.decision === 'block') {
+      return new Response(
+        JSON.stringify({
+          error: 'Email rejected',
+          riskScore: result.riskScore,
+          fingerprint: result.fingerprint?.hash
+        }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Continue with signup...
+    return new Response('Email accepted', { status: 200 });
+  }
+};
+```
+
+#### With Error Handling
+
+```typescript
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const { email } = await request.json();
+
+    try {
+      const result = await env.FRAUD_DETECTOR.validate({
+        email: email,
+        consumer: "MY_APP",
+        flow: "SIGNUP_EMAIL_VERIFY"
+      });
+
+      // Check decision
+      switch (result.decision) {
+        case 'block':
+          return new Response(
+            JSON.stringify({
+              error: 'Email rejected',
+              reason: result.message,
+              riskScore: result.riskScore
+            }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
+
+        case 'warn':
+          // Log warning but allow - could trigger additional verification
+          console.warn('High-risk email:', {
+            email: email,
+            riskScore: result.riskScore,
+            signals: result.signals
+          });
+          break;
+
+        case 'allow':
+          // Normal flow
+          break;
+      }
+
+      // Continue with registration
+      return new Response('Success', { status: 200 });
+
+    } catch (error) {
+      // Handle RPC errors gracefully
+      console.error('Fraud detection RPC error:', error);
+      // Decide: fail open (allow) or fail closed (block)
+      return new Response('Service temporarily unavailable', {
+        status: 503
+      });
+    }
+  }
+};
+```
+
+#### Batch Validation
+
+```typescript
+// Validate multiple emails in parallel
+async function validateBatch(
+  emails: string[],
+  env: Env
+): Promise<Map<string, boolean>> {
+  const results = await Promise.all(
+    emails.map(email =>
+      env.FRAUD_DETECTOR.validate({
+        email: email,
+        consumer: "BATCH_IMPORTER",
+        flow: "BULK_IMPORT"
+      })
+    )
+  );
+
+  return new Map(
+    emails.map((email, i) => [
+      email,
+      results[i].decision !== 'block'
+    ])
+  );
+}
+```
+
+#### Using Additional Signals
+
+```typescript
+const result = await env.FRAUD_DETECTOR.validate({
+  email: "user@example.com",
+  consumer: "MY_APP",
+  flow: "SIGNUP_EMAIL_VERIFY"
+});
+
+// Access detailed signals for custom logic
+if (result.signals.isGibberish) {
+  console.log('Detected gibberish pattern');
+}
+
+if (result.signals.hasKeyboardWalk) {
+  console.log('Detected keyboard walk:', result.signals.keyboardWalkType);
+}
+
+if (result.signals.patternType === 'sequential') {
+  console.log('Detected sequential pattern');
+}
+
+// Custom risk scoring
+const customRisk =
+  result.riskScore * 0.7 +           // Base risk
+  (result.signals.isDisposableDomain ? 0.3 : 0) + // Add disposable penalty
+  (result.signals.entropyScore > 0.6 ? 0.2 : 0);  // Add entropy penalty
+```
+
+### Performance Benefits
+
+**HTTP vs RPC Latency Comparison:**
+
+| Method | Avg Latency | p95 Latency | Overhead |
+|--------|-------------|-------------|----------|
+| HTTP (same region) | ~15-25ms | ~35ms | JSON serialization + HTTP headers |
+| RPC (Service Binding) | ~2-5ms | ~8ms | Direct function call |
+
+**Use RPC when:**
+- Calling from another Cloudflare Worker
+- Need lowest latency possible
+- Want type safety across services
+- Making many validation calls per request
+
+**Use HTTP when:**
+- Calling from external services
+- Need to use curl/Postman for testing
+- Integrating with non-Worker systems
+
+### Limitations
+
+- **RPC only works between Cloudflare Workers** - Cannot be called from external services
+- **Same Cloudflare account** - Workers must be in the same account
+- **Headers must be passed manually** - Unlike HTTP, you must explicitly pass headers for fingerprinting (see examples above)
+- **Compatibility date** - Requires `compatibility_date >= 2024-04-03`
+
+### RPC vs HTTP Decision Matrix
+
+| Requirement | Recommended Method |
+|-------------|-------------------|
+| Lowest latency | RPC (with headers) |
+| External integration | HTTP |
+| Type safety | RPC |
+| Testing with curl | HTTP |
+| Batch validation | RPC (parallel) |
+| Fingerprinting signals | Both (pass headers in RPC) |
+| Cross-account | HTTP |
+| Simple integration | HTTP |
+
+## Admin API
+
+Manage worker configuration at runtime without redeployment.
+
+**Authentication:** Requires `ADMIN_API_KEY` secret set via `X-API-Key` or `Authorization: Bearer` header.
+
+### GET /admin/health
+
+Health check endpoint for the admin API.
+
+**Request:**
+```bash
+curl https://your-worker.dev/admin/health \
+  -H "X-API-Key: your-admin-api-key"
+```
+
+**Response (200 OK):**
+```json
+{
+  "status": "healthy",
+  "adminApiEnabled": true,
+  "timestamp": 1730368439603
+}
+```
+
+### GET /admin/config
+
+Get current active configuration (merged defaults + KV + secrets).
+
+**Request:**
+```bash
+curl https://your-worker.dev/admin/config \
+  -H "X-API-Key: your-admin-api-key"
+```
+
+**Response (200 OK):**
+```json
+{
+  "config": {
+    "riskThresholds": {"block": 0.6, "warn": 0.3},
+    "features": {...},
+    "logging": {...},
+    "headers": {...},
+    "actionOverride": "allow",
+    "riskWeights": {...},
+    "patternThresholds": {...},
+    "rateLimiting": {...},
+    "admin": {"enabled": true}
+  },
+  "source": {
+    "defaults": {...},
+    "cached": true
+  }
+}
+```
+
+### PUT /admin/config
+
+Update full configuration (replaces entire KV config). Must include all required fields.
+
+**Request:**
+```bash
+curl -X PUT https://your-worker.dev/admin/config \
+  -H "X-API-Key: your-admin-api-key" \
+  -H "Content-Type: application/json" \
+  -d @examples/config.json
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Configuration updated successfully",
+  "config": {...}
+}
+```
+
+**Response (400 Bad Request):**
+```json
+{
+  "error": "Invalid configuration",
+  "errors": [
+    "riskWeights must sum to 1.0 (currently 0.90)"
+  ]
+}
+```
+
+### POST /admin/config/validate
+
+Validate configuration without saving.
+
+**Request:**
+```bash
+curl -X POST https://your-worker.dev/admin/config/validate \
+  -H "X-API-Key: your-admin-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"riskThresholds": {"block": 0.7, "warn": 0.4}}'
+```
+
+**Response (200 OK):**
+```json
+{
+  "valid": true,
+  "message": "Configuration is valid"
+}
+```
+
+### POST /admin/config/reset
+
+Reset configuration to defaults (clears KV storage).
+
+**Request:**
+```bash
+curl -X POST https://your-worker.dev/admin/config/reset \
+  -H "X-API-Key: your-admin-api-key"
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Configuration reset to defaults",
+  "defaults": {...}
+}
+```
+
+### DELETE /admin/config/cache
+
+Clear in-memory configuration cache (forces reload from KV).
+
+**Request:**
+```bash
+curl -X DELETE https://your-worker.dev/admin/config/cache \
+  -H "X-API-Key: your-admin-api-key"
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Configuration cache cleared"
+}
+```
+
+### Admin API Error Responses
+
+**401 Unauthorized:**
+```json
+{
+  "error": "Unauthorized",
+  "message": "API key required. Provide via X-API-Key or Authorization header"
+}
+```
+
+**503 Service Unavailable:**
+```json
+{
+  "error": "Admin API is not enabled",
+  "message": "Set ADMIN_API_KEY secret to enable admin endpoints"
+}
+```
+
+**See [docs/CONFIGURATION.md](CONFIGURATION.md) for complete Admin API documentation, examples, and configuration options.**
 
 ## Custom Headers
 
@@ -392,36 +833,56 @@ index=web sourcetype=access_combined
 
 ## Configuration
 
-Environment variables can be set in `wrangler.jsonc`:
+**Zero Configuration Required** - The worker starts with sensible defaults.
 
-```jsonc
-{
-  "vars": {
-    // Risk Thresholds
-    "RISK_THRESHOLD_BLOCK": "0.6",      // Block above this score
-    "RISK_THRESHOLD_WARN": "0.3",       // Warn above this score
+### KV-Based Runtime Configuration
 
-    // Feature Toggles
-    "ENABLE_MX_CHECK": "false",          // Enable MX record validation
-    "ENABLE_RATE_LIMIT": "false",        // Enable rate limiting
-    "ENABLE_DISPOSABLE_CHECK": "true",   // Enable disposable domain checking
-    "ENABLE_PATTERN_CHECK": "true",      // Enable pattern detection
+Configuration is managed via Cloudflare Workers KV and can be updated at runtime via the Admin API:
 
-    // Custom Headers
-    "ENABLE_RESPONSE_HEADERS": "true",   // Add fraud headers to responses
-    "ENABLE_ORIGIN_HEADERS": "false",    // Forward fraud headers to origin
-    "ORIGIN_URL": "",                    // Backend URL for origin forwarding
+```bash
+# View current configuration
+curl https://your-worker.dev/admin/config \
+  -H "X-API-Key: your-admin-api-key"
 
-    // Rate Limiting (if enabled)
-    "MAX_ATTEMPTS_PER_HOUR": "5",        // Max validations per hour per fingerprint
-    "MAX_ATTEMPTS_PER_DAY": "20",        // Max validations per day per fingerprint
-
-    // Logging
-    "LOG_ALL_VALIDATIONS": "true",       // Log every validation
-    "LOG_LEVEL": "info"                  // Logging level (info, warn, error)
-  }
-}
+# Update configuration (runtime, no redeployment)
+curl -X PUT https://your-worker.dev/admin/config \
+  -H "X-API-Key: your-admin-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "riskThresholds": {"block": 0.7, "warn": 0.4},
+    "features": {
+      "enableDisposableCheck": true,
+      "enablePatternCheck": true,
+      "enableNGramAnalysis": true,
+      "enableTLDRiskProfiling": true,
+      "enableBenfordsLaw": true,
+      "enableKeyboardWalkDetection": true
+    },
+    "logging": {
+      "logAllValidations": true,
+      "logLevel": "info",
+      "logBlocks": true
+    },
+    "headers": {
+      "enableResponseHeaders": true,
+      "enableOriginHeaders": false,
+      "originUrl": ""
+    },
+    "riskWeights": {
+      "entropy": 0.2,
+      "domainReputation": 0.1,
+      "tldRisk": 0.1,
+      "patternDetection": 0.6
+    }
+  }'
 ```
+
+**See [docs/CONFIGURATION.md](CONFIGURATION.md) for complete configuration guide including:**
+- Default configuration values
+- All configurable options
+- Admin API endpoints
+- Configuration examples
+- Troubleshooting
 
 ## Examples
 
