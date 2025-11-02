@@ -3,7 +3,19 @@
  */
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:8787' : '';
-const API_KEY = import.meta.env.VITE_API_KEY || '';
+
+// Get API key from localStorage or fallback to env var
+export function getApiKey(): string {
+  return localStorage.getItem('apiKey') || import.meta.env.VITE_API_KEY || '';
+}
+
+export function setApiKey(key: string): void {
+  localStorage.setItem('apiKey', key);
+}
+
+export function clearApiKey(): void {
+  localStorage.removeItem('apiKey');
+}
 
 export interface QueryResult {
   success: boolean;
@@ -14,11 +26,16 @@ export interface QueryResult {
 }
 
 export async function query(sql: string, hours: number = 24): Promise<QueryResult> {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error('API key not set. Please enter your API key.');
+  }
+
   const encodedSQL = encodeURIComponent(sql);
   const response = await fetch(`${API_BASE}/admin/analytics?query=${encodedSQL}&hours=${hours}`, {
     method: 'GET',
     headers: {
-      'X-API-Key': API_KEY,
+      'X-API-Key': apiKey,
     },
   });
 
