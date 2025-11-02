@@ -29,6 +29,7 @@
 		"wrangler": "^4.45.3"
 	},
 	"dependencies": {
+		"@radix-ui/react-tabs": "^1.1.13",
 		"chart.js": "^4.5.1",
 		"chartjs-plugin-zoom": "^2.2.0",
 		"csv-parse": "^6.1.0",

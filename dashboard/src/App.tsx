@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line } from 'recharts'
 import {
@@ -15,6 +16,9 @@ import {
 import { Activity, Shield, AlertTriangle, CheckCircle, Clock, Key, LogOut, Target, Moon, Sun } from 'lucide-react'
 import { SimpleBarChart } from '@/components/SimpleBarChart'
 import { ExportButton } from '@/components/ExportButton'
+import { QueryBuilder } from '@/components/QueryBuilder'
+import { DataExplorer } from '@/components/DataExplorer'
+import { DataManagement } from '@/components/DataManagement'
 
 const COLORS = {
   allow: 'hsl(142 76% 36%)',
@@ -299,8 +303,18 @@ function App() {
           </div>
         </div>
 
-        {/* Stats Cards */}
-        {stats && (
+        {/* Tabs */}
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="query">Query Builder</TabsTrigger>
+            <TabsTrigger value="explorer">Data Explorer</TabsTrigger>
+            <TabsTrigger value="management">Data Management</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="space-y-6">
+            {/* Stats Cards */}
+            {stats && (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -638,6 +652,20 @@ function App() {
             color="hsl(var(--chart-3))"
           />
         </div>
+          </TabsContent>
+
+          <TabsContent value="query">
+            <QueryBuilder />
+          </TabsContent>
+
+          <TabsContent value="explorer">
+            <DataExplorer />
+          </TabsContent>
+
+          <TabsContent value="management">
+            <DataManagement />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   )

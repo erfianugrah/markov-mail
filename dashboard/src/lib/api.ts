@@ -19,10 +19,8 @@ export function clearApiKey(): void {
 
 export interface QueryResult {
   success: boolean;
-  data: {
-    data: Array<Record<string, string | number>>;
-    rows: number;
-  };
+  data: Array<Record<string, string | number>>;
+  rows?: number;
 }
 
 // Helper to build time filter WHERE clause
@@ -95,17 +93,19 @@ export async function loadStats(hours: number = 24): Promise<Stats> {
   let warns = 0;
   let allows = 0;
 
-  decisionsResult.data.data.forEach((row) => {
-    const decision = String(row.decision);
-    const count = Number(row.count);
+  if (decisionsResult.data) {
+    decisionsResult.data.forEach((row) => {
+      const decision = String(row.decision);
+      const count = Number(row.count);
 
-    if (decision === 'block') blocks = count;
-    else if (decision === 'warn') warns = count;
-    else if (decision === 'allow') allows = count;
-  });
+      if (decision === 'block') blocks = count;
+      else if (decision === 'warn') warns = count;
+      else if (decision === 'allow') allows = count;
+    });
+  }
 
   const total = blocks + warns + allows || 1;
-  const avgRow = avgsResult.data.data[0] || {};
+  const avgRow = avgsResult.data?.[0] || {};
 
   return {
     totalValidations: total,
@@ -130,7 +130,7 @@ export async function loadDecisions(hours: number = 24) {
     ORDER BY count DESC
   `, hours);
 
-  return result.data.data.map((row) => ({
+  return (result.data || []).map((row) => ({
     decision: String(row.decision),
     count: Number(row.count),
   }));
@@ -147,7 +147,7 @@ export async function loadRiskDistribution(hours: number = 24) {
     ORDER BY risk_bucket
   `, hours);
 
-  return result.data.data.map((row) => ({
+  return (result.data || []).map((row) => ({
     riskBucket: String(row.risk_bucket),
     count: Number(row.count),
   }));
@@ -168,18 +168,20 @@ export async function loadTimeline(hours: number = 24) {
   // Transform data for Recharts
   const grouped = new Map<string, Record<string, number | string>>();
 
-  result.data.data.forEach((row) => {
-    const hour = String(row.hour);
-    const decision = String(row.decision);
-    const count = Number(row.count);
+  if (result.data) {
+    result.data.forEach((row) => {
+      const hour = String(row.hour);
+      const decision = String(row.decision);
+      const count = Number(row.count);
 
-    if (!grouped.has(hour)) {
-      grouped.set(hour, { hour });
-    }
+      if (!grouped.has(hour)) {
+        grouped.set(hour, { hour });
+      }
 
-    const entry = grouped.get(hour)!;
-    entry[decision] = count;
-  });
+      const entry = grouped.get(hour)!;
+      entry[decision] = count;
+    });
+  }
 
   return Array.from(grouped.values());
 }
@@ -194,7 +196,7 @@ export async function loadCountries(hours: number = 24) {
     ORDER BY count DESC
     LIMIT 10
   `, hours);
-  return result.data.data.map((row) => ({ country: String(row.country), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({ country: String(row.country), count: Number(row.count) }));
 }
 
 export async function loadPatternTypes(hours: number = 24) {
@@ -206,7 +208,7 @@ export async function loadPatternTypes(hours: number = 24) {
     ORDER BY count DESC
     LIMIT 10
   `, hours);
-  return result.data.data.map((row) => ({ patternType: String(row.pattern_type), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({ patternType: String(row.pattern_type), count: Number(row.count) }));
 }
 
 export async function loadBlockReasons(hours: number = 24) {
@@ -218,7 +220,7 @@ export async function loadBlockReasons(hours: number = 24) {
     ORDER BY count DESC
     LIMIT 10
   `, hours);
-  return result.data.data.map((row) => ({ reason: String(row.block_reason), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({ reason: String(row.block_reason), count: Number(row.count) }));
 }
 
 export async function loadDomains(hours: number = 24) {
@@ -230,7 +232,7 @@ export async function loadDomains(hours: number = 24) {
     ORDER BY count DESC
     LIMIT 10
   `, hours);
-  return result.data.data.map((row) => ({ domain: String(row.domain), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({ domain: String(row.domain), count: Number(row.count) }));
 }
 
 export async function loadTLDs(hours: number = 24) {
@@ -242,7 +244,7 @@ export async function loadTLDs(hours: number = 24) {
     ORDER BY count DESC
     LIMIT 10
   `, hours);
-  return result.data.data.map((row) => ({ tld: String(row.tld), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({ tld: String(row.tld), count: Number(row.count) }));
 }
 
 export async function loadPatternFamilies(hours: number = 24) {
@@ -254,7 +256,7 @@ export async function loadPatternFamilies(hours: number = 24) {
     ORDER BY count DESC
     LIMIT 10
   `, hours);
-  return result.data.data.map((row) => ({ family: String(row.pattern_family), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({ family: String(row.pattern_family), count: Number(row.count) }));
 }
 
 export async function loadDisposableDomains(hours: number = 24) {
@@ -266,7 +268,7 @@ export async function loadDisposableDomains(hours: number = 24) {
     ORDER BY count DESC
     LIMIT 10
   `, hours);
-  return result.data.data.map((row) => ({ domain: String(row.domain), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({ domain: String(row.domain), count: Number(row.count) }));
 }
 
 export async function loadFreeProviders(hours: number = 24) {
@@ -278,7 +280,7 @@ export async function loadFreeProviders(hours: number = 24) {
     ORDER BY count DESC
     LIMIT 10
   `, hours);
-  return result.data.data.map((row) => ({ domain: String(row.domain), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({ domain: String(row.domain), count: Number(row.count) }));
 }
 
 export async function loadPlusAddressing(hours: number = 24) {
@@ -290,7 +292,7 @@ export async function loadPlusAddressing(hours: number = 24) {
     ORDER BY count DESC
     LIMIT 10
   `, hours);
-  return result.data.data.map((row) => ({ domain: String(row.domain), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({ domain: String(row.domain), count: Number(row.count) }));
 }
 
 export async function loadKeyboardWalks(hours: number = 24) {
@@ -302,7 +304,7 @@ export async function loadKeyboardWalks(hours: number = 24) {
     ORDER BY count DESC
     LIMIT 10
   `, hours);
-  return result.data.data.map((row) => ({ type: String(row.walk_type), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({ type: String(row.walk_type), count: Number(row.count) }));
 }
 
 export async function loadGibberish(hours: number = 24) {
@@ -313,7 +315,7 @@ export async function loadGibberish(hours: number = 24) {
     GROUP BY is_gibberish
     ORDER BY count DESC
   `, hours);
-  return result.data.data.map((row) => ({ isGibberish: String(row.is_gibberish), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({ isGibberish: String(row.is_gibberish), count: Number(row.count) }));
 }
 
 export async function loadEntropyScores(hours: number = 24) {
@@ -324,7 +326,7 @@ export async function loadEntropyScores(hours: number = 24) {
     GROUP BY entropy_bucket
     ORDER BY entropy_bucket
   `, hours);
-  return result.data.data.map((row) => ({ bucket: String(row.entropy_bucket), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({ bucket: String(row.entropy_bucket), count: Number(row.count) }));
 }
 
 export async function loadBotScores(hours: number = 24) {
@@ -345,16 +347,18 @@ export async function loadBotScores(hours: number = 24) {
     ['90-100', 0],
   ]);
 
-  result.data.data.forEach((row) => {
-    const score = Number(row.bot_score);
-    const count = Number(row.count);
+  if (result.data) {
+    result.data.forEach((row) => {
+      const score = Number(row.bot_score);
+      const count = Number(row.count);
 
-    if (score < 30) buckets.set('0-30', buckets.get('0-30')! + count);
-    else if (score < 50) buckets.set('30-50', buckets.get('30-50')! + count);
-    else if (score < 70) buckets.set('50-70', buckets.get('50-70')! + count);
-    else if (score < 90) buckets.set('70-90', buckets.get('70-90')! + count);
-    else buckets.set('90-100', buckets.get('90-100')! + count);
-  });
+      if (score < 30) buckets.set('0-30', buckets.get('0-30')! + count);
+      else if (score < 50) buckets.set('30-50', buckets.get('30-50')! + count);
+      else if (score < 70) buckets.set('50-70', buckets.get('50-70')! + count);
+      else if (score < 90) buckets.set('70-90', buckets.get('70-90')! + count);
+      else buckets.set('90-100', buckets.get('90-100')! + count);
+    });
+  }
 
   return Array.from(buckets.entries()).map(([range, count]) => ({ range, count }));
 }
@@ -377,16 +381,18 @@ export async function loadLatencyDistribution(hours: number = 24) {
     ['200ms+', 0],
   ]);
 
-  result.data.data.forEach((row) => {
-    const latency = Number(row.latency);
-    const count = Number(row.count);
+  if (result.data) {
+    result.data.forEach((row) => {
+      const latency = Number(row.latency);
+      const count = Number(row.count);
 
-    if (latency < 10) buckets.set('0-10ms', buckets.get('0-10ms')! + count);
-    else if (latency < 50) buckets.set('10-50ms', buckets.get('10-50ms')! + count);
-    else if (latency < 100) buckets.set('50-100ms', buckets.get('50-100ms')! + count);
-    else if (latency < 200) buckets.set('100-200ms', buckets.get('100-200ms')! + count);
-    else buckets.set('200ms+', buckets.get('200ms+')! + count);
-  });
+      if (latency < 10) buckets.set('0-10ms', buckets.get('0-10ms')! + count);
+      else if (latency < 50) buckets.set('10-50ms', buckets.get('10-50ms')! + count);
+      else if (latency < 100) buckets.set('50-100ms', buckets.get('50-100ms')! + count);
+      else if (latency < 200) buckets.set('100-200ms', buckets.get('100-200ms')! + count);
+      else buckets.set('200ms+', buckets.get('200ms+')! + count);
+    });
+  }
 
   return Array.from(buckets.entries()).map(([range, count]) => ({ range, count }));
 }
@@ -400,7 +406,7 @@ export async function loadASNs(hours: number = 24) {
     ORDER BY count DESC
     LIMIT 10
   `, hours);
-  return result.data.data.map((row) => ({ asn: Number(row.asn), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({ asn: Number(row.asn), count: Number(row.count) }));
 }
 
 export async function loadTLDRiskScores(hours: number = 24) {
@@ -412,7 +418,7 @@ export async function loadTLDRiskScores(hours: number = 24) {
     ORDER BY avg_risk DESC
     LIMIT 10
   `, hours);
-  return result.data.data.map((row) => ({ tld: String(row.tld), avgRisk: Number(row.avg_risk), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({ tld: String(row.tld), avgRisk: Number(row.avg_risk), count: Number(row.count) }));
 }
 
 export async function loadDomainReputation(hours: number = 24) {
@@ -424,7 +430,7 @@ export async function loadDomainReputation(hours: number = 24) {
     ORDER BY avg_reputation DESC
     LIMIT 10
   `, hours);
-  return result.data.data.map((row) => ({ domain: String(row.domain), avgReputation: Number(row.avg_reputation), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({ domain: String(row.domain), avgReputation: Number(row.avg_reputation), count: Number(row.count) }));
 }
 
 export async function loadPatternConfidence(hours: number = 24) {
@@ -445,16 +451,18 @@ export async function loadPatternConfidence(hours: number = 24) {
     ['80-100%', 0],
   ]);
 
-  result.data.data.forEach((row) => {
-    const confidence = Number(row.confidence);
-    const count = Number(row.count);
+  if (result.data) {
+    result.data.forEach((row) => {
+      const confidence = Number(row.confidence);
+      const count = Number(row.count);
 
-    if (confidence < 0.2) buckets.set('0-20%', buckets.get('0-20%')! + count);
-    else if (confidence < 0.4) buckets.set('20-40%', buckets.get('20-40%')! + count);
-    else if (confidence < 0.6) buckets.set('40-60%', buckets.get('40-60%')! + count);
-    else if (confidence < 0.8) buckets.set('60-80%', buckets.get('60-80%')! + count);
-    else buckets.set('80-100%', buckets.get('80-100%')! + count);
-  });
+      if (confidence < 0.2) buckets.set('0-20%', buckets.get('0-20%')! + count);
+      else if (confidence < 0.4) buckets.set('20-40%', buckets.get('20-40%')! + count);
+      else if (confidence < 0.6) buckets.set('40-60%', buckets.get('40-60%')! + count);
+      else if (confidence < 0.8) buckets.set('60-80%', buckets.get('60-80%')! + count);
+      else buckets.set('80-100%', buckets.get('80-100%')! + count);
+    });
+  }
 
   return Array.from(buckets.entries()).map(([range, count]) => ({ range, count }));
 }
