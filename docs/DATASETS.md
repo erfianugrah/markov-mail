@@ -21,11 +21,11 @@ Complete guide for preparing, formatting, and using datasets to train fraud dete
 
 This system trains **Markov Chain models** that learn character transition patterns in email addresses.
 
-**Example patterns learned:**
-- Legitimate: `john.smith@` → Common name patterns
-- Fraudulent: `user123@` → Sequential number patterns
-- Legitimate: `alice.j@` → Natural abbreviations
-- Fraudulent: `xkqw9@` → Random character sequences
+Example patterns:
+- Legitimate: `john.smith@` - common name patterns
+- Fraudulent: `user123@` - sequential numbers
+- Legitimate: `alice.j@` - natural abbreviations
+- Fraudulent: `xkqw9@` - random characters
 
 ### Why Two Models?
 
@@ -46,7 +46,7 @@ At runtime, the system compares an email against both models to determine which 
 | 50,000-100,000 | 92-96% | Very good |
 | 100,000+ | 96-99% | Excellent |
 
-**Recommended minimum:** 10,000 legitimate + 10,000 fraudulent emails
+Recommended minimum: 10,000 legitimate + 10,000 fraudulent emails
 
 ---
 
@@ -70,7 +70,7 @@ At runtime, the system compares an email against both models to determine which 
 | `spam` | Fraudulent email | xkqw9p@tempmail.com |
 | `fake` | Fraudulent email | abuse001@mailinator.com |
 
-**Case insensitive** - `LEGIT`, `Legit`, `legit` all work
+Labels are case insensitive - `LEGIT`, `Legit`, and `legit` all work.
 
 ### Balance Requirements
 
@@ -81,10 +81,10 @@ Legitimate emails: ~50% of dataset
 Fraudulent emails: ~50% of dataset
 ```
 
-**Example:**
-- ✅ Good: 50,000 legit + 50,000 fraud
-- ⚠️ Acceptable: 40,000 legit + 60,000 fraud
-- ❌ Poor: 10,000 legit + 90,000 fraud (heavily imbalanced)
+Examples:
+- Good: 50,000 legit + 50,000 fraud
+- Acceptable: 40,000 legit + 60,000 fraud
+- Poor: 10,000 legit + 90,000 fraud (too imbalanced)
 
 ---
 
@@ -110,7 +110,7 @@ alice.wonder@company.com,legit,2025-01-17,production,legitimate signup
 test456@yahoo.com,fraud,2025-01-18,flagged,sequential numbers
 ```
 
-**Note:** Only `email` and `label` columns are used. Other columns are ignored.
+Only `email` and `label` columns are used - other columns are ignored.
 
 ### Header Requirements
 
@@ -161,14 +161,9 @@ FROM users
 WHERE label IS NOT NULL
 ```
 
-**Pros:**
-- Real-world data from your actual users
-- Highest accuracy for your use case
-- Matches your user patterns
+Pros: Real-world data from your users, highest accuracy for your use case
 
-**Cons:**
-- Requires existing production system
-- Privacy considerations (hash/anonymize if needed)
+Cons: Requires existing production system, privacy considerations
 
 ### Source 2: Analytics Engine (After Deployment)
 
@@ -214,7 +209,7 @@ npm run cli test:generate --count 1000
 # Output: test-dataset-YYYY-MM-DD.csv
 ```
 
-**⚠️ Warning:** Synthetic data is only for testing. Don't use for production models.
+Warning: Synthetic data is for testing only - don't use for production models.
 
 ---
 
@@ -330,7 +325,7 @@ npm run cli train:markov
 #   - /tmp/models/markov_fraud_2gram.json
 ```
 
-**Training Options:**
+Training options:
 
 ```bash
 # Specify dataset path
@@ -526,13 +521,13 @@ split -l 50000 dataset/large.csv dataset/chunk_
 
 **Problem:** Models not detecting fraud well
 
-**Causes:**
-1. **Insufficient data** - Need 10k+ emails minimum
-2. **Poor quality** - Too many duplicates or invalid emails
-3. **Imbalanced** - Need 40-60% split between legit/fraud
-4. **Wrong labels** - Emails mislabeled in dataset
+Common causes:
+1. Insufficient data - need 10k+ emails minimum
+2. Poor quality - too many duplicates or invalid emails
+3. Imbalanced - need 40-60% split between legit/fraud
+4. Wrong labels - emails mislabeled in dataset
 
-**Solution:**
+Solution:
 ```bash
 # Validate dataset
 npm run cli train:validate ./dataset
@@ -559,42 +554,42 @@ npx wrangler kv namespace create MARKOV_MODEL
 
 ## Best Practices
 
-1. **Start Small, Grow Over Time**
-   - Begin with 10k emails
-   - Add more as you collect production data
-   - Retrain monthly
+Start small, grow over time:
+- Begin with 10k emails
+- Add more as you collect production data
+- Retrain monthly
 
-2. **Validate Before Training**
-   - Always run `train:validate` first
-   - Fix quality issues before training
-   - Save time and improve accuracy
+Validate before training:
+- Always run `train:validate` first
+- Fix quality issues before training
+- Saves time and improves accuracy
 
-3. **Keep Datasets Balanced**
-   - Aim for 50/50 legit/fraud split
-   - Acceptable range: 40/60 to 60/40
-   - Prevents model bias
+Keep datasets balanced:
+- Aim for 50/50 legit/fraud split
+- Acceptable range: 40/60 to 60/40
+- Prevents model bias
 
-4. **Use Real Data When Possible**
-   - Production data > Synthetic data
-   - Real patterns > Generated patterns
-   - Your users > Generic datasets
+Use real data when possible:
+- Production data > synthetic data
+- Real patterns > generated patterns
+- Your users > generic datasets
 
-5. **Version Your Datasets**
-   - Name files with dates: `emails_2025-01.csv`
-   - Keep training history
-   - Track model improvements
+Version your datasets:
+- Name files with dates: `emails_2025-01.csv`
+- Keep training history
+- Track model improvements
 
-6. **Privacy and Security**
-   - Hash emails if needed (but reduces accuracy)
-   - Remove PII from non-email columns
-   - Follow GDPR/privacy laws
-   - Store datasets securely
+Privacy and security:
+- Hash emails if needed (reduces accuracy though)
+- Remove PII from non-email columns
+- Follow GDPR/privacy laws
+- Store datasets securely
 
-7. **Continuous Improvement**
-   - Use automatic online learning
-   - Retrain with new production data
-   - Monitor accuracy metrics
-   - A/B test new models
+Continuous improvement:
+- Use automatic online learning
+- Retrain with new production data
+- Monitor accuracy metrics
+- A/B test new models
 
 ---
 

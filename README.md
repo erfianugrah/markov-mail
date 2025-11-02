@@ -42,7 +42,7 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 
 ## 📖 Quick Links
 
-### 🎯 New to this project? Start here:
+### New to this project? Start here:
 
 | Guide | Purpose | Time |
 |-------|---------|------|

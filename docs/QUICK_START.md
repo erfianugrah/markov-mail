@@ -1,6 +1,6 @@
-# 🚀 Quick Start - 5 Minutes to Running
+# Quick Start
 
-Get the fraud detection API running in just 5 minutes.
+Get the fraud detection API running in 5 minutes.
 
 ## Prerequisites
 
@@ -25,18 +25,18 @@ npx wrangler login
 npx wrangler whoami
 ```
 
-## Step 3: Deploy (1 minute)
+## Step 3: Deploy
 
 ```bash
 npm run deploy
 ```
 
-**Output:** Your worker URL
+You'll get a worker URL like:
 ```
 https://bogus-email-pattern-recognition.YOUR-SUBDOMAIN.workers.dev
 ```
 
-## Step 4: Test (1 minute)
+## Step 4: Test
 
 ```bash
 # Replace YOUR-SUBDOMAIN with your actual subdomain
@@ -45,7 +45,7 @@ curl -X POST https://bogus-email-pattern-recognition.YOUR-SUBDOMAIN.workers.dev/
   -d '{"email":"test@example.com"}'
 ```
 
-**Expected Response:**
+Expected response:
 ```json
 {
   "valid": true,
@@ -59,15 +59,11 @@ curl -X POST https://bogus-email-pattern-recognition.YOUR-SUBDOMAIN.workers.dev/
 }
 ```
 
-## 🎉 Done!
+Done. Your API is live.
 
-Your fraud detection API is live!
+## What's Next
 
-## What's Next?
-
-### Immediate Next Steps:
-
-1. **Test different patterns:**
+### Test different patterns
    ```bash
    # Test fraud patterns
    curl -X POST https://your-worker.workers.dev/validate \
@@ -75,33 +71,34 @@ Your fraud detection API is live!
      -d '{"email":"user123@gmail.com"}' | jq .
    ```
 
-2. **View real-time logs:**
-   ```bash
-   npx wrangler tail
-   ```
+### View real-time logs
 
-3. **Integrate with your app:**
-   - See [API.md](API.md) for complete API docs
-   - See [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md) for code examples
+```bash
+npx wrangler tail
+```
 
-### For Better Accuracy (Optional):
+### Integrate with your app
 
-1. **Upload configuration:**
+See [API.md](API.md) for complete API docs and [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md) for code examples.
+
+### Optional: Better Accuracy
+
+Upload configuration:
    ```bash
    npm run cli config:sync --remote
    ```
 
-2. **Train models** (if you have datasets):
-   ```bash
-   npm run cli train:markov --upload --remote
-   ```
-   See [DATASETS.md](DATASETS.md) for dataset format
+Train models (if you have datasets):
+```bash
+npm run cli train:markov --upload --remote
+```
+See [DATASETS.md](DATASETS.md) for dataset format.
 
-### Learn More:
+### More docs
 
-- **[First Deployment Guide](FIRST_DEPLOY.md)** - Complete deployment walkthrough
-- **[API Reference](API.md)** - All endpoints and options
-- **[Architecture](ARCHITECTURE.md)** - How it works under the hood
+- [First Deployment Guide](FIRST_DEPLOY.md) - Complete deployment walkthrough
+- [API Reference](API.md) - All endpoints and options
+- [Architecture](ARCHITECTURE.md) - How it works
 
 ---
 
@@ -115,9 +112,9 @@ npx wrangler login
 
 ### Deployment fails with KV namespace errors
 
-This is normal for first deployment. The worker will still function at 85-90% accuracy.
+This is normal on first deployment. The worker still works at 85-90% accuracy without them.
 
-To fix (optional):
+To fix:
 ```bash
 # Create KV namespaces
 npx wrangler kv namespace create CONFIG
