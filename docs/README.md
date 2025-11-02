@@ -8,7 +8,10 @@
 
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[Getting Started](GETTING_STARTED.md)** | Setup, installation, deployment | Developers |
+| **[Quick Start](QUICK_START.md)** | 5-minute deployment guide | Beginners |
+| **[First Deployment](FIRST_DEPLOY.md)** | Complete setup walkthrough (15 min) | Beginners |
+| **[Datasets Guide](DATASETS.md)** | Training data format and model training | ML Users, Data Scientists |
+| **[Getting Started](GETTING_STARTED.md)** | Detailed setup, installation, deployment | Developers |
 | **[API Reference](API.md)** | Endpoints, request/response formats | API Users |
 | **[Architecture](ARCHITECTURE.md)** | System design and algorithms | Developers, Architects |
 | **[Detectors](DETECTORS.md)** | Complete guide to all 8 fraud detectors | Developers, Data Scientists |
@@ -62,12 +65,18 @@ docs/
 
 ## 🎯 Quick Start Guide
 
+### For New Users (Start Here!)
+
+1. **[Quick Start](QUICK_START.md)** - Fastest path: deployed in 5 minutes
+2. **[First Deployment](FIRST_DEPLOY.md)** - Complete setup with explanations (15 minutes)
+3. **[Datasets Guide](DATASETS.md)** - Train models with your data
+4. **[API Reference](API.md)** - Use the fraud detection API
+
 ### For Developers
 
-1. **[Getting Started](GETTING_STARTED.md)** - Setup and first deployment
+1. **[Getting Started](GETTING_STARTED.md)** - Detailed setup and development guide
 2. **[Architecture](ARCHITECTURE.md)** - Learn the system design
-3. **[API Reference](API.md)** - Explore the endpoints
-4. **[Detectors](DETECTORS.md)** - Understand fraud detection algorithms
+3. **[Detectors](DETECTORS.md)** - Understand fraud detection algorithms
 
 ### For API Users
 
@@ -77,9 +86,9 @@ docs/
 
 ### For System Administrators
 
-1. **[Getting Started](GETTING_STARTED.md)** - Deployment guide
-2. **[Configuration](CONFIGURATION.md)** - Manage settings
-3. **[Analytics](ANALYTICS.md)** - Monitor system health
+1. **[Configuration](CONFIGURATION.md)** - Manage settings
+2. **[Analytics](ANALYTICS.md)** - Monitor system health
+3. **[CLI Reference](CLI.md)** - Command-line operations
 4. **[Logging Standards](LOGGING_STANDARDS.md)** - Structured logging guide
 
 ---

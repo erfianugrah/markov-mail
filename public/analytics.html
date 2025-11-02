@@ -1027,8 +1027,19 @@ LIMIT 100</textarea>
             panel.classList.toggle('fullscreen');
 
             // Resize chart when entering/exiting fullscreen
+            // Try to find Plotly div first, then fall back to Chart.js canvas
+            const plotlyDiv = panel.querySelector('.chart-container > div[id^="chart-"]');
             const canvas = panel.querySelector('canvas');
-            if (canvas) {
+
+            if (plotlyDiv) {
+                // Plotly chart - trigger relayout
+                setTimeout(() => {
+                    Plotly.Relayout(plotlyDiv, {
+                        autosize: true
+                    });
+                }, 100);
+            } else if (canvas) {
+                // Chart.js - resize
                 const chartId = canvas.id.replace('chart-', '');
                 if (charts[chartId]) {
                     setTimeout(() => charts[chartId].resize(), 100);

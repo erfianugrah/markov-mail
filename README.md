@@ -42,6 +42,16 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 
 ## 📖 Quick Links
 
+### 🎯 New to this project? Start here:
+
+| Guide | Purpose | Time |
+|-------|---------|------|
+| **[⚡ Quick Start](docs/QUICK_START.md)** | Fastest path: deployed in 5 minutes | 5 min |
+| **[🚀 First Deployment](docs/FIRST_DEPLOY.md)** | Complete setup with explanations | 15 min |
+| **[📊 Datasets Guide](docs/DATASETS.md)** | Train models with your data | Varies |
+
+### Core Documentation
+
 | Documentation | Purpose |
 |---------------|---------|
 | **[Getting Started](docs/GETTING_STARTED.md)** | Setup, installation, deployment |
