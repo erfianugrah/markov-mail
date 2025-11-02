@@ -1169,24 +1169,22 @@ LIMIT 100</textarea>
                 values: values,
                 hole: 0.4,
                 marker: { colors: colors },
-                textposition: 'inside',
+                textposition: 'auto',
                 textinfo: 'label+percent',
-                hovertemplate: '<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>'
+                hovertemplate: '<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>',
+                pull: [0.05, 0.05, 0.05]
             }], {
                 paper_bgcolor: 'rgba(0,0,0,0)',
                 plot_bgcolor: 'rgba(0,0,0,0)',
                 font: {
                     family: 'system-ui, -apple-system, sans-serif',
+                    size: 12,
                     color: isDark ? '#e0e0e0' : '#1a1a1a'
                 },
-                margin: { t: 20, b: 20, l: 20, r: 20 },
-                showlegend: true,
-                legend: {
-                    orientation: 'h',
-                    y: -0.2,
-                    x: 0.5,
-                    xanchor: 'center'
-                }
+                margin: { t: 40, b: 40, l: 40, r: 40 },
+                showlegend: false,
+                autosize: true,
+                height: 400
             }, {
                 responsive: true,
                 displayModeBar: true,
@@ -1225,19 +1223,24 @@ LIMIT 100</textarea>
                 plot_bgcolor: 'rgba(0,0,0,0)',
                 font: {
                     family: 'system-ui, -apple-system, sans-serif',
+                    size: 12,
                     color: isDark ? '#e0e0e0' : '#1a1a1a'
                 },
                 margin: { t: 20, b: 60, l: 60, r: 20 },
                 xaxis: {
                     title: '',
-                    gridcolor: isDark ? '#333' : '#eee'
+                    gridcolor: isDark ? '#333' : '#eee',
+                    color: isDark ? '#e0e0e0' : '#1a1a1a'
                 },
                 yaxis: {
                     title: 'Count',
                     gridcolor: isDark ? '#333' : '#eee',
-                    zeroline: false
+                    zeroline: false,
+                    color: isDark ? '#e0e0e0' : '#1a1a1a'
                 },
-                showlegend: false
+                showlegend: false,
+                autosize: true,
+                height: 400
             }, {
                 responsive: true,
                 displayModeBar: true,
