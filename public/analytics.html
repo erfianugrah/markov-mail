@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fraud Detection Analytics</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <!-- Plotly.js for interactive charts -->
+    <script src="/js/plotly-basic.js"></script>
+    <!-- Chart.js (keeping for now during migration) -->
     <script src="/js/chart.umd.js"></script>
     <script src="/js/hammer.min.js"></script>
     <script src="/js/chartjs-plugin-zoom.min.js"></script>
@@ -396,7 +399,7 @@
                 </div>
                 <div class="panel-body">
                     <div class="chart-container">
-                        <canvas id="chart-decisions"></canvas>
+                        <div id="chart-decisions" style="width: 100%; height: 400px;"></div>
                     </div>
                 </div>
             </div>
@@ -1149,20 +1152,46 @@ LIMIT 100</textarea>
                 'block': '#dc3545'
             };
 
-            createChart('decisions', {
-                type: 'doughnut',
-                data: {
-                    labels: data.data.map(r => r.decision),
-                    datasets: [{
-                        data: data.data.map(r => parseInt(r.count, 10) || 0),
-                        backgroundColor: data.data.map(r => colorMap[r.decision] || '#667eea'),
-                    }],
+            // Use Plotly.js for this chart
+            const chartDiv = document.getElementById('chart-decisions');
+            if (!chartDiv) return;
+
+            const labels = data.data.map(r => r.decision);
+            const values = data.data.map(r => parseInt(r.count, 10) || 0);
+            const colors = data.data.map(r => colorMap[r.decision] || '#667eea');
+
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const isDark = currentTheme === 'dark';
+
+            Plotly.newPlot(chartDiv, [{
+                type: 'pie',
+                labels: labels,
+                values: values,
+                hole: 0.4,
+                marker: { colors: colors },
+                textposition: 'inside',
+                textinfo: 'label+percent',
+                hovertemplate: '<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>'
+            }], {
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: {
+                    family: 'system-ui, -apple-system, sans-serif',
+                    color: isDark ? '#e0e0e0' : '#1a1a1a'
                 },
-                options: {
-                    plugins: {
-                        legend: { position: 'bottom' },
-                    },
-                },
+                margin: { t: 20, b: 20, l: 20, r: 20 },
+                showlegend: true,
+                legend: {
+                    orientation: 'h',
+                    y: -0.2,
+                    x: 0.5,
+                    xanchor: 'center'
+                }
+            }, {
+                responsive: true,
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+                displaylogo: false
             });
         }
 
