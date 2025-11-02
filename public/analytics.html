@@ -194,7 +194,28 @@
 
         .chart-container {
             position: relative;
-            height: 300px;
+            height: 400px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        /* Fix Plotly modebar colors in dark mode */
+        [data-theme="dark"] .modebar {
+            background: transparent !important;
+        }
+
+        [data-theme="dark"] .modebar-btn path {
+            fill: var(--text-secondary) !important;
+        }
+
+        [data-theme="dark"] .modebar-btn.active path,
+        [data-theme="dark"] .modebar-btn:hover path {
+            fill: var(--accent) !important;
+        }
+
+        /* Fix Plotly legend colors */
+        [data-theme="dark"] .legend text {
+            fill: var(--text-primary) !important;
         }
 
         .panel.fullscreen .chart-container {
@@ -318,10 +339,12 @@
         }
 
         .stat-card {
-            background: var(--bg-primary);
+            background: var(--bg-card);
             padding: 20px;
             border-radius: 6px;
             text-align: center;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
         }
 
         .stat-value {
