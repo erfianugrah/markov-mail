@@ -71,23 +71,41 @@ export interface Stats {
 }
 
 export async function loadStats(hours: number = 24): Promise<Stats> {
-  const result = await query(`
+  // Get counts by decision type
+  const decisionsResult = await query(`
     SELECT
-      SUM(_sample_interval) as total,
-      SUM(CASE WHEN blob1 = 'block' THEN _sample_interval ELSE 0 END) as blocks,
-      SUM(CASE WHEN blob1 = 'warn' THEN _sample_interval ELSE 0 END) as warns,
-      SUM(CASE WHEN blob1 = 'allow' THEN _sample_interval ELSE 0 END) as allows,
+      blob1 as decision,
+      SUM(_sample_interval) as count
+    FROM ANALYTICS
+    ${buildTimeFilter(hours)}
+    GROUP BY decision
+  `, hours);
+
+  // Get averages separately
+  const avgsResult = await query(`
+    SELECT
       AVG(double1) as avg_risk,
       AVG(double5) as avg_latency
     FROM ANALYTICS
     ${buildTimeFilter(hours)}
   `, hours);
 
-  const row = result.data.data[0];
-  const total = Number(row.total) || 1;
-  const blocks = Number(row.blocks) || 0;
-  const warns = Number(row.warns) || 0;
-  const allows = Number(row.allows) || 0;
+  // Calculate totals by decision
+  let blocks = 0;
+  let warns = 0;
+  let allows = 0;
+
+  decisionsResult.data.data.forEach((row) => {
+    const decision = String(row.decision);
+    const count = Number(row.count);
+
+    if (decision === 'block') blocks = count;
+    else if (decision === 'warn') warns = count;
+    else if (decision === 'allow') allows = count;
+  });
+
+  const total = blocks + warns + allows || 1;
+  const avgRow = avgsResult.data.data[0] || {};
 
   return {
     totalValidations: total,
@@ -96,8 +114,8 @@ export async function loadStats(hours: number = 24): Promise<Stats> {
     totalAllows: allows,
     blockRate: (blocks / total) * 100,
     warnRate: (warns / total) * 100,
-    avgRiskScore: Number(row.avg_risk) || 0,
-    avgLatency: Number(row.avg_latency) || 0,
+    avgRiskScore: Number(avgRow.avg_risk) || 0,
+    avgLatency: Number(avgRow.avg_latency) || 0,
   };
 }
 
@@ -311,40 +329,66 @@ export async function loadEntropyScores(hours: number = 24) {
 
 export async function loadBotScores(hours: number = 24) {
   const result = await query(`
-    SELECT 
-      CASE 
-        WHEN double2 < 30 THEN '0-30'
-        WHEN double2 < 50 THEN '30-50'
-        WHEN double2 < 70 THEN '50-70'
-        WHEN double2 < 90 THEN '70-90'
-        ELSE '90-100'
-      END as bot_score_range,
-      SUM(_sample_interval) as count
+    SELECT double2 as bot_score, SUM(_sample_interval) as count
     FROM ANALYTICS
     ${buildTimeFilter(hours)}
-    GROUP BY bot_score_range
-    ORDER BY bot_score_range
+    GROUP BY bot_score
+    ORDER BY bot_score
   `, hours);
-  return result.data.data.map((row) => ({ range: String(row.bot_score_range), count: Number(row.count) }));
+
+  // Bucket the scores client-side
+  const buckets = new Map<string, number>([
+    ['0-30', 0],
+    ['30-50', 0],
+    ['50-70', 0],
+    ['70-90', 0],
+    ['90-100', 0],
+  ]);
+
+  result.data.data.forEach((row) => {
+    const score = Number(row.bot_score);
+    const count = Number(row.count);
+
+    if (score < 30) buckets.set('0-30', buckets.get('0-30')! + count);
+    else if (score < 50) buckets.set('30-50', buckets.get('30-50')! + count);
+    else if (score < 70) buckets.set('50-70', buckets.get('50-70')! + count);
+    else if (score < 90) buckets.set('70-90', buckets.get('70-90')! + count);
+    else buckets.set('90-100', buckets.get('90-100')! + count);
+  });
+
+  return Array.from(buckets.entries()).map(([range, count]) => ({ range, count }));
 }
 
 export async function loadLatencyDistribution(hours: number = 24) {
   const result = await query(`
-    SELECT 
-      CASE 
-        WHEN double5 < 10 THEN '0-10ms'
-        WHEN double5 < 50 THEN '10-50ms'
-        WHEN double5 < 100 THEN '50-100ms'
-        WHEN double5 < 200 THEN '100-200ms'
-        ELSE '200ms+'
-      END as latency_range,
-      SUM(_sample_interval) as count
+    SELECT double5 as latency, SUM(_sample_interval) as count
     FROM ANALYTICS
     ${buildTimeFilter(hours)}
-    GROUP BY latency_range
-    ORDER BY latency_range
+    GROUP BY latency
+    ORDER BY latency
   `, hours);
-  return result.data.data.map((row) => ({ range: String(row.latency_range), count: Number(row.count) }));
+
+  // Bucket the latencies client-side
+  const buckets = new Map<string, number>([
+    ['0-10ms', 0],
+    ['10-50ms', 0],
+    ['50-100ms', 0],
+    ['100-200ms', 0],
+    ['200ms+', 0],
+  ]);
+
+  result.data.data.forEach((row) => {
+    const latency = Number(row.latency);
+    const count = Number(row.count);
+
+    if (latency < 10) buckets.set('0-10ms', buckets.get('0-10ms')! + count);
+    else if (latency < 50) buckets.set('10-50ms', buckets.get('10-50ms')! + count);
+    else if (latency < 100) buckets.set('50-100ms', buckets.get('50-100ms')! + count);
+    else if (latency < 200) buckets.set('100-200ms', buckets.get('100-200ms')! + count);
+    else buckets.set('200ms+', buckets.get('200ms+')! + count);
+  });
+
+  return Array.from(buckets.entries()).map(([range, count]) => ({ range, count }));
 }
 
 export async function loadASNs(hours: number = 24) {
@@ -385,19 +429,32 @@ export async function loadDomainReputation(hours: number = 24) {
 
 export async function loadPatternConfidence(hours: number = 24) {
   const result = await query(`
-    SELECT 
-      CASE 
-        WHEN double8 < 0.2 THEN '0-20%'
-        WHEN double8 < 0.4 THEN '20-40%'
-        WHEN double8 < 0.6 THEN '40-60%'
-        WHEN double8 < 0.8 THEN '60-80%'
-        ELSE '80-100%'
-      END as confidence_range,
-      SUM(_sample_interval) as count
+    SELECT double8 as confidence, SUM(_sample_interval) as count
     FROM ANALYTICS
     ${buildTimeFilter(hours)}
-    GROUP BY confidence_range
-    ORDER BY confidence_range
+    GROUP BY confidence
+    ORDER BY confidence
   `, hours);
-  return result.data.data.map((row) => ({ range: String(row.confidence_range), count: Number(row.count) }));
+
+  // Bucket the confidence scores client-side
+  const buckets = new Map<string, number>([
+    ['0-20%', 0],
+    ['20-40%', 0],
+    ['40-60%', 0],
+    ['60-80%', 0],
+    ['80-100%', 0],
+  ]);
+
+  result.data.data.forEach((row) => {
+    const confidence = Number(row.confidence);
+    const count = Number(row.count);
+
+    if (confidence < 0.2) buckets.set('0-20%', buckets.get('0-20%')! + count);
+    else if (confidence < 0.4) buckets.set('20-40%', buckets.get('20-40%')! + count);
+    else if (confidence < 0.6) buckets.set('40-60%', buckets.get('40-60%')! + count);
+    else if (confidence < 0.8) buckets.set('60-80%', buckets.get('60-80%')! + count);
+    else buckets.set('80-100%', buckets.get('80-100%')! + count);
+  });
+
+  return Array.from(buckets.entries()).map(([range, count]) => ({ range, count }));
 }
