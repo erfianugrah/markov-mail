@@ -90,7 +90,15 @@
         .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
         .btn-secondary { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); }
         .btn-danger { background: var(--danger); }
-        .theme-toggle { font-size: 20px; cursor: pointer; padding: 10px; border: 1px solid var(--border); border-radius: 6px; }
+        .theme-toggle {
+            font-size: 20px;
+            cursor: pointer;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg-card);
+            color: var(--text-primary);
+        }
 
         .tabs {
             display: flex;
@@ -107,6 +115,7 @@
             cursor: pointer;
             font-weight: 600;
             transition: all 0.2s;
+            color: var(--text-primary);
         }
 
         .tab:hover { background: var(--bg-primary); }
@@ -145,6 +154,7 @@
         .panel-title {
             font-size: 16px;
             font-weight: 600;
+            color: var(--text-primary);
         }
 
         .panel-actions {
@@ -201,6 +211,7 @@
         table {
             width: 100%;
             border-collapse: collapse;
+            color: var(--text-primary);
         }
 
         table th {
@@ -209,11 +220,13 @@
             text-align: left;
             font-weight: 600;
             border-bottom: 2px solid var(--border);
+            color: var(--text-primary);
         }
 
         table td {
             padding: 10px;
             border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
         }
 
         .badge {
@@ -261,6 +274,7 @@
             min-width: 300px;
             max-width: 500px;
             animation: slideIn 0.3s ease-out;
+            color: var(--text-primary);
         }
 
         @keyframes slideIn {
@@ -290,6 +304,7 @@
             margin-bottom: 20px;
             font-size: 14px;
             line-height: 1.6;
+            color: var(--text-primary);
         }
 
         .stat-grid {
