@@ -73,8 +73,10 @@ describe('Logger', () => {
 		it('should log validation info with correct structure', () => {
 			logValidation({
 				email: 'test@example.com',
+				fingerprint: 'test-fingerprint',
 				decision: 'allow',
 				riskScore: 0.15,
+				signals: {},
 			});
 
 			const output = consoleOutput.join('');
@@ -86,9 +88,10 @@ describe('Logger', () => {
 		it('should handle block decisions', () => {
 			logValidation({
 				email: 'suspicious@example.com',
+				fingerprint: 'test-fingerprint',
 				decision: 'block',
 				riskScore: 0.92,
-				reason: 'high_risk_score',
+				signals: { reason: 'high_risk_score' },
 			});
 
 			const output = consoleOutput.join('');
@@ -100,11 +103,12 @@ describe('Logger', () => {
 		it('should handle additional validation context', () => {
 			logValidation({
 				email: 'user@domain.com',
+				fingerprint: 'test-fingerprint',
 				decision: 'warn',
 				riskScore: 0.55,
-				markovScore: 0.45,
-				ensembleScore: 0.60,
 				signals: {
+					markovScore: 0.45,
+					ensembleScore: 0.60,
 					entropy: 4.2,
 					randomness: true,
 				},
@@ -120,8 +124,10 @@ describe('Logger', () => {
 		it('should log block decisions with reason', () => {
 			logBlock({
 				email: 'blocked@example.com',
+				fingerprint: 'test-fingerprint',
 				reason: 'high_risk_score',
 				riskScore: 0.95,
+				signals: {},
 			});
 
 			const output = consoleOutput.join('');
@@ -133,9 +139,12 @@ describe('Logger', () => {
 		it('should handle multiple block reasons', () => {
 			logBlock({
 				email: 'fraud@example.com',
+				fingerprint: 'test-fingerprint',
 				reason: 'multiple_signals',
 				riskScore: 0.88,
-				additionalReasons: ['keyboard_walk', 'low_entropy', 'disposable_domain'],
+				signals: {
+					additionalReasons: ['keyboard_walk', 'low_entropy', 'disposable_domain'],
+				},
 			});
 
 			const output = consoleOutput.join('');
@@ -147,10 +156,7 @@ describe('Logger', () => {
 	describe('logError helper', () => {
 		it('should log errors with stack traces', () => {
 			const testError = new Error('Test error message');
-			logError({
-				error: testError,
-				context: 'test_operation',
-			});
+			logError(testError, 'test_operation');
 
 			const output = consoleOutput.join('');
 			expect(output).toContain('error');
@@ -159,10 +165,7 @@ describe('Logger', () => {
 		});
 
 		it('should handle string errors', () => {
-			logError({
-				error: 'Simple error string',
-				context: 'string_error_test',
-			});
+			logError(new Error('Simple error string'), 'string_error_test');
 
 			const output = consoleOutput.join('');
 			expect(output).toContain('Simple error string');
@@ -171,8 +174,7 @@ describe('Logger', () => {
 
 		it('should include additional context', () => {
 			const testError = new Error('Context test error');
-			logError({
-				error: testError,
+			logError(testError, {
 				context: 'training_pipeline',
 				modelVersion: '20250102_143022',
 				samplesProcessed: 15000,

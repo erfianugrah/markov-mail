@@ -49,7 +49,7 @@ async function query(args: string[]) {
       throw new Error(`Query failed: ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as { data: Record<string, any>[] };
 
     if (format === 'table') {
       logger.table(data.data);
@@ -108,7 +108,7 @@ async function stats(args: string[]) {
         }
       );
 
-      const data = await response.json();
+      const data = await response.json() as { data: Record<string, any>[] };
       logger.table(data.data);
     } catch (error) {
       logger.error(`Failed: ${error}`);

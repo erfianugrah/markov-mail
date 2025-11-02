@@ -130,8 +130,8 @@ describe('Fraud Pattern Detection E2E', () => {
 			if ('expectedPattern' in testCase) {
 				expect(result.signals.patternType).toBe(testCase.expectedPattern);
 			}
-			if ('expectedSignal' in testCase) {
-				expect(result.signals[testCase.expectedSignal]).toBe(true);
+			if ('expectedSignal' in testCase && testCase.expectedSignal) {
+				expect((result.signals as any)[testCase.expectedSignal]).toBe(true);
 			}
 		}
 	});

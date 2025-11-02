@@ -803,7 +803,11 @@ export default {
 		}, 'Starting automated N-gram model training');
 
 		// Use new training worker for N-gram ensemble models
-		ctx.waitUntil(trainingWorkerScheduled(event, env, ctx));
+		if (env.MARKOV_MODEL) {
+			ctx.waitUntil(trainingWorkerScheduled(event, env as any, ctx));
+		} else {
+			logger.warn('MARKOV_MODEL KV namespace not configured, skipping training');
+		}
 
 		// Optional: Keep legacy training for backward compatibility
 		// ctx.waitUntil(retrainLegacyModels(env));

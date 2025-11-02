@@ -25,6 +25,7 @@ import {
 export interface Env {
 	CONFIG: KVNamespace;
 	MARKOV_MODEL: KVNamespace;
+	TRAINING_AUTH_TOKEN?: string;
 }
 
 /**
@@ -263,7 +264,7 @@ export async function fetch(request: Request, env: Env, ctx: ExecutionContext): 
 		let trainingConfig = DEFAULT_TRAINING_CONFIG;
 
 		if (request.headers.get('Content-Type') === 'application/json') {
-			const body = await request.json();
+			const body = await request.json() as Partial<TrainingConfig>;
 			trainingConfig = {
 				orders: body.orders || DEFAULT_TRAINING_CONFIG.orders,
 				adaptationRate: body.adaptationRate || DEFAULT_TRAINING_CONFIG.adaptationRate,

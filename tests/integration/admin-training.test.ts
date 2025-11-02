@@ -28,7 +28,7 @@ describe('Admin Training Endpoints', () => {
 			});
 
 			expect(response.status).toBe(401);
-			const data = await response.json();
+			const data = await response.json() as any;
 			expect(data).toHaveProperty('error');
 		});
 
@@ -42,7 +42,7 @@ describe('Admin Training Endpoints', () => {
 
 			// Without CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN secrets
 			expect(response.status).toBe(503);
-			const data = await response.json();
+			const data = await response.json() as { error: string };
 			expect(data.error).toContain('Analytics Engine not configured');
 		});
 
@@ -68,7 +68,7 @@ describe('Admin Training Endpoints', () => {
 			});
 
 			expect(response.headers.get('content-type')).toContain('application/json');
-			const data = await response.json();
+			const data = await response.json() as any;
 			expect(data).toBeDefined();
 		});
 	});
@@ -88,7 +88,7 @@ describe('Admin Training Endpoints', () => {
 			});
 
 			expect(response.status).toBe(200);
-			const data = await response.json();
+			const data = await response.json() as any;
 
 			// Should have these properties
 			expect(data).toHaveProperty('production');
@@ -105,7 +105,7 @@ describe('Admin Training Endpoints', () => {
 			});
 
 			expect(response.status).toBe(200);
-			const data = await response.json();
+			const data = await response.json() as any;
 
 			expect(data.trainingStatus).toHaveProperty('locked');
 			expect(data.trainingStatus).toHaveProperty('lockInfo');
@@ -120,7 +120,7 @@ describe('Admin Training Endpoints', () => {
 			});
 
 			expect(response.status).toBe(200);
-			const data = await response.json();
+			const data = await response.json() as any;
 
 			expect(data).toHaveProperty('kvNamespaces');
 			expect(data.kvNamespaces).toHaveProperty('CONFIG');
@@ -135,7 +135,7 @@ describe('Admin Training Endpoints', () => {
 			});
 
 			expect(response.status).toBe(200);
-			const data = await response.json();
+			const data = await response.json() as any;
 
 			// Should return empty array if no history
 			expect(Array.isArray(data.recentTraining)).toBe(true);
@@ -157,7 +157,7 @@ describe('Admin Training Endpoints', () => {
 			});
 
 			expect(response.status).toBe(200);
-			const data = await response.json();
+			const data = await response.json() as any;
 
 			expect(data).toHaveProperty('success');
 			expect(data).toHaveProperty('history');
@@ -172,7 +172,7 @@ describe('Admin Training Endpoints', () => {
 			});
 
 			expect(response.status).toBe(200);
-			const data = await response.json();
+			const data = await response.json() as any;
 
 			expect(data).toHaveProperty('cronSchedule');
 			expect(data.cronSchedule).toContain('6 hours');
@@ -186,7 +186,7 @@ describe('Admin Training Endpoints', () => {
 			});
 
 			expect(response.status).toBe(200);
-			const data = await response.json();
+			const data = await response.json() as any;
 
 			// Should provide helpful note if empty
 			if (data.history.length === 0) {
@@ -203,7 +203,7 @@ describe('Admin Training Endpoints', () => {
 			});
 
 			expect(response.status).toBe(200);
-			const data = await response.json();
+			const data = await response.json() as any;
 
 			// History should never exceed 20
 			expect(data.history.length).toBeLessThanOrEqual(20);
@@ -217,7 +217,7 @@ describe('Admin Training Endpoints', () => {
 			});
 
 			expect(response.status).toBe(200);
-			const data = await response.json();
+			const data = await response.json() as any;
 
 			expect(data).toHaveProperty('count');
 			expect(data.count).toBe(data.history.length);
@@ -269,7 +269,7 @@ describe('Admin Training Endpoints', () => {
 			});
 
 			expect(response.headers.get('content-type')).toContain('application/json');
-			const data = await response.json();
+			const data = await response.json() as any;
 			expect(data).toHaveProperty('error');
 		});
 
@@ -281,7 +281,7 @@ describe('Admin Training Endpoints', () => {
 				},
 			});
 
-			const data = await response.json();
+			const data = await response.json() as any;
 			if (data.error) {
 				expect(typeof data.message).toBe('string');
 				expect(data.message.length).toBeGreaterThan(0);

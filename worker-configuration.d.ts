@@ -7,10 +7,12 @@ declare namespace Cloudflare {
 	}
 	interface Env {
 		CONFIG: KVNamespace;
+		MARKOV_MODEL?: KVNamespace;
 		ANALYTICS: AnalyticsEngineDataset;
 		CLOUDFLARE_ACCOUNT_ID?: string;
 		CLOUDFLARE_API_TOKEN?: string;
 		ADMIN_API_KEY?: string;
+		TRAINING_AUTH_TOKEN?: string;
 		ORIGIN_URL?: string;
 	}
 }

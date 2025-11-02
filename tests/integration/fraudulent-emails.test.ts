@@ -30,6 +30,7 @@ interface ValidationResponse {
 	riskScore: number;
 	decision: 'allow' | 'warn' | 'block';
 	message: string;
+	latency_ms?: number;
 	signals: {
 		formatValid: boolean;
 		entropyScore: number;

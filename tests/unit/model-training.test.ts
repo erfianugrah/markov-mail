@@ -190,8 +190,8 @@ describe('Model Training Utilities', () => {
 				expect(models[order].fraud).toBeDefined();
 
 				// Models should have transitions
-				const legitTransitions = models[order].legit.getTransitionCount();
-				const fraudTransitions = models[order].fraud.getTransitionCount();
+				const legitTransitions = models[order].legit.getStats().transitions;
+				const fraudTransitions = models[order].fraud.getStats().transitions;
 
 				expect(legitTransitions).toBeGreaterThan(0);
 				expect(fraudTransitions).toBeGreaterThan(0);
