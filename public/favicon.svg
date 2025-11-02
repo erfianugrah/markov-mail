@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="48" fill="#667eea"/>
+
+  <!-- Shield shape (fraud protection) -->
+  <path d="M50 15 L30 25 L30 45 Q30 65 50 80 Q70 65 70 45 L70 25 Z"
+        fill="white" opacity="0.95"/>
+
+  <!-- Warning/Alert symbol inside shield -->
+  <circle cx="50" cy="45" r="3" fill="#dc3545"/>
+  <path d="M50 30 L50 40" stroke="#dc3545" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Magnifying glass (detection) -->
+  <circle cx="65" cy="70" r="8" fill="none" stroke="white" stroke-width="3"/>
+  <line x1="71" y1="76" x2="78" y2="83" stroke="white" stroke-width="3" stroke-linecap="round"/>
+</svg>
