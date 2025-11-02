@@ -32,7 +32,7 @@ If you don't have a Cloudflare account yet:
    ```
    Should show your email and account details
 
-**That's it!** You're ready to deploy.
+That's it - you're ready to deploy.
 
 ---
 
@@ -124,7 +124,7 @@ Published bogus-email-pattern-recognition (0.3 sec)
 Current Deployment ID: abc12345-1234-1234-1234-123456789abc
 ```
 
-**✅ Success Indicator:** You see a `*.workers.dev` URL
+Success: You'll see a `*.workers.dev` URL
 
 ### Test Immediately
 
@@ -152,7 +152,7 @@ curl -X POST https://bogus-email-pattern-recognition.YOUR-SUBDOMAIN.workers.dev/
 }
 ```
 
-**⚠️ Note:** Markov detection will be `false` until models are trained and uploaded.
+Note: Markov detection will be `false` until models are trained and uploaded.
 
 ---
 
@@ -208,7 +208,7 @@ npm run cli kv:get config.json --binding CONFIG --remote | jq .
 }
 ```
 
-**✅ Configuration is now active** - No redeployment needed!
+Configuration is now active - no redeployment needed.
 
 ---
 
@@ -216,14 +216,14 @@ npm run cli kv:get config.json --binding CONFIG --remote | jq .
 
 Markov Chain models improve fraud detection by ~10-15%.
 
-### Do I Need to Train Models?
+### Do I need to train models?
 
-| Scenario | Need Training? |
-|----------|---------------|
-| **Just testing** | No - skip this step |
-| **Production use** | Yes - 10-15% accuracy gain |
-| **Have training data** | Yes - train custom models |
-| **No training data** | Optional - see alternatives below |
+| Scenario | Train? |
+|----------|--------|
+| Just testing | No, skip this |
+| Production use | Yes (10-15% accuracy gain) |
+| Have training data | Yes, train custom models |
+| No training data | Optional, see alternatives |
 
 ### Option A: You Have Training Datasets
 
@@ -341,10 +341,10 @@ chmod +x test-deployment.sh
 ./test-deployment.sh
 ```
 
-### Expected Results
+### What to expect
 
-| Test | Expected Decision | Risk Score Range |
-|------|------------------|------------------|
+| Test | Decision | Risk Score |
+|------|----------|------------|
 | Legitimate | allow | 0.05 - 0.25 |
 | Sequential | block/warn | 0.60 - 0.90 |
 | Gibberish | block | 0.80 - 0.95 |
@@ -380,7 +380,7 @@ curl -X POST https://your-worker.workers.dev/validate \
 }
 ```
 
-**Stop tailing:** Press `Ctrl+C`
+Stop tailing with Ctrl+C.
 
 ---
 
