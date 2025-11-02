@@ -20,6 +20,21 @@ const COMMANDS = {
     file: 'commands/train/validate.ts',
     usage: 'train:validate <dataset-path>'
   },
+  'training:validate': {
+    description: 'Validate trained models before deployment',
+    file: 'commands/training/validate.ts',
+    usage: 'training:validate --version <version>'
+  },
+  'training:extract': {
+    description: 'Extract training data from Analytics Engine',
+    file: 'commands/training/extract.ts',
+    usage: 'training:extract [--days <n>] [--min-confidence <n>]'
+  },
+  'training:train': {
+    description: 'Train models from extracted datasets',
+    file: 'commands/training/train.ts',
+    usage: 'training:train [--days <n>] [--orders <list>]'
+  },
 
   // Deployment commands
   'deploy': {
@@ -81,6 +96,11 @@ const COMMANDS = {
     file: 'commands/test/api.ts',
     usage: 'test:api [--url <url>] [--email <email>]'
   },
+  'test:multilang': {
+    description: 'Test multi-language N-gram support',
+    file: 'commands/test/multilang.ts',
+    usage: 'test:multilang'
+  },
 
   // Configuration commands
   'config:get': {
@@ -102,6 +122,28 @@ const COMMANDS = {
     description: 'Sync local config to KV',
     file: 'commands/config/manage.ts',
     usage: 'config:sync'
+  },
+
+  // A/B Testing commands
+  'ab:create': {
+    description: 'Create new A/B test experiment',
+    file: 'commands/ab/create.ts',
+    usage: 'ab:create --experiment-id <id> --description <desc> [options]'
+  },
+  'ab:status': {
+    description: 'Show active A/B test status',
+    file: 'commands/ab/status.ts',
+    usage: 'ab:status [--remote]'
+  },
+  'ab:analyze': {
+    description: 'Analyze A/B test results',
+    file: 'commands/ab/analyze.ts',
+    usage: 'ab:analyze --experiment-id <id> [--hours <n>]'
+  },
+  'ab:stop': {
+    description: 'Stop active A/B test',
+    file: 'commands/ab/stop.ts',
+    usage: 'ab:stop [--remote] [--yes]'
   }
 };
 
@@ -116,6 +158,9 @@ Usage: npm run cli <command> [options]
 📦 TRAINING COMMANDS
   train:markov              Train Markov Chain models
   train:validate            Validate dataset quality
+  training:extract          Extract training data from Analytics
+  training:train            Train models from extracted datasets
+  training:validate         Validate trained models before deployment
 
 🚀 DEPLOYMENT COMMANDS
   deploy                    Deploy worker to Cloudflare
@@ -139,6 +184,12 @@ Usage: npm run cli <command> [options]
   config:set <key> <value>  Set configuration
   config:list               List configurations
   config:sync               Sync config to KV
+
+🧪 A/B TESTING
+  ab:create                 Create new experiment
+  ab:status                 Show active experiment
+  ab:analyze                Analyze test results
+  ab:stop                   Stop active experiment
 
 OPTIONS
   --help, -h                Show this help message

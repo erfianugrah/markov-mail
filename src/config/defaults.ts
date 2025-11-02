@@ -125,14 +125,20 @@ export const DEFAULT_CONFIG: FraudDetectionConfig = {
 	// No action override by default
 	actionOverride: 'allow',
 
-	// Risk weights based on Phase 7 tuning with Markov Chains
+	// Risk weights optimized for max-based scoring (Quick Win #2) and expanded TLD database (Quick Win #3)
+	// Analysis showed:
+	// - Domain signals (domain + TLD) are independent → additive scoring
+	// - Local part signals (entropy + pattern + markov) overlap → max scoring
+	// - Weights rebalanced to account for this new logic
+	// - TLD weight increased: 154 TLDs (was 40), better coverage
+	// - Markov weight increased: 90% accuracy, most reliable detector
 	// Bergholz et al. (2008): DMC features alone achieved 97.95% F-measure
 	riskWeights: {
-		entropy: 0.15, // 15% weight on randomness (reduced to make room for Markov)
-		domainReputation: 0.10, // 10% on domain quality
-		tldRisk: 0.10, // 10% on TLD risk
-		patternDetection: 0.40, // 40% on pattern matching (reduced from 50%)
-		markovChain: 0.25, // 25% on Markov Chain detection (Phase 7 - high accuracy)
+		entropy: 0.05, // 5% - minimal weight, serves as floor for random strings
+		domainReputation: 0.15, // 15% - always contributes, reliable signal
+		tldRisk: 0.15, // 15% - expanded database (154 TLDs), improved from 10%
+		patternDetection: 0.30, // 30% - high accuracy (94% avg), reduced from 40%
+		markovChain: 0.35, // 35% - highest weight for 90% accuracy, increased from 25%
 	},
 
 	// Pattern confidence thresholds

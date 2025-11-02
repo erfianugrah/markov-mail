@@ -58,6 +58,18 @@ export {
   type NGramAnalysisResult
 } from './ngram-analysis';
 
+// Priority 2: Multi-language N-Gram support
+export {
+  detectLanguage,
+  calculateMultilingualScore,
+  getLanguageName,
+  getCombinedBigrams,
+  getCombinedTrigrams,
+  LANGUAGE_BIGRAMS,
+  LANGUAGE_TRIGRAMS,
+  type Language
+} from './ngram-multilang';
+
 // TLD risk profiling
 export {
   analyzeTLDRisk,
@@ -87,3 +99,19 @@ export {
   trainMarkovModels,
   type MarkovResult
 } from './markov-chain';
+
+// Pattern Whitelisting (Priority 2 improvement)
+export {
+  checkWhitelist,
+  loadWhitelistConfig,
+  saveWhitelistConfig,
+  addWhitelistEntry,
+  removeWhitelistEntry,
+  updateWhitelistEntry,
+  getWhitelistStats,
+  DEFAULT_WHITELIST_CONFIG,
+  type WhitelistConfig,
+  type WhitelistEntry,
+  type WhitelistResult,
+  type WhitelistPatternType
+} from './whitelist';

@@ -7,6 +7,7 @@
  * Phase 8: Online Learning
  */
 
+import { logger } from '../logger';
 import { DynamicMarkovChain } from '../detectors/markov-chain';
 
 // ============================================================================
@@ -77,13 +78,19 @@ export interface TrainingHistory {
  */
 export async function retrainMarkovModels(env: Env): Promise<TrainingResult> {
 	const startTime = Date.now();
-	console.log('🔄 Starting Markov Chain retraining...');
+	logger.info({
+		event: 'online_learning_started',
+		trigger: 'scheduled',
+	}, 'Starting Markov Chain retraining');
 
 	try {
 		// 1. Check for distributed lock (prevent concurrent training)
 		const lock = await acquireTrainingLock(env);
 		if (!lock) {
-			console.log('⏭️  Training already in progress, skipping...');
+			logger.info({
+				event: 'training_lock_failed',
+				reason: 'already_in_progress',
+			}, 'Training already in progress, skipping');
 			return {
 				success: false,
 				reason: 'training_already_in_progress',
@@ -96,7 +103,11 @@ export async function retrainMarkovModels(env: Env): Promise<TrainingResult> {
 			const trainingData = await fetchTrainingData(env);
 
 			if (trainingData.length < 500) {
-				console.log(`⚠️  Insufficient training data: ${trainingData.length} samples (need ≥500)`);
+				logger.warn({
+					event: 'insufficient_training_data',
+					sample_count: trainingData.length,
+					required: 500,
+				}, 'Insufficient training data');
 				return {
 					success: false,
 					reason: 'insufficient_data',
@@ -107,7 +118,12 @@ export async function retrainMarkovModels(env: Env): Promise<TrainingResult> {
 
 			// 3. Separate into fraud and legitimate samples
 			const { fraudSamples, legitSamples } = separateDataByLabel(trainingData);
-			console.log(`📊 Training data: ${fraudSamples.length} fraud, ${legitSamples.length} legit`);
+			logger.info({
+				event: 'training_data_loaded',
+				fraud_count: fraudSamples.length,
+				legit_count: legitSamples.length,
+				total: trainingData.length,
+			}, 'Training data loaded');
 
 			// 4. Load historical training stats
 			const history = await loadTrainingHistory(env);
@@ -119,8 +135,13 @@ export async function retrainMarkovModels(env: Env): Promise<TrainingResult> {
 			);
 
 			if (!anomalyCheck.safe) {
-				console.error(`❌ Training ABORTED due to anomalies (score: ${(anomalyCheck.score * 100).toFixed(0)}%)`);
-				anomalyCheck.alerts.forEach(alert => console.error(alert));
+				logger.error({
+					event: 'training_anomaly_detected',
+					anomaly_score: anomalyCheck.score,
+					alerts: anomalyCheck.alerts,
+					fraud_count: fraudSamples.length,
+					legit_count: legitSamples.length,
+				}, 'Training ABORTED due to anomalies');
 
 				// Log security incident
 				await logTrainingFailure(env, {
@@ -138,7 +159,10 @@ export async function retrainMarkovModels(env: Env): Promise<TrainingResult> {
 				};
 			}
 
-			console.log(`✅ Anomaly check passed (score: ${(anomalyCheck.score * 100).toFixed(0)}%)`);
+			logger.info({
+				event: 'anomaly_check_passed',
+				anomaly_score: anomalyCheck.score,
+			}, 'Anomaly check passed');
 
 			// 6. Load current production models
 			const productionLegitModel = await safeLoadModel(env, 'MM_legit_production');
@@ -156,7 +180,12 @@ export async function retrainMarkovModels(env: Env): Promise<TrainingResult> {
 			const validation = await validateModel(env, newLegitModel, newFraudModel, productionLegitModel, productionFraudModel);
 
 			if (!validation.passed) {
-				console.log('❌ Model validation failed:', validation);
+				logger.warn({
+					event: 'model_validation_failed',
+					validation,
+					fraud_count: fraudSamples.length,
+					legit_count: legitSamples.length,
+				}, 'Model validation failed');
 				await logTrainingFailure(env, {
 					reason: 'validation_failed',
 					validation,
@@ -171,7 +200,11 @@ export async function retrainMarkovModels(env: Env): Promise<TrainingResult> {
 				};
 			}
 
-			console.log(`✅ Model validation passed: accuracy=${(validation.accuracy * 100).toFixed(1)}%, improvement=${validation.improvement ? (validation.improvement * 100).toFixed(1) + '%' : 'N/A'}`);
+			logger.info({
+				event: 'model_validation_passed',
+				accuracy: validation.accuracy,
+				improvement: validation.improvement,
+			}, `Model validation passed: accuracy=${(validation.accuracy * 100).toFixed(1)}%`);
 
 			// 9. Save as candidate models (0% traffic initially)
 			await saveModelsAsCandidate(env, newLegitModel, newFraudModel, {
@@ -200,7 +233,12 @@ export async function retrainMarkovModels(env: Env): Promise<TrainingResult> {
 				status = 'candidate_awaiting_manual_promotion';
 			}
 
-			console.log(`✅ Training complete in ${Date.now() - startTime}ms`);
+			logger.info({
+				event: 'online_learning_completed',
+				duration_ms: Date.now() - startTime,
+				model_version: newVersion,
+				status,
+			}, 'Training complete');
 
 			return {
 				success: true,
@@ -221,7 +259,13 @@ export async function retrainMarkovModels(env: Env): Promise<TrainingResult> {
 		}
 
 	} catch (error) {
-		console.error('❌ Training failed with error:', error);
+		logger.error({
+			event: 'online_learning_failed',
+			error: error instanceof Error ? {
+				message: error.message,
+				stack: error.stack,
+			} : String(error),
+		}, 'Training failed with error');
 		await releaseTrainingLock(env);
 
 		return {
@@ -257,7 +301,11 @@ async function fetchTrainingData(env: Env): Promise<TrainingData[]> {
 
 	const query = `SELECT blob14 as email_local_part, blob1 as decision, double1 as risk_score FROM ${dataset} WHERE timestamp >= NOW() - INTERVAL '${days * 24}' HOUR AND blob14 IS NOT NULL LIMIT ${limit}`;
 
-	console.log(`📊 Fetching training data from last ${days} days (limit: ${limit})`);
+	logger.info({
+		event: 'fetching_training_data',
+		days,
+		limit,
+	}, 'Fetching training data from Analytics Engine');
 
 	const response = await fetch(
 		`https://api.cloudflare.com/client/v4/accounts/${accountId}/analytics_engine/sql`,
@@ -273,7 +321,11 @@ async function fetchTrainingData(env: Env): Promise<TrainingData[]> {
 
 	if (!response.ok) {
 		const errorText = await response.text();
-		console.error('❌ Analytics query failed:', response.status, errorText);
+		logger.error({
+			event: 'analytics_query_failed',
+			status: response.status,
+			error: errorText,
+		}, 'Analytics query failed');
 		throw new Error(`Analytics query failed: ${response.status} - ${errorText}`);
 	}
 
@@ -323,20 +375,29 @@ async function trainModel(
 	const fraudulentModel = new DynamicMarkovChain();
 
 	// Train LEGITIMATE model on legitimate samples ONLY
-	console.log(`Training legitimate model on ${legitSamples.length} samples...`);
+	logger.info({
+		event: 'training_legit_model',
+		sample_count: legitSamples.length,
+	}, 'Training legitimate model');
 	for (const email of legitSamples) {
 		legitimateModel.train(email);
 	}
 
 	// Train FRAUDULENT model on fraudulent samples ONLY
-	console.log(`Training fraudulent model on ${fraudSamples.length} samples...`);
+	logger.info({
+		event: 'training_fraud_model',
+		sample_count: fraudSamples.length,
+	}, 'Training fraudulent model');
 	for (const email of fraudSamples) {
 		fraudulentModel.train(email);
 	}
 
 	// If there are existing models, blend with incremental learning
 	if (existingModels?.legit && existingModels?.fraud) {
-		console.log('Applying incremental learning (EMA blending)...');
+		logger.info({
+			event: 'applying_incremental_learning',
+			method: 'EMA_blending',
+		}, 'Applying incremental learning');
 		// Future: implement EMA blending (learning rate 0.05)
 		// For now, full retraining is acceptable
 	}
@@ -559,9 +620,15 @@ async function saveModelsAsCandidate(
 		}
 	});
 
-	console.log(`✅ Models ${simpleVersion} (${metadata.version}) saved as candidate`);
-	console.log(`   - Legitimate: ${legitChecksum.slice(0, 16)}... (${legitJSON.length} bytes)`);
-	console.log(`   - Fraudulent: ${fraudChecksum.slice(0, 16)}... (${fraudJSON.length} bytes)`);
+	logger.info({
+		event: 'candidate_models_saved',
+		version: metadata.version,
+		simple_version: simpleVersion,
+		legit_checksum: legitChecksum.slice(0, 16),
+		fraud_checksum: fraudChecksum.slice(0, 16),
+		legit_bytes: legitJSON.length,
+		fraud_bytes: fraudJSON.length,
+	}, 'Models saved as candidate');
 }
 
 /**
@@ -570,7 +637,10 @@ async function saveModelsAsCandidate(
 async function getNextModelVersion(env: Env): Promise<number> {
 	try {
 		if (!env.MARKOV_MODEL) {
-			console.error('MARKOV_MODEL namespace not configured');
+			logger.error({
+				event: 'markov_namespace_missing',
+				namespace: 'MARKOV_MODEL',
+			}, 'MARKOV_MODEL namespace not configured');
 			return 1;
 		}
 
@@ -588,7 +658,13 @@ async function getNextModelVersion(env: Env): Promise<number> {
 
 		return maxVersion + 1;
 	} catch (error) {
-		console.error('Error getting next model version:', error);
+		logger.error({
+			event: 'version_generation_failed',
+			error: error instanceof Error ? {
+				message: error.message,
+				stack: error.stack,
+			} : String(error),
+		}, 'Error getting next model version');
 		return 1; // Default to version 1 if error
 	}
 }
@@ -603,14 +679,20 @@ async function safeLoadModel(
 
 	try {
 		if (!env.MARKOV_MODEL) {
-			console.warn('MARKOV_MODEL KV namespace not configured');
+			logger.warn({
+				event: 'markov_namespace_missing',
+				namespace: 'MARKOV_MODEL',
+			}, 'MARKOV_MODEL KV namespace not configured');
 			return null;
 		}
 
 		const stored = await env.MARKOV_MODEL.getWithMetadata(key, 'json');
 
 		if (!stored || !stored.value) {
-			console.warn(`Model ${key} not found in KV`);
+			logger.warn({
+				event: 'model_not_found',
+				key,
+			}, `Model not found in KV`);
 			return null;
 		}
 
@@ -631,11 +713,22 @@ async function safeLoadModel(
 			throw new Error(`Model ${key} has no transitions`);
 		}
 
-		console.log(`✅ Model ${key} loaded (${model.getTransitionCount()} transitions)`);
+		logger.info({
+			event: 'model_loaded',
+			key,
+			transition_count: model.getTransitionCount(),
+		}, 'Model loaded from KV');
 		return model;
 
 	} catch (error) {
-		console.error(`❌ Failed to load model ${key}:`, error);
+		logger.error({
+			event: 'model_load_failed',
+			key,
+			error: error instanceof Error ? {
+				message: error.message,
+				stack: error.stack,
+			} : String(error),
+		}, 'Failed to load model from KV');
 		return null;
 	}
 }

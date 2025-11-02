@@ -7,6 +7,7 @@
 import { readFile } from 'fs/promises';
 import { parse } from 'csv-parse/sync';
 import { DynamicMarkovChain } from '../../../src/detectors/markov-chain.ts';
+import { NGramMarkovChain } from '../../../src/detectors/ngram-markov.ts';
 import { logger } from '../../utils/logger.ts';
 import { parseArgs, getOption, hasFlag } from '../../utils/args.ts';
 import { $ } from 'bun';
@@ -16,6 +17,7 @@ interface TrainingOptions {
   output: string;
   upload: boolean;
   remote: boolean;
+  orders: number[]; // N-gram orders to train (1, 2, 3)
 }
 
 const DEFAULT_DATASETS = [
@@ -85,21 +87,28 @@ async function loadCSV(filepath: string): Promise<{ legit: string[], fraud: stri
   }
 }
 
-async function uploadToKV(legitFile: string, fraudFile: string, remote: boolean) {
+async function uploadModelsToKV(
+  files: Array<{ order: number; legitFile: string; fraudFile: string }>,
+  remote: boolean
+) {
   logger.section('📤 Uploading to Cloudflare KV');
 
   const remoteFlag = remote ? '--remote' : '';
 
   try {
-    logger.info('Uploading legitimate model...');
-    await $`npx wrangler kv key put MM_legit_production --path=${legitFile} --binding=MARKOV_MODEL ${remoteFlag}`.quiet();
-    logger.success('Legitimate model uploaded');
+    for (const { order, legitFile, fraudFile } of files) {
+      logger.info(`Uploading ${order}-gram legitimate model...`);
+      const legitKey = `MM_legit_${order}gram`;
+      await $`npx wrangler kv key put ${legitKey} --path=${legitFile} --binding=MARKOV_MODEL ${remoteFlag}`.quiet();
+      logger.success(`${order}-gram legitimate model uploaded (${legitKey})`);
 
-    logger.info('Uploading fraudulent model...');
-    await $`npx wrangler kv key put MM_fraud_production --path=${fraudFile} --binding=MARKOV_MODEL ${remoteFlag}`.quiet();
-    logger.success('Fraudulent model uploaded');
+      logger.info(`Uploading ${order}-gram fraudulent model...`);
+      const fraudKey = `MM_fraud_${order}gram`;
+      await $`npx wrangler kv key put ${fraudKey} --path=${fraudFile} --binding=MARKOV_MODEL ${remoteFlag}`.quiet();
+      logger.success(`${order}-gram fraudulent model uploaded (${fraudKey})`);
+    }
 
-    logger.success('✨ Models uploaded to KV successfully!');
+    logger.success('✨ All models uploaded to KV successfully!');
   } catch (error) {
     logger.error(`Failed to upload models: ${error}`);
     throw error;
@@ -124,31 +133,51 @@ USAGE
 OPTIONS
   --dataset <path>    Path to dataset directory (default: ./dataset/8339691)
   --output <path>     Output directory for models (default: ./)
+  --orders <list>     Comma-separated n-gram orders to train (default: "2")
+                      Valid orders: 1 (unigram), 2 (bigram), 3 (trigram)
   --upload            Upload models to KV after training
   --remote            Use remote KV (requires --upload)
   --help, -h          Show this help message
 
 EXAMPLES
-  # Train with default datasets
+  # Train with default 2-gram model
   npm run cli train:markov
 
+  # Train ensemble: 1-gram, 2-gram, and 3-gram models
+  npm run cli train:markov --orders "1,2,3"
+
   # Train and upload to remote KV
-  npm run cli train:markov --upload --remote
+  npm run cli train:markov --orders "1,2,3" --upload --remote
 
   # Use custom dataset
-  npm run cli train:markov --dataset ./my-datasets
+  npm run cli train:markov --dataset ./my-datasets --orders "2,3"
 `);
     return;
+  }
+
+  // Parse orders option
+  const ordersStr = getOption(parsed, 'orders') || '2';
+  const orders = ordersStr
+    .split(',')
+    .map(s => parseInt(s.trim(), 10))
+    .filter(n => n >= 1 && n <= 3);
+
+  if (orders.length === 0) {
+    logger.error('Invalid --orders value. Must be comma-separated list of 1, 2, or 3');
+    logger.error('Examples: --orders "2" or --orders "1,2,3"');
+    process.exit(1);
   }
 
   const options: TrainingOptions = {
     dataset: getOption(parsed, 'dataset') || 'dataset/8339691',
     output: getOption(parsed, 'output') || './',
     upload: hasFlag(parsed, 'upload'),
-    remote: hasFlag(parsed, 'remote')
+    remote: hasFlag(parsed, 'remote'),
+    orders: orders
   };
 
   logger.section('🚀 Markov Chain Model Training');
+  logger.info(`N-gram orders: ${options.orders.join(', ')}`);
 
   // Load datasets
   logger.subsection('Loading Datasets');
@@ -166,33 +195,45 @@ EXAMPLES
   logger.info(`Fraudulent samples: ${allFraud.length.toLocaleString()}`);
   logger.info(`Total samples: ${(allLegit.length + allFraud.length).toLocaleString()}`);
 
-  // Train models
-  logger.subsection('Training Models');
-  logger.info('Training legitimate model...');
-  const legitModel = new DynamicMarkovChain();
-  let count = 0;
-  for (const email of allLegit) {
-    legitModel.train(email);
-    count++;
-    if (count % 10000 === 0) {
-      logger.progress(count, allLegit.length, 'Legit  ');
-    }
-  }
-  logger.progress(allLegit.length, allLegit.length, 'Legit  ');
+  // Train models for each order
+  const trainedModels: Array<{
+    order: number;
+    legitModel: NGramMarkovChain;
+    fraudModel: NGramMarkovChain;
+  }> = [];
 
-  logger.info('Training fraudulent model...');
-  const fraudModel = new DynamicMarkovChain();
-  count = 0;
-  for (const email of allFraud) {
-    fraudModel.train(email);
-    count++;
-    if (count % 10000 === 0) {
-      logger.progress(count, allFraud.length, 'Fraud  ');
-    }
-  }
-  logger.progress(allFraud.length, allFraud.length, 'Fraud  ');
+  for (const order of options.orders) {
+    logger.subsection(`Training ${order}-gram Models`);
 
-  logger.success('Training complete!');
+    logger.info(`Training ${order}-gram legitimate model...`);
+    const legitModel = new NGramMarkovChain(order);
+    let count = 0;
+    for (const email of allLegit) {
+      legitModel.train(email);
+      count++;
+      if (count % 10000 === 0) {
+        logger.progress(count, allLegit.length, `${order}-gram Legit`);
+      }
+    }
+    logger.progress(allLegit.length, allLegit.length, `${order}-gram Legit`);
+
+    logger.info(`Training ${order}-gram fraudulent model...`);
+    const fraudModel = new NGramMarkovChain(order);
+    count = 0;
+    for (const email of allFraud) {
+      fraudModel.train(email);
+      count++;
+      if (count % 10000 === 0) {
+        logger.progress(count, allFraud.length, `${order}-gram Fraud`);
+      }
+    }
+    logger.progress(allFraud.length, allFraud.length, `${order}-gram Fraud`);
+
+    trainedModels.push({ order, legitModel, fraudModel });
+    logger.success(`${order}-gram training complete!`);
+  }
+
+  logger.success('All model training complete!');
 
   // Test models
   logger.subsection('Testing Models');
@@ -205,32 +246,41 @@ EXAMPLES
     { email: 'abc123xyz', expected: 'fraud' },
   ];
 
-  for (const { email, expected } of testEmails) {
-    const legitEntropy = legitModel.crossEntropy(email);
-    const fraudEntropy = fraudModel.crossEntropy(email);
-    const prediction = legitEntropy < fraudEntropy ? 'legit' : 'fraud';
-    const match = prediction === expected ? '✓' : '✗';
+  for (const { order, legitModel, fraudModel } of trainedModels) {
+    logger.info(`\nTesting ${order}-gram models:`);
+    for (const { email, expected } of testEmails) {
+      const legitEntropy = legitModel.crossEntropy(email);
+      const fraudEntropy = fraudModel.crossEntropy(email);
+      const prediction = legitEntropy < fraudEntropy ? 'legit' : 'fraud';
+      const match = prediction === expected ? '✓' : '✗';
 
-    logger.info(`${match} "${email}": Legit=${legitEntropy.toFixed(2)}, Fraud=${fraudEntropy.toFixed(2)} → ${prediction}`);
+      logger.info(`${match} "${email}": Legit=${legitEntropy.toFixed(2)}, Fraud=${fraudEntropy.toFixed(2)} → ${prediction}`);
+    }
   }
 
   // Save models
   logger.subsection('Saving Models');
-  const legitJSON = JSON.stringify(legitModel.toJSON(), null, 2);
-  const fraudJSON = JSON.stringify(fraudModel.toJSON(), null, 2);
+  const savedFiles: Array<{ order: number; legitFile: string; fraudFile: string }> = [];
 
-  const legitFile = `${options.output}/markov_legit_model.json`;
-  const fraudFile = `${options.output}/markov_fraud_model.json`;
+  for (const { order, legitModel, fraudModel } of trainedModels) {
+    const legitJSON = JSON.stringify(legitModel.toJSON(), null, 2);
+    const fraudJSON = JSON.stringify(fraudModel.toJSON(), null, 2);
 
-  await Bun.write(legitFile, legitJSON);
-  await Bun.write(fraudFile, fraudJSON);
+    const legitFile = `${options.output}/markov_legit_${order}gram.json`;
+    const fraudFile = `${options.output}/markov_fraud_${order}gram.json`;
 
-  logger.success(`Saved ${legitFile} (${(legitJSON.length / 1024 / 1024).toFixed(2)} MB)`);
-  logger.success(`Saved ${fraudFile} (${(fraudJSON.length / 1024 / 1024).toFixed(2)} MB)`);
+    await Bun.write(legitFile, legitJSON);
+    await Bun.write(fraudFile, fraudJSON);
+
+    logger.success(`Saved ${legitFile} (${(legitJSON.length / 1024 / 1024).toFixed(2)} MB)`);
+    logger.success(`Saved ${fraudFile} (${(fraudJSON.length / 1024 / 1024).toFixed(2)} MB)`);
+
+    savedFiles.push({ order, legitFile, fraudFile });
+  }
 
   // Upload to KV if requested
   if (options.upload) {
-    await uploadToKV(legitFile, fraudFile, options.remote);
+    await uploadModelsToKV(savedFiles, options.remote);
   }
 
   logger.section('✅ Training Complete!');

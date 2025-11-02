@@ -10,6 +10,7 @@
  */
 
 import { DEFAULT_CONFIG, validateConfig, type FraudDetectionConfig } from './defaults';
+import { logger } from '../logger';
 
 const CONFIG_KEY = 'config.json';
 const CACHE_DURATION_MS = 60000; // Cache for 1 minute
@@ -46,21 +47,39 @@ async function loadFromKV(kv: KVNamespace): Promise<Partial<FraudDetectionConfig
 		});
 
 		if (!configJson) {
-			console.info('[Config] No configuration found in KV, using defaults');
+			logger.info({
+				event: 'config_not_found',
+				source: 'kv',
+			}, 'No configuration found in KV, using defaults');
 			return null;
 		}
 
 		// Validate the loaded configuration
 		const validation = validateConfig(configJson);
 		if (!validation.valid) {
-			console.error('[Config] Invalid configuration in KV:', validation.errors);
+			logger.error({
+				event: 'config_invalid',
+				source: 'kv',
+				errors: validation.errors,
+			}, 'Invalid configuration in KV');
 			return null;
 		}
 
-		console.info('[Config] Loaded configuration from KV');
+		logger.info({
+			event: 'config_loaded',
+			source: 'kv',
+		}, 'Loaded configuration from KV');
 		return configJson;
 	} catch (error) {
-		console.error('[Config] Error loading configuration from KV:', error);
+		logger.error({
+			event: 'config_load_failed',
+			source: 'kv',
+			error: error instanceof Error ? {
+				message: error.message,
+				stack: error.stack,
+				name: error.name,
+			} : String(error),
+		}, 'Error loading configuration from KV');
 		return null;
 	}
 }
@@ -128,10 +147,21 @@ export async function saveConfig(
 		cachedConfig = null;
 		cacheTimestamp = 0;
 
-		console.info('[Config] Saved configuration to KV');
+		logger.info({
+			event: 'config_saved',
+			destination: 'kv',
+		}, 'Saved configuration to KV');
 		return { success: true };
 	} catch (error) {
-		console.error('[Config] Error saving configuration to KV:', error);
+		logger.error({
+			event: 'config_save_failed',
+			destination: 'kv',
+			error: error instanceof Error ? {
+				message: error.message,
+				stack: error.stack,
+				name: error.name,
+			} : String(error),
+		}, 'Error saving configuration to KV');
 		return {
 			success: false,
 			errors: [error instanceof Error ? error.message : 'Unknown error'],
@@ -152,7 +182,9 @@ export async function getConfig(kv: KVNamespace, secrets?: Record<string, string
 export function clearConfigCache(): void {
 	cachedConfig = null;
 	cacheTimestamp = 0;
-	console.info('[Config] Configuration cache cleared');
+	logger.info({
+		event: 'config_cache_cleared',
+	}, 'Configuration cache cleared');
 }
 
 /**
@@ -172,6 +204,8 @@ export function getCachedConfig(): FraudDetectionConfig | null {
  * This pre-loads and caches the configuration
  */
 export async function initConfig(kv: KVNamespace, secrets?: Record<string, string | undefined>): Promise<FraudDetectionConfig> {
-	console.info('[Config] Initializing configuration system');
+	logger.info({
+		event: 'config_init',
+	}, 'Initializing configuration system');
 	return loadConfig(kv, secrets);
 }

@@ -9,6 +9,7 @@ import { requireApiKey } from '../middleware/auth';
 import { getConfig, saveConfig, clearConfigCache, DEFAULT_CONFIG, validateConfig } from '../config';
 import type { FraudDetectionConfig } from '../config';
 import { retrainMarkovModels } from '../training/online-learning';
+import { logger } from '../logger';
 
 const admin = new Hono<{ Bindings: Env }>();
 
@@ -615,7 +616,10 @@ LIMIT 20
  */
 admin.post('/markov/train', async (c) => {
 	try {
-		console.log('📋 Manual training triggered via admin API');
+		logger.info({
+			event: 'manual_training_triggered',
+			source: 'admin_api',
+		}, 'Manual training triggered via admin API');
 
 		// Check for required configuration
 		const accountId = c.env.CLOUDFLARE_ACCOUNT_ID;
@@ -653,7 +657,14 @@ admin.post('/markov/train', async (c) => {
 			);
 		}
 	} catch (error) {
-		console.error('Training error:', error);
+		logger.error({
+			event: 'training_error',
+			error: error instanceof Error ? {
+				message: error.message,
+				stack: error.stack,
+				name: error.name,
+			} : String(error),
+		}, 'Training failed');
 		return c.json(
 			{
 				error: 'Training failed',

@@ -4,7 +4,7 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 import { validateEmail } from './validators/email';
 import { validateDomain, getDomainReputationScore } from './validators/domain';
 import { generateFingerprint, extractAllSignals } from './fingerprint';
-import { logValidation, logBlock, logError } from './logger';
+import { logger, logValidation, logBlock, logError } from './logger';
 import { writeValidationMetric } from './utils/metrics';
 import type { ValidationResult } from './types';
 import {
@@ -20,11 +20,23 @@ import {
 	isHighRiskTLD,
 	detectMarkovPattern,
 	DynamicMarkovChain,
-	type MarkovResult
+	type MarkovResult,
+	checkWhitelist,
+	loadWhitelistConfig,
+	type WhitelistResult
 } from './detectors/index';
+import { MarkovEnsembleDetector, type EnsembleResult } from './detectors/markov-ensemble';
 import { getConfig } from './config';
 import adminRoutes from './routes/admin';
-import { retrainMarkovModels } from './training/online-learning';
+import { scheduled as trainingWorkerScheduled } from './workers/training-worker';
+import { retrainMarkovModels as retrainLegacyModels } from './training/online-learning';
+import {
+	loadABTestConfig,
+	getAssignment,
+	getVariantConfig,
+	type ABTestConfig,
+	type ABTestAssignment
+} from './ab-testing';
 
 /**
  * Bogus Email Pattern Recognition Worker
@@ -48,6 +60,10 @@ let markovLegitModel: DynamicMarkovChain | null = null;
 let markovFraudModel: DynamicMarkovChain | null = null;
 let markovModelsLoaded = false;
 
+// Global Ensemble Markov model cache
+let ensembleDetector: MarkovEnsembleDetector | null = null;
+let ensembleModelsLoaded = false;
+
 /**
  * Load Markov Chain models from KV storage
  * Models are cached globally for the lifetime of the worker instance
@@ -59,7 +75,10 @@ async function loadMarkovModels(env: Env): Promise<boolean> {
 	try {
 		// Check if MARKOV_MODEL namespace is configured
 		if (!env.MARKOV_MODEL) {
-			console.log('⚠️  MARKOV_MODEL namespace not configured');
+			logger.warn({
+				event: 'markov_namespace_missing',
+				namespace: 'MARKOV_MODEL',
+			}, 'MARKOV_MODEL namespace not configured');
 			return false;
 		}
 
@@ -71,16 +90,93 @@ async function loadMarkovModels(env: Env): Promise<boolean> {
 			markovLegitModel = DynamicMarkovChain.fromJSON(legitData);
 			markovFraudModel = DynamicMarkovChain.fromJSON(fraudData);
 			markovModelsLoaded = true;
-			console.log('✅ Markov Chain models loaded successfully from MARKOV_MODEL namespace');
+			logger.info({
+				event: 'markov_models_loaded',
+				model_type: 'production',
+				namespace: 'MARKOV_MODEL',
+				keys: ['MM_legit_production', 'MM_fraud_production'],
+			}, 'Markov Chain models loaded successfully');
 			return true;
 		} else {
-			console.log('⚠️  No production Markov models found (keys: MM_legit_production, MM_fraud_production)');
+			logger.warn({
+				event: 'markov_models_not_found',
+				expected_keys: ['MM_legit_production', 'MM_fraud_production'],
+			}, 'No production Markov models found');
 		}
 	} catch (error) {
-		console.error('❌ Failed to load Markov models:', error);
+		logger.error({
+			event: 'markov_load_failed',
+			error: error instanceof Error ? {
+				message: error.message,
+				stack: error.stack,
+			} : String(error),
+		}, 'Failed to load Markov models');
 	}
 
 	return false;
+}
+
+/**
+ * Load Ensemble Markov models from KV storage
+ * Loads 6 models: 1-gram, 2-gram, 3-gram × legit/fraud
+ */
+async function loadEnsembleModels(env: Env): Promise<boolean> {
+	if (ensembleModelsLoaded) return true;
+
+	try {
+		if (!env.MARKOV_MODEL) {
+			logger.warn({
+				event: 'ensemble_namespace_missing',
+				namespace: 'MARKOV_MODEL',
+			}, 'MARKOV_MODEL namespace not configured for ensemble');
+			return false;
+		}
+
+		// Load ensemble using the static method
+		ensembleDetector = await MarkovEnsembleDetector.loadFromKV(env.MARKOV_MODEL);
+		ensembleModelsLoaded = true;
+		logger.info({
+			event: 'ensemble_models_loaded',
+			model_types: ['1-gram', '2-gram', '3-gram'],
+			namespace: 'MARKOV_MODEL',
+		}, 'Ensemble Markov models loaded successfully');
+		return true;
+	} catch (error) {
+		logger.error({
+			event: 'ensemble_load_failed',
+			error: error instanceof Error ? {
+				message: error.message,
+				stack: error.stack,
+			} : String(error),
+		}, 'Failed to load ensemble models');
+		return false;
+	}
+}
+
+/**
+ * Convert EnsembleResult to MarkovResult format for backward compatibility
+ */
+function ensembleToMarkovResult(ensemble: EnsembleResult): MarkovResult {
+	// Use bigram model's cross-entropies as representative values
+	const isLikelyFraudulent = ensemble.prediction === 'fraud';
+
+	// For cross-entropy values, we use the individual model results
+	// If fraud is predicted, fraud entropy should be lower than legit
+	const crossEntropyLegit = ensemble.models.bigram.crossEntropy;
+	const crossEntropyFraud = ensemble.models.bigram.crossEntropy;
+
+	// Calculate difference ratio (similar to original)
+	const minEntropy = Math.min(crossEntropyLegit, crossEntropyFraud);
+	const maxEntropy = Math.max(crossEntropyLegit, crossEntropyFraud);
+	const differenceRatio = minEntropy / (maxEntropy + 0.001);
+
+	return {
+		isLikelyFraudulent,
+		crossEntropyLegit,
+		crossEntropyFraud,
+		confidence: ensemble.confidence,
+		differenceRatio,
+	};
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -124,10 +220,14 @@ app.post('/validate', async (c) => {
 	const env = c.env;
 
 	// Load configuration from KV (with caching)
-	const config = await getConfig(env.CONFIG, {
+	let config = await getConfig(env.CONFIG, {
 		ADMIN_API_KEY: env.ADMIN_API_KEY,
 		ORIGIN_URL: env.ORIGIN_URL,
 	});
+
+	// A/B Testing: Load experiment config and assign variant
+	let abTestConfig: ABTestConfig | null = null;
+	let abAssignment: ABTestAssignment | null = null;
 
 	try {
 		const body = await c.req.json<{ email?: string }>();
@@ -138,6 +238,34 @@ app.post('/validate', async (c) => {
 
 		// Generate fingerprint
 		const fingerprint = await generateFingerprint(c.req.raw);
+
+		// A/B Testing: Check for active experiment and assign variant
+		try {
+			abTestConfig = await loadABTestConfig(env.CONFIG);
+			if (abTestConfig) {
+				abAssignment = getAssignment(fingerprint.hash, abTestConfig);
+				// Merge variant-specific config overrides with base config
+				config = getVariantConfig(abAssignment.variant, abTestConfig, config);
+
+				if (config.logging.logAllValidations) {
+					logger.info({
+						event: 'ab_test_assignment',
+						experiment_id: abTestConfig.experimentId,
+						variant: abAssignment.variant,
+						bucket: abAssignment.bucket,
+					}, 'A/B test variant assigned');
+				}
+			}
+		} catch (abError) {
+			// Don't fail validation if A/B test loading fails
+			logger.error({
+				event: 'ab_test_load_failed',
+				error: abError instanceof Error ? {
+					message: abError.message,
+					stack: abError.stack,
+				} : String(abError),
+			}, 'Failed to load A/B test config');
+		}
 
 		// Validate email format
 		const emailValidation = validateEmail(body.email);
@@ -198,21 +326,48 @@ app.post('/validate', async (c) => {
 		// Markov Chain detection (Phase 7)
 		let markovResult: MarkovResult | undefined;
 		let markovRiskScore = 0;
+		let markovDetectorType = 'none'; // 'bigram' or 'ensemble'
 
 		if (emailValidation.valid && config.features.enableMarkovChainDetection) {
-			// Load models on first request (cached globally)
-			await loadMarkovModels(env);
+			const [localPart] = body.email.split('@');
 
-			if (markovLegitModel && markovFraudModel) {
-				markovResult = detectMarkovPattern(
-					body.email,
-					markovLegitModel,
-					markovFraudModel
-				);
+			// A/B Test: Use ensemble for treatment variant, current 2-gram for control
+			const useEnsemble = abAssignment?.variant === 'treatment';
 
-				// Use Markov risk weighted by confidence
-				if (markovResult.isLikelyFraudulent) {
-					markovRiskScore = markovResult.confidence;
+			if (useEnsemble) {
+				// Treatment: Use Ensemble Markov (1-gram + 2-gram + 3-gram)
+				await loadEnsembleModels(env);
+
+				if (ensembleDetector) {
+					const ensembleResult = ensembleDetector.detect(localPart);
+
+					// Convert to MarkovResult format for backward compatibility
+					markovResult = ensembleToMarkovResult(ensembleResult);
+					markovDetectorType = 'ensemble';
+
+					// Use confidence threshold (0.7)
+					if (ensembleResult.prediction === 'fraud' && ensembleResult.confidence > 0.7) {
+						markovRiskScore = ensembleResult.confidence;
+					}
+				}
+			} else {
+				// Control: Use current 2-gram Markov Chain
+				await loadMarkovModels(env);
+
+				if (markovLegitModel && markovFraudModel) {
+					markovResult = detectMarkovPattern(
+						body.email,
+						markovLegitModel,
+						markovFraudModel
+					);
+					markovDetectorType = 'bigram';
+
+					// Use Markov risk only if confidence is high enough (>0.7)
+					// This reduces false positives from ambiguous patterns
+					// Confidence threshold: 0.7 = high-confidence fraud signals only
+					if (markovResult.isLikelyFraudulent && markovResult.confidence > 0.7) {
+						markovRiskScore = markovResult.confidence;
+					}
 				}
 			}
 		}
@@ -234,38 +389,97 @@ app.post('/validate', async (c) => {
 		} else {
 			// Enhanced risk scoring with pattern analysis (Phase 7 updated)
 			// Use configurable risk weights from KV configuration
+			//
+			// Scoring strategy:
+			// 1. Domain signals (domain + TLD) are independent → additive
+			// 2. Local part signals (entropy, pattern, markov) can overlap → use max
+			//    - Prevents double-counting same fraud signal
+			//    - Example: Sequential pattern detected by both pattern detector AND markov
 
-			const entropyRisk = emailValidation.signals.entropyScore * config.riskWeights.entropy;
+			// Domain-based risks (independent signals)
 			const domainRisk = domainReputationScore * config.riskWeights.domainReputation;
 			const tldRisk = tldRiskScore * config.riskWeights.tldRisk;
+			const domainBasedRisk = domainRisk + tldRisk;
+
+			// Local part risks (overlapping signals - use max to prevent double counting)
+			const entropyRisk = emailValidation.signals.entropyScore * config.riskWeights.entropy;
 			const combinedPatternRisk = patternRiskScore * config.riskWeights.patternDetection;
 			const markovRisk = markovRiskScore * config.riskWeights.markovChain;
 
-			riskScore = Math.min(entropyRisk + domainRisk + tldRisk + combinedPatternRisk + markovRisk, 1.0);
+			// Take max of local part signals to avoid scoring same pattern multiple times
+			const localPartRisk = Math.max(entropyRisk, combinedPatternRisk, markovRisk);
+
+			// Combine domain and local part risks
+			riskScore = Math.min(domainBasedRisk + localPartRisk, 1.0);
 
 			// Set block reason based on highest risk factor
-			if (markovRiskScore > 0.6) {
-				blockReason = 'markov_chain_fraud';
-			} else if (patternRiskScore > 0.6) {
-				if (gibberishResult?.isGibberish) {
-					blockReason = 'gibberish_detected';
-				} else if (patternFamilyResult?.patternType === 'sequential') {
-					blockReason = 'sequential_pattern';
-				} else if (patternFamilyResult?.patternType === 'dated') {
-					blockReason = 'dated_pattern';
-				} else if (normalizedEmailResult?.hasPlus) {
-					blockReason = 'plus_addressing_abuse';
-				} else if (keyboardWalkResult?.hasKeyboardWalk) {
-					blockReason = 'keyboard_walk';
+			// Determine which signal contributed most to the final risk score
+
+			// Check if local part risk is dominant
+			if (localPartRisk > domainBasedRisk) {
+				// Local part is the issue - determine which detector triggered
+				if (markovRisk === localPartRisk && markovRiskScore > 0.6 && markovResult && markovResult.confidence > 0.7) {
+					blockReason = 'markov_chain_fraud';
+				} else if (combinedPatternRisk === localPartRisk && patternRiskScore > 0.5) {
+					// Pattern detection was highest - identify specific pattern
+					if (gibberishResult?.isGibberish) {
+						blockReason = 'gibberish_detected';
+					} else if (patternFamilyResult?.patternType === 'sequential') {
+						blockReason = 'sequential_pattern';
+					} else if (patternFamilyResult?.patternType === 'dated') {
+						blockReason = 'dated_pattern';
+					} else if (normalizedEmailResult?.hasPlus) {
+						blockReason = 'plus_addressing_abuse';
+					} else if (keyboardWalkResult?.hasKeyboardWalk) {
+						blockReason = 'keyboard_walk';
+					} else {
+						blockReason = 'suspicious_pattern';
+					}
+				} else if (entropyRisk === localPartRisk) {
+					blockReason = 'high_entropy';
 				} else {
-					blockReason = 'suspicious_pattern';
+					blockReason = 'suspicious_local_part';
 				}
-			} else if (tldRisk > Math.max(domainRisk, entropyRisk)) {
-				blockReason = 'high_risk_tld';
-			} else if (domainRisk > entropyRisk) {
-				blockReason = 'domain_reputation';
 			} else {
-				blockReason = 'entropy_threshold';
+				// Domain-based risk is dominant
+				if (tldRisk > domainRisk) {
+					blockReason = 'high_risk_tld';
+				} else {
+					blockReason = 'domain_reputation';
+				}
+			}
+		}
+
+		// Pattern Whitelisting (Priority 2 improvement)
+		// Check if email matches known-good patterns and reduce risk score
+		let whitelistResult: WhitelistResult | undefined;
+		const originalRiskScore = riskScore;
+
+		if (emailValidation.valid) {
+			// Load whitelist configuration from KV
+			const whitelistConfig = await loadWhitelistConfig(env.CONFIG);
+
+			// Check whitelist with pattern family context
+			whitelistResult = checkWhitelist(
+				body.email,
+				whitelistConfig,
+				patternFamilyResult?.family
+			);
+
+			// Apply risk reduction if matched
+			if (whitelistResult.matched && whitelistResult.riskReduction > 0) {
+				const reducedRisk = riskScore * (1 - whitelistResult.riskReduction);
+				riskScore = Math.max(reducedRisk, 0); // Never go negative
+
+				if (config.logging.logAllValidations) {
+					logger.info({
+						event: 'whitelist_matched',
+						original_risk: originalRiskScore,
+						reduced_risk: riskScore,
+						reduction_percent: whitelistResult.riskReduction,
+						reason: whitelistResult.reason,
+					}, 'Email matched whitelist');
+				}
 			}
 		}
 
@@ -320,6 +534,13 @@ app.post('/validate', async (c) => {
 					markovConfidence: Math.round(markovResult.confidence * 100) / 100,
 					markovCrossEntropyLegit: Math.round(markovResult.crossEntropyLegit * 100) / 100,
 					markovCrossEntropyFraud: Math.round(markovResult.crossEntropyFraud * 100) / 100,
+				}),
+				// Priority 2: Whitelist signals
+				...(whitelistResult && whitelistResult.matched && {
+					whitelistMatched: true,
+					whitelistRiskReduction: Math.round(whitelistResult.riskReduction * 100) / 100,
+					whitelistReason: whitelistResult.reason,
+					originalRiskScore: Math.round(originalRiskScore * 100) / 100,
 				})
 			},
 			decision,
@@ -391,6 +612,10 @@ app.post('/validate', async (c) => {
 			modelVersion: 'production',             // A/B testing: will be dynamic later
 			excludeFromTraining: false,             // Security: will check IP reputation later
 			ipReputationScore: 0,                   // Will implement IP reputation checks later
+			// A/B Testing data
+			experimentId: abAssignment?.experimentId,
+			variant: abAssignment?.variant,
+			bucket: abAssignment?.bucket,
 		});
 
 		// Build response
@@ -460,7 +685,14 @@ app.post('/validate', async (c) => {
 				);
 			} catch (error) {
 				// Log error but don't fail the request
-				console.error('Failed to forward to origin:', error);
+				logger.error({
+					event: 'origin_forward_failed',
+					origin_url: config.headers.originUrl,
+					error: error instanceof Error ? {
+						message: error.message,
+						stack: error.stack,
+					} : String(error),
+				}, 'Failed to forward request to origin');
 			}
 		}
 
@@ -567,9 +799,21 @@ class FraudDetectionService extends WorkerEntrypoint<Env> {
 export default {
 	fetch: app.fetch.bind(app),
 	scheduled: async (event: ScheduledEvent, env: Env, ctx: ExecutionContext) => {
-		console.log('⏰ Cron trigger fired:', event.cron);
-		console.log('🎓 Starting online learning training pipeline...');
-		ctx.waitUntil(retrainMarkovModels(env));
+		logger.info({
+			event: 'cron_triggered',
+			cron_schedule: event.cron,
+		}, 'Cron trigger fired');
+
+		logger.info({
+			event: 'training_started',
+			trigger_type: 'scheduled',
+		}, 'Starting automated N-gram model training');
+
+		// Use new training worker for N-gram ensemble models
+		ctx.waitUntil(trainingWorkerScheduled(event, env, ctx));
+
+		// Optional: Keep legacy training for backward compatibility
+		// ctx.waitUntil(retrainLegacyModels(env));
 	}
 };
 
