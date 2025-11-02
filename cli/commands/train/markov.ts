@@ -46,7 +46,7 @@ async function loadCSV(filepath: string): Promise<{ legit: string[], fraud: stri
       skip_empty_lines: true,
       relax_quotes: true,
       relax_column_count: true,
-    });
+    }) as Array<Record<string, any>>;
 
     const legit: string[] = [];
     const fraud: string[] = [];

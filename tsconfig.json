@@ -12,7 +12,9 @@
 		/* Specify what module code is generated. */
 		"module": "es2022",
 		/* Specify how TypeScript looks up a file from a given module specifier. */
-		"moduleResolution": "node",
+		"moduleResolution": "bundler",
+		/* Allow importing TypeScript extensions */
+		"allowImportingTsExtensions": true,
 		/* Enable importing .json files */
 		"resolveJsonModule": true,
 
@@ -37,7 +39,15 @@
 		/* Skip type checking all .d.ts files. */
 		"skipLibCheck": true,
 		"types": [
-			"./worker-configuration.d.ts"
+			"./worker-configuration.d.ts",
+			"./cloudflare-test.d.ts",
+			"@types/bun",
+			"@cloudflare/workers-types"
 		]
-	}
+	},
+	"exclude": [
+		"dashboard",
+		"examples",
+		"node_modules"
+	]
 }

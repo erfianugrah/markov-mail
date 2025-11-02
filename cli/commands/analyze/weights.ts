@@ -9,16 +9,11 @@ import { logger } from '../../utils/logger';
 export async function analyzeWeights() {
 	logger.info('Analyzing risk weights...');
 
-	// Import the analysis logic
-	const { analyzeRiskWeights } = await import('../../../scripts/analyze-risk-weights-lib');
+	// TODO: Implement risk weight analysis
+	// const { analyzeRiskWeights } = await import('../../../scripts/analyze-risk-weights-lib');
 
-	try {
-		await analyzeRiskWeights();
-		logger.success('Risk weight analysis complete');
-	} catch (error) {
-		logger.error('Failed to analyze weights:', error);
-		throw error;
-	}
+	logger.error('Risk weight analysis not yet implemented');
+	throw new Error('analyze-risk-weights-lib script not found');
 }
 
 export const command = {

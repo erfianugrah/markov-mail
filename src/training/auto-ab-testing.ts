@@ -71,17 +71,14 @@ export async function createABTestForModels(
 		variants: {
 			control: {
 				weight: 100 - config.canaryTrafficPercent,
-				description: 'Current production models',
 				config: {
 					// Use current production models (default behavior)
 				},
 			},
 			treatment: {
 				weight: config.canaryTrafficPercent,
-				description: `New ensemble models (${trainedModels.version})`,
 				config: {
 					// Treatment will use canary models
-					markovEnsembleEnabled: true,
 				},
 			},
 		},
@@ -89,12 +86,11 @@ export async function createABTestForModels(
 		endDate: endDate.toISOString(),
 		enabled: true,
 		metadata: {
-			modelVersion: trainedModels.version,
-			validationMetrics: validationResult.metrics,
-			createdAt: new Date().toISOString(),
-			createdBy: 'auto_ab_system',
-			autoPromote: config.autoPromote,
-			promotionThresholds: config.promotionThresholds,
+			hypothesis: `Model version ${trainedModels.version} improves fraud detection`,
+			expectedImpact: 'Improved accuracy and reduced false positives',
+			successMetrics: ['precision', 'recall', 'f1Score', 'falsePositiveRate'],
+			owner: 'auto_ab_system',
+			tags: ['auto-generated', 'model-update', trainedModels.version],
 		},
 	};
 
@@ -250,9 +246,10 @@ async function promoteToProduction(kv: KVNamespace, abTestConfig: ABTestConfig):
 		event: 'production_promotion_started',
 	}, 'Promoting to Production');
 
-	const modelVersion = abTestConfig.metadata?.modelVersion;
+	// Extract model version from tags
+	const modelVersion = abTestConfig.metadata?.tags?.find(tag => tag.startsWith('202'));
 	if (!modelVersion) {
-		throw new Error('Model version not found in A/B test metadata');
+		throw new Error('Model version not found in A/B test metadata tags');
 	}
 
 	// Copy canary models to production keys

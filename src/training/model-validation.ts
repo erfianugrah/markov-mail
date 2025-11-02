@@ -8,6 +8,9 @@ import { NGramMarkovChain } from '../detectors/ngram-markov';
 import type { TrainedModels } from './model-training';
 import { logger } from '../logger';
 
+// Re-export TrainedModels for convenience
+export type { TrainedModels };
+
 export interface ValidationMetrics {
 	accuracy: number; // Overall accuracy (0-1)
 	precision: number; // Fraud precision: TP / (TP + FP)
@@ -343,8 +346,8 @@ function predictWithEnsemble(
 
 	for (const [orderStr, orderModels] of Object.entries(models)) {
 		const order = parseInt(orderStr);
-		const legitCrossEntropy = orderModels.legit.calculateCrossEntropy(localPart);
-		const fraudCrossEntropy = orderModels.fraud.calculateCrossEntropy(localPart);
+		const legitCrossEntropy = orderModels.legit.crossEntropy(localPart);
+		const fraudCrossEntropy = orderModels.fraud.crossEntropy(localPart);
 
 		const prediction = fraudCrossEntropy < legitCrossEntropy ? 'fraud' : 'legit';
 
