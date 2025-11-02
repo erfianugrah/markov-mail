@@ -13,14 +13,13 @@ export interface QueryResult {
   };
 }
 
-export async function query(sql: string): Promise<QueryResult> {
-  const response = await fetch(`${API_BASE}/api/analytics/query`, {
-    method: 'POST',
+export async function query(sql: string, hours: number = 24): Promise<QueryResult> {
+  const encodedSQL = encodeURIComponent(sql);
+  const response = await fetch(`${API_BASE}/admin/analytics?query=${encodedSQL}&hours=${hours}`, {
+    method: 'GET',
     headers: {
-      'Content-Type': 'application/json',
       'X-API-Key': API_KEY,
     },
-    body: JSON.stringify({ sql }),
   });
 
   if (!response.ok) {
@@ -50,7 +49,7 @@ export async function loadStats(hours: number = 24): Promise<Stats> {
       AVG(double1) as avg_latency
     FROM ANALYTICS
     WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR
-  `);
+  `, hours);
 
   const row = result.data.data[0];
   const total = Number(row.total) || 1;
@@ -78,7 +77,7 @@ export async function loadDecisions(hours: number = 24) {
     WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR
     GROUP BY decision
     ORDER BY count DESC
-  `);
+  `, hours);
 
   return result.data.data.map((row) => ({
     decision: String(row.decision),
@@ -95,7 +94,7 @@ export async function loadRiskDistribution(hours: number = 24) {
     WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR
     GROUP BY risk_bucket
     ORDER BY risk_bucket
-  `);
+  `, hours);
 
   return result.data.data.map((row) => ({
     riskBucket: String(row.risk_bucket),
@@ -113,7 +112,7 @@ export async function loadTimeline(hours: number = 24) {
     WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR
     GROUP BY hour, decision
     ORDER BY hour ASC
-  `);
+  `, hours);
 
   // Transform data for Recharts
   const grouped = new Map<string, Record<string, number | string>>();
