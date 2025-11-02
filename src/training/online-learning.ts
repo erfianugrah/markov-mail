@@ -140,15 +140,20 @@ export async function retrainMarkovModels(env: Env): Promise<TrainingResult> {
 
 			console.log(`✅ Anomaly check passed (score: ${(anomalyCheck.score * 100).toFixed(0)}%)`);
 
-			// 6. Load current production model
-			const productionModel = await safeLoadModel(env, 'markov_model_production');
+			// 6. Load current production models
+			const productionLegitModel = await safeLoadModel(env, 'MM_legit_production');
+			const productionFraudModel = await safeLoadModel(env, 'MM_fraud_production');
 
-			// 7. Train new model (incremental update from production)
-			const newModel = await trainModel(fraudSamples, legitSamples, productionModel);
+			// 7. Train new models (incremental update from production)
+			const { legitimateModel: newLegitModel, fraudulentModel: newFraudModel } = await trainModel(
+				fraudSamples,
+				legitSamples,
+				{ legit: productionLegitModel, fraud: productionFraudModel }
+			);
 			const newVersion = generateVersionId();
 
-			// 8. Validate new model (must be better than production)
-			const validation = await validateModel(env, newModel, productionModel);
+			// 8. Validate new models (must be better than production)
+			const validation = await validateModel(env, newLegitModel, newFraudModel, productionLegitModel, productionFraudModel);
 
 			if (!validation.passed) {
 				console.log('❌ Model validation failed:', validation);
@@ -168,8 +173,8 @@ export async function retrainMarkovModels(env: Env): Promise<TrainingResult> {
 
 			console.log(`✅ Model validation passed: accuracy=${(validation.accuracy * 100).toFixed(1)}%, improvement=${validation.improvement ? (validation.improvement * 100).toFixed(1) + '%' : 'N/A'}`);
 
-			// 9. Save as candidate model (0% traffic initially)
-			await saveModelAsCandidate(env, newModel, {
+			// 9. Save as candidate models (0% traffic initially)
+			await saveModelsAsCandidate(env, newLegitModel, newFraudModel, {
 				version: newVersion,
 				fraud_count: fraudSamples.length,
 				legit_count: legitSamples.length,
@@ -310,32 +315,33 @@ export function separateDataByLabel(data: TrainingData[]): {
 async function trainModel(
 	fraudSamples: string[],
 	legitSamples: string[],
-	existingModel: DynamicMarkovChain | null
-): Promise<DynamicMarkovChain> {
+	existingModels: { legit: DynamicMarkovChain | null; fraud: DynamicMarkovChain | null } | null
+): Promise<{ legitimateModel: DynamicMarkovChain; fraudulentModel: DynamicMarkovChain }> {
 
-	// Create new Markov model instance
-	const newModel = new DynamicMarkovChain();
+	// Create TWO separate Markov model instances (as per Bergholz et al. 2008)
+	const legitimateModel = new DynamicMarkovChain();
+	const fraudulentModel = new DynamicMarkovChain();
 
-	// Train on fraud samples
-	console.log('Training fraud model...');
-	for (const email of fraudSamples) {
-		newModel.train(email);
-	}
-
-	// Train on legit samples
-	console.log('Training legit model...');
+	// Train LEGITIMATE model on legitimate samples ONLY
+	console.log(`Training legitimate model on ${legitSamples.length} samples...`);
 	for (const email of legitSamples) {
-		newModel.train(email);
+		legitimateModel.train(email);
 	}
 
-	// If there's an existing model, blend with incremental learning
-	if (existingModel) {
+	// Train FRAUDULENT model on fraudulent samples ONLY
+	console.log(`Training fraudulent model on ${fraudSamples.length} samples...`);
+	for (const email of fraudSamples) {
+		fraudulentModel.train(email);
+	}
+
+	// If there are existing models, blend with incremental learning
+	if (existingModels?.legit && existingModels?.fraud) {
 		console.log('Applying incremental learning (EMA blending)...');
 		// Future: implement EMA blending (learning rate 0.05)
 		// For now, full retraining is acceptable
 	}
 
-	return newModel;
+	return { legitimateModel, fraudulentModel };
 }
 
 // ============================================================================
@@ -343,20 +349,22 @@ async function trainModel(
 // ============================================================================
 
 /**
- * Validate new model against production model
- * New model must be better to pass
+ * Validate new models against production models
+ * New models must be better to pass
  */
 async function validateModel(
 	env: Env,
-	newModel: DynamicMarkovChain,
-	productionModel: DynamicMarkovChain | null
+	newLegitModel: DynamicMarkovChain,
+	newFraudModel: DynamicMarkovChain,
+	productionLegitModel: DynamicMarkovChain | null,
+	productionFraudModel: DynamicMarkovChain | null
 ): Promise<ValidationMetrics> {
 
 	// For Phase 1, implement basic validation
 	// Phase 2 will add comprehensive A/B testing
 
-	// Check that model has transitions
-	if (!newModel) {
+	// Check that both models exist and have transitions
+	if (!newLegitModel || !newFraudModel) {
 		return {
 			passed: false,
 			accuracy: 0,
@@ -366,10 +374,11 @@ async function validateModel(
 		};
 	}
 
-	// Basic validation: model should have transitions
-	const hasTransitions = newModel.getTransitionCount() > 0;
+	// Basic validation: both models should have transitions
+	const legitHasTransitions = newLegitModel.getTransitionCount() > 0;
+	const fraudHasTransitions = newFraudModel.getTransitionCount() > 0;
 
-	if (!hasTransitions) {
+	if (!legitHasTransitions || !fraudHasTransitions) {
 		return {
 			passed: false,
 			accuracy: 0,
@@ -379,7 +388,7 @@ async function validateModel(
 		};
 	}
 
-	// For Phase 1: pass if model has transitions
+	// For Phase 1: pass if both models have transitions
 	// Phase 2 will add proper validation with test set
 	return {
 		passed: true,
@@ -479,11 +488,14 @@ export async function computeSHA256(data: string): Promise<string> {
 }
 
 /**
- * Save model as candidate (awaiting promotion to canary)
+ * Save models as candidate (awaiting promotion to canary)
+ * Uses simple key format: MM{n}_legit_candidate, MM{n}_fraud_candidate
+ * Full version stored in metadata
  */
-async function saveModelAsCandidate(
+async function saveModelsAsCandidate(
 	env: Env,
-	model: DynamicMarkovChain,
+	legitimateModel: DynamicMarkovChain,
+	fraudulentModel: DynamicMarkovChain,
 	metadata: {
 		version: string;
 		fraud_count: number;
@@ -493,16 +505,23 @@ async function saveModelAsCandidate(
 	}
 ): Promise<void> {
 
-	const modelJSON = JSON.stringify(model.toJSON());
-	const checksum = await computeSHA256(modelJSON);
-
 	if (!env.MARKOV_MODEL) {
 		throw new Error('MARKOV_MODEL KV namespace not configured');
 	}
 
-	await env.MARKOV_MODEL.put('markov_model_candidate', modelJSON, {
+	// Extract version number for simple key (e.g., "v1762063221887_69" -> "MM1")
+	const versionNum = await getNextModelVersion(env);
+	const simpleVersion = `MM${versionNum}`;
+
+	// Save legitimate model
+	const legitJSON = JSON.stringify(legitimateModel.toJSON());
+	const legitChecksum = await computeSHA256(legitJSON);
+
+	await env.MARKOV_MODEL.put(`${simpleVersion}_legit_candidate`, legitJSON, {
 		metadata: {
-			version: metadata.version,
+			full_version: metadata.version,
+			simple_version: simpleVersion,
+			model_type: 'legitimate',
 			status: 'candidate',
 			created_at: new Date().toISOString(),
 			fraud_count: metadata.fraud_count,
@@ -512,12 +531,66 @@ async function saveModelAsCandidate(
 			false_positive_rate: metadata.validation.false_positive_rate,
 			anomaly_score: metadata.anomaly_score,
 			traffic_percent: 0,
-			checksum,
-			size_bytes: modelJSON.length
+			checksum: legitChecksum,
+			size_bytes: legitJSON.length
 		}
 	});
 
-	console.log(`✅ Model ${metadata.version} saved as candidate (checksum: ${checksum.slice(0, 16)}...)`);
+	// Save fraudulent model
+	const fraudJSON = JSON.stringify(fraudulentModel.toJSON());
+	const fraudChecksum = await computeSHA256(fraudJSON);
+
+	await env.MARKOV_MODEL.put(`${simpleVersion}_fraud_candidate`, fraudJSON, {
+		metadata: {
+			full_version: metadata.version,
+			simple_version: simpleVersion,
+			model_type: 'fraudulent',
+			status: 'candidate',
+			created_at: new Date().toISOString(),
+			fraud_count: metadata.fraud_count,
+			legit_count: metadata.legit_count,
+			accuracy: metadata.validation.accuracy,
+			detection_rate: metadata.validation.detection_rate,
+			false_positive_rate: metadata.validation.false_positive_rate,
+			anomaly_score: metadata.anomaly_score,
+			traffic_percent: 0,
+			checksum: fraudChecksum,
+			size_bytes: fraudJSON.length
+		}
+	});
+
+	console.log(`✅ Models ${simpleVersion} (${metadata.version}) saved as candidate`);
+	console.log(`   - Legitimate: ${legitChecksum.slice(0, 16)}... (${legitJSON.length} bytes)`);
+	console.log(`   - Fraudulent: ${fraudChecksum.slice(0, 16)}... (${fraudJSON.length} bytes)`);
+}
+
+/**
+ * Get next model version number (increment from current max)
+ */
+async function getNextModelVersion(env: Env): Promise<number> {
+	try {
+		if (!env.MARKOV_MODEL) {
+			console.error('MARKOV_MODEL namespace not configured');
+			return 1;
+		}
+
+		const keys = await env.MARKOV_MODEL.list({ prefix: 'MM' });
+		let maxVersion = 0;
+
+		for (const key of keys.keys) {
+			// Extract number from keys like "MM1_legit_production", "MM2_fraud_candidate"
+			const match = key.name.match(/^MM(\d+)_/);
+			if (match) {
+				const version = parseInt(match[1], 10);
+				maxVersion = Math.max(maxVersion, version);
+			}
+		}
+
+		return maxVersion + 1;
+	} catch (error) {
+		console.error('Error getting next model version:', error);
+		return 1; // Default to version 1 if error
+	}
 }
 
 /**

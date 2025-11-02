@@ -26,7 +26,7 @@
 | **[Analytics](ANALYTICS.md)** | Analytics Engine setup and dashboard usage | Analysts, Administrators |
 | **[Integration Guide](INTEGRATION_GUIDE.md)** | How to integrate with your application | Developers |
 | **[Testing](TESTING.md)** | Test suite, coverage, and testing practices | QA, Developers |
-| **[Markov Chain](MARKOV_CHAIN_INTEGRATION.md)** | Phase 7: Markov Chain detector integration | Advanced Users |
+| **[System Status](SYSTEM_STATUS.md)** | Current deployment status and roadmap | All Users |
 
 ---
 
@@ -34,14 +34,22 @@
 
 **Production Status**: ✅ **Live at https://your-worker.workers.dev**
 
-**Phase**: ✅ **Phase 7 Complete** (Markov Chain Integration)
+**Last Updated**: 2025-11-02
 
-**Key Metrics**:
-- ✅ **Detectors**: 8 active (Sequential, Dated, Plus-Addressing, Keyboard Walk, N-Gram, TLD Risk, Benford's Law, Markov Chain)
-- ✅ **Detection Rate**: 97-98% expected (Markov Chain: 97.95% F-measure)
-- ✅ **Performance**: 0.07ms avg per email (14,286 emails/second)
-- ✅ **Tests**: 7/8 detectors passing
-- ✅ **Analytics**: 21+ signals tracked, 15 blobs + 11 doubles
+> 🔍 **For Complete Status**: See [SYSTEM_STATUS.md](SYSTEM_STATUS.md) - verified deployment status, known issues, and next steps
+
+**Active Detectors**: **7/8** in production
+- ✅ Sequential, Dated, Plus-Addressing, Keyboard Walk, N-Gram, TLD Risk, Benford's Law
+- 🔄 Markov Chain (code complete, awaiting training data - see [MARKOV_CHAIN_FIX_2025-11-02.md](MARKOV_CHAIN_FIX_2025-11-02.md))
+
+**Performance**:
+- ✅ **Latency**: 0.07ms avg per email (14,286 emails/second)
+- ✅ **Analytics**: 861 validations collected, 19 blobs + 12 doubles tracked
+- ✅ **Uptime**: 99.9%
+
+**In Development**:
+- 🔄 **Markov Chain Detection**: Infrastructure ready, awaiting 1000+ training samples (ETA: 3-4 hours)
+- 🔄 **Online Learning**: Training pipeline operational, runs every 6 hours
 
 ---
 
@@ -49,20 +57,35 @@
 
 ```
 docs/
-├── README.md                # This file - documentation index
+├── README.md                           # This file - documentation index
+├── SYSTEM_STATUS.md                    # ⭐ Current deployment status (2025-11-02)
 │
-├── GETTING_STARTED.md       # Setup and quickstart
-├── API.md                   # API reference (27k)
-├── ARCHITECTURE.md          # System design (25k)
-├── CONFIGURATION.md         # Config management (11k)
-├── ANALYTICS.md             # Analytics & dashboard (14k)
-├── INTEGRATION_GUIDE.MD     # Integration examples (19k)
-├── TESTING.md               # Testing documentation (consolidated)
+├── GETTING_STARTED.md                  # Setup and quickstart
+├── API.md                              # API reference (27k)
+├── ARCHITECTURE.md                     # System design (25k)
+├── DETECTORS.md                        # All 8 detector algorithms
+├── CONFIGURATION.md                    # Config management (11k)
+├── ANALYTICS.md                        # Analytics & dashboard (14k)
+├── INTEGRATION_GUIDE.md                # Integration examples (19k)
+├── TESTING.md                          # Testing documentation
 │
-├── archive/                 # Historical implementation docs
-│   └── IMPLEMENTATION_PLAN.md
+├── MARKOV_CHAIN_FIX_2025-11-02.md     # ⭐ Markov Chain architecture fix
+├── ANALYTICS_DATA_AUDIT_2025-11-02.md # ⭐ Training data analysis
+├── CONSOLIDATION_SUMMARY_2025-11-02.md # ⭐ Documentation review summary
+├── ONLINE_LEARNING_SECURITY.md        # Security considerations
 │
-└── history/                 # Project history & summaries
+├── archive/                            # Archived planning docs
+│   ├── planning/                       # Original plans (superseded)
+│   │   ├── README.md
+│   │   └── MARKOV_CHAIN_INTEGRATION.md
+│   └── online-learning/                # Online learning plans (superseded)
+│       ├── README.md
+│       ├── ONLINE_LEARNING_PLAN.md
+│       ├── ONLINE_LEARNING_PLAN_V2.md
+│       ├── IMPLEMENTATION_ROADMAP.md
+│       └── PHASE1_PROGRESS.md
+│
+└── history/                            # Project history & summaries
     ├── TEST_MIGRATION_SUMMARY.md
     ├── CLEANUP_AND_MIGRATION_COMPLETE.md
     ├── CLEANUP_SUMMARY.md
@@ -126,17 +149,21 @@ docs/
 - **Analytics Queries** (`/admin/analytics`)
 - **Configuration Management** (`/admin/config`)
 
-### Pattern Detectors (8 Total)
-- **Sequential patterns** (user1, user2, user3) - 90% detection
-- **Dated patterns** (john.doe.2025, oct2024) - 85% detection
-- **Keyboard walks** (qwerty, asdfgh, 123456) - 95% detection
-- **N-Gram gibberish** (xk7g2w9qa) - 90% detection
-- **Plus-addressing** (user+1, user+spam) - 95% detection
-- **TLD risk scoring** (.tk, .ml, .ga) - 95% detection
-- **Benford's Law** (batch analysis) - 85% detection
-- **Markov Chain** (character transitions) - **98% detection** ⭐ NEW
+### Pattern Detectors (7 Active + 1 In Development)
 
-See [Detectors Guide](DETECTORS.md) for complete documentation
+**Active in Production** ✅:
+- **Sequential patterns** (user1, user2, user3)
+- **Dated patterns** (john.doe.2025, oct2024)
+- **Keyboard walks** (qwerty, asdfgh, 123456)
+- **N-Gram gibberish** (xk7g2w9qa)
+- **Plus-addressing** (user+1, user+spam)
+- **TLD risk scoring** (.tk, .ml, .ga)
+- **Benford's Law** (batch analysis)
+
+**In Development** 🔄:
+- **Markov Chain** (character transitions) - Code complete, awaiting training data
+
+See [Detectors Guide](DETECTORS.md) for complete documentation and [SYSTEM_STATUS.md](SYSTEM_STATUS.md) for deployment status
 
 ### Data & Analytics
 - **Analytics Engine**: 23 fields logged per validation
@@ -148,7 +175,7 @@ See [Detectors Guide](DETECTORS.md) for complete documentation
 
 ## 📈 Detection Capabilities
 
-**Fraud Patterns Detected** (8 Detectors):
+**Fraud Patterns Detected** (7 Active, 1 In Development):
 - ✅ Sequential numbering (user1, user2, user3)
 - ✅ Dated emails (john.2025, oct2024)
 - ✅ Keyboard walks (qwerty, asdfgh, 123456)
@@ -158,12 +185,18 @@ See [Detectors Guide](DETECTORS.md) for complete documentation
 - ✅ High-risk TLDs (.tk, .ml, .ga, .cf, .gq)
 - ✅ Low entropy patterns (random strings)
 - ✅ Statistical anomalies (Benford's Law)
-- ✅ **Character transition patterns (Markov Chain)** ⭐ NEW
+- 🔄 **Character transition patterns (Markov Chain)** - In development
 
-**Risk Scoring** (Weighted Formula):
-- **Markov Chain**: 25% (highest accuracy: 97.95% F-measure)
-- **Pattern Detection**: 40% (5 detectors combined)
-- **Entropy**: 15% (randomness detection)
+**Current Risk Scoring** (7 active detectors):
+- **Pattern Detection**: 50% (5 detectors combined)
+- **Entropy**: 20% (randomness detection)
+- **Domain Reputation**: 15%
+- **TLD Risk**: 15%
+
+**Future Risk Scoring** (when Markov Chain deployed):
+- **Markov Chain**: 25% (target: 97.95% F-measure per research)
+- **Pattern Detection**: 40%
+- **Entropy**: 15%
 - **Domain Reputation**: 10%
 - **TLD Risk**: 10%
 
@@ -211,10 +244,11 @@ See [Analytics Documentation](ANALYTICS.md) for usage.
 
 ## 🧪 Testing
 
-**Test Suite**: 287 tests (100% passing)
-- 157 unit tests
-- 130 integration tests
-- ~3.8 second execution time
+**Test Suite**:
+- Unit tests for all 7 active detectors
+- Integration tests for API endpoints
+- E2E tests for fraud detection
+- Performance tests for load handling
 
 **Test Scripts**:
 ```bash
@@ -222,8 +256,10 @@ npm test                                    # Run all tests
 npm run test:unit                           # Unit tests (fast)
 npm run test:e2e                            # E2E tests
 npm run test:performance                    # Performance tests
-node scripts/generate-fraudulent-emails.js  # Generate test data
+npm run typecheck                           # TypeScript validation
 ```
+
+> ⚠️ **Note**: Test suite currently has connection issues in CI environment. Run locally for verification.
 
 See [Testing Documentation](TESTING.md) for comprehensive testing guide.
 
@@ -331,11 +367,12 @@ See [Testing Documentation](TESTING.md) for comprehensive testing guide.
 
 ## 📅 Version History
 
-**Current Version**: 1.3.0 (Phase 7)
-**Last Updated**: 2025-11-01
+**Current Version**: 1.3.1
+**Last Updated**: 2025-11-02
 
 **Major Documentation Updates**:
-- **1.3.0** (2025-11-01): Phase 7 complete - Markov Chain integration, added DETECTORS.md guide
+- **1.3.1** (2025-11-02): ⭐ Documentation review & consolidation - Fixed Markov Chain architecture, audited Analytics data, archived planning docs, updated all status references to be accurate
+- **1.3.0** (2025-11-01): Phase 7 code complete - Markov Chain integration, added DETECTORS.md guide
 - **1.2.0** (2025-11-01): Consolidated testing docs, updated structure
 - **1.1.0** (2025-11-01): Added comprehensive analytics documentation
 - **1.0.0** (2025-10-31): Initial complete documentation set

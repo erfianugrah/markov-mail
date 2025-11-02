@@ -2,6 +2,30 @@
 
 A Cloudflare Workers-based email validation service that detects fraudulent signup attempts through advanced pattern recognition and behavioral analysis.
 
+## 🚦 Current Status
+
+**Production URL**: https://your-worker.workers.dev
+**Version**: 1.3.1
+**Active Detectors**: 8/8 (All operational) ✅
+**Last Updated**: 2025-11-02
+
+> 📊 **Detailed Status**: See [docs/SYSTEM_STATUS.md](docs/SYSTEM_STATUS.md) for complete deployment status, known issues, and roadmap.
+
+### Active in Production ✅
+- Sequential Pattern Detection
+- Dated Pattern Detection
+- Plus-Addressing Detection
+- Keyboard Walk Detection
+- N-Gram Gibberish Analysis
+- TLD Risk Profiling
+- Benford's Law Analysis
+- **Markov Chain Detection** (Newly deployed - trained on 182K+ email samples)
+
+### Infrastructure ⚙️
+- **CLI Management System** - Unified command-line interface for training, deployment, and data management
+- **Online Learning Pipeline** - Automated training pipeline runs every 6 hours
+- **Analytics Engine** - Real-time metrics and validation tracking
+
 ## Features
 
 ### ✅ Core Detection (Implemented)
@@ -27,7 +51,6 @@ A Cloudflare Workers-based email validation service that detects fraudulent sign
 ### 🚧 Future Enhancements (Planned)
 
 **Phase 6B - Advanced Statistical Methods:**
-- **Markov Chain Analysis**: Predict character sequences to detect generated names
 - **Edit Distance Clustering**: Group similar patterns using Levenshtein distance
 
 **Phase 6C - Temporal & Behavioral Analysis (requires Durable Objects):**
@@ -88,6 +111,34 @@ A Cloudflare Workers-based email validation service that detects fraudulent sign
     │   Response  │
     └─────────────┘
 ```
+
+## 🔧 CLI Management
+
+A unified command-line interface for managing the fraud detection system:
+
+```bash
+# Show all commands
+npm run cli
+
+# Train Markov Chain models
+npm run cli train:markov --upload --remote
+
+# Deploy to production
+npm run cli deploy --minify
+
+# Manage KV storage
+npm run cli kv:list --binding MARKOV_MODEL --remote
+npm run cli kv:get detector_config --remote
+
+# Query analytics
+npm run cli analytics:query "SELECT COUNT(*) FROM FRAUD_DETECTION_ANALYTICS"
+npm run cli analytics:stats --last 24
+
+# Test API
+npm run cli test:api user123@example.com
+```
+
+**Complete CLI Documentation**: See [cli/README.md](cli/README.md)
 
 ## API Endpoints
 

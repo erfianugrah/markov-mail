@@ -169,6 +169,11 @@ dist
 cf-docs
 
 # Project-specific
-data/fraudulent-emails.json
-data/remote-test-results.json
 *.log
+
+
+# Training models and temporary files
+models/
+test-emails.json
+markov_*.json
+training*.log

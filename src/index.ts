@@ -51,23 +51,33 @@ let markovModelsLoaded = false;
 /**
  * Load Markov Chain models from KV storage
  * Models are cached globally for the lifetime of the worker instance
+ * Loads from MARKOV_MODEL namespace with simple keys (MM_legit_production, MM_fraud_production)
  */
 async function loadMarkovModels(env: Env): Promise<boolean> {
 	if (markovModelsLoaded) return true;
 
 	try {
-		const legitData = await env.CONFIG.get('markov_legit_model', 'json');
-		const fraudData = await env.CONFIG.get('markov_fraud_model', 'json');
+		// Check if MARKOV_MODEL namespace is configured
+		if (!env.MARKOV_MODEL) {
+			console.log('⚠️  MARKOV_MODEL namespace not configured');
+			return false;
+		}
+
+		// Load from MARKOV_MODEL namespace (not CONFIG)
+		const legitData = await env.MARKOV_MODEL.get('MM_legit_production', 'json');
+		const fraudData = await env.MARKOV_MODEL.get('MM_fraud_production', 'json');
 
 		if (legitData && fraudData) {
 			markovLegitModel = DynamicMarkovChain.fromJSON(legitData);
 			markovFraudModel = DynamicMarkovChain.fromJSON(fraudData);
 			markovModelsLoaded = true;
-			console.log('Markov Chain models loaded successfully');
+			console.log('✅ Markov Chain models loaded successfully from MARKOV_MODEL namespace');
 			return true;
+		} else {
+			console.log('⚠️  No production Markov models found (keys: MM_legit_production, MM_fraud_production)');
 		}
 	} catch (error) {
-		console.error('Failed to load Markov models:', error);
+		console.error('❌ Failed to load Markov models:', error);
 	}
 
 	return false;
