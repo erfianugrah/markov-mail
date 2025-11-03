@@ -13,6 +13,8 @@
 7. [Performance](#performance)
 8. [Scalability](#scalability)
 9. [Security](#security)
+10. [Automated Training Pipeline](#automated-training-pipeline)
+11. [Future Architecture](#future-architecture)
 
 ---
 
@@ -1053,6 +1055,180 @@ High Traffic:   100-1000s of instances
 - Content-Type: application/json
 - Body size: < 1KB typical
 - Rate limiting: (future with DO)
+
+---
+
+## Automated Training Pipeline
+
+### Overview
+
+The system includes a fully automated machine learning pipeline that continuously improves detection models without manual intervention.
+
+### Training Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  Automated Training Flow                         │
+└─────────────────────────────────────────────────────────────────┘
+
+1. DATA COLLECTION (Continuous)
+   ┌──────────────┐
+   │   Worker     │ → Validates emails
+   │ (Production) │ → Records to Analytics Engine
+   └──────┬───────┘    - Email local part (blob14)
+          │            - Decision (blob1)
+          │            - Risk score (double1)
+          │            - Timestamp
+          ▼
+   ┌──────────────────────┐
+   │ Analytics Engine     │ → Time-series dataset
+   │ (ANALYTICS_DATASET)  │ → 5000+ validation records
+   └──────────────────────┘
+
+2. AUTOMATED TRAINING (Every 6 hours via Cron)
+   ┌────────────────┐
+   │  Cron Trigger  │ → "0 */6 * * *"
+   │  (Scheduled)   │ → 12am, 6am, 12pm, 6pm UTC
+   └───────┬────────┘
+           │
+           ├─────► Task 1: Update disposable domains list
+           │       └─ Fetches from GitHub sources
+           │
+           └─────► Task 2: Retrain models
+                   │
+                   ▼
+   ┌────────────────────────────────┐
+   │ retrainMarkovModels()          │
+   │ (src/training/online-learning) │
+   └───────────┬────────────────────┘
+               │
+               ▼
+   ┌────────────────────────────────┐
+   │ 1. Acquire Training Lock       │ → Prevent concurrent training
+   │ 2. Fetch from Analytics (7d)   │ → Direct SQL query
+   │ 3. Filter & Label (500+ min)   │ → Heuristic labeling
+   │ 4. Security Check (Anomalies)  │ → Detect poisoning attempts
+   │ 5. Train Markov Models         │ → Character transition matrices
+   │ 6. Validate Performance        │ → Holdout test set
+   │ 7. Deploy to Production        │ → Atomic model swap
+   └────────────────────────────────┘
+
+3. DEPLOYMENT (Automated)
+   ┌─────────────────┐
+   │   KV Storage    │ → Stores trained models
+   │ (MARKOV_MODEL)  │ → MM_legit_production
+   └────────┬────────┘ → MM_fraud_production
+            │
+            ▼
+   ┌─────────────────┐
+   │  Worker Reads   │ → Loads models at startup
+   │  from KV        │ → Uses for validation
+   └─────────────────┘
+```
+
+### Training Data Flow
+
+**Direct Analytics Engine Approach** (Current):
+```
+Production Traffic
+    ↓
+Analytics Engine (real-time writes)
+    ↓
+Cron Trigger (every 6 hours)
+    ↓
+retrainMarkovModels()
+    ├─ fetchTrainingData() → SQL query
+    ├─ separateDataByLabel() → fraud vs legit
+    ├─ detectTrainingAnomalies() → security check
+    ├─ trainMarkovChain() → build models
+    ├─ validateMarkovChain() → test accuracy
+    └─ saveMarkovModel() → deploy to KV
+    ↓
+Production Models Updated
+```
+
+**Optional Manual Extraction** (CLI):
+```
+npm run cli training:extract
+    ├─ Queries Analytics Engine
+    ├─ Applies heuristic labeling
+    ├─ Saves to JSON file
+    └─ For offline analysis/testing
+```
+
+### Key Components
+
+**1. Analytics Engine Schema**:
+```typescript
+{
+  blob1:   decision (allow/warn/block)
+  blob2:   email
+  blob14:  email_local_part
+  double1: risk_score
+  double2: confidence
+  double3: bot_score
+  timestamp: validation_time
+}
+```
+
+**2. Training Requirements**:
+- Minimum 500 samples (total)
+- Last 7 days of data
+- High confidence validations (>80%)
+- Balanced fraud/legit distribution
+
+**3. Security Measures**:
+- Training lock (prevents concurrent runs)
+- Anomaly detection (data poisoning protection)
+- Volume spike detection
+- Distribution shift detection
+- Entropy scoring
+
+**4. Model Storage**:
+```
+KV Namespace: MARKOV_MODEL
+Keys:
+  - MM_legit_production  → Legitimate email model
+  - MM_fraud_production  → Fraudulent email model
+  - markov_metadata      → Model version & stats
+  - markov_training_history → Training logs
+```
+
+### CLI Commands
+
+**Test Cron Locally**:
+```bash
+npm run cli test:cron
+# Triggers scheduled handler
+# Tests full training pipeline
+```
+
+**Extract Training Data** (Optional):
+```bash
+npm run cli training:extract --days 7
+# Saves to JSON: training_data_YYYY-MM-DD.json
+# For offline analysis only
+```
+
+**Manual Training** (Development):
+```bash
+npm run cli train:markov --dataset ./data.csv
+# For testing with custom datasets
+```
+
+### Monitoring
+
+**Training Metrics Logged**:
+- Sample counts (fraud/legit)
+- Training duration
+- Model accuracy
+- Anomaly scores
+- Deployment status
+
+**Check Training History**:
+```bash
+npm run cli kv:get markov_training_history --binding CONFIG
+```
 
 ---
 

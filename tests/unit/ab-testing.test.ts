@@ -119,6 +119,16 @@ describe('A/B Testing Framework', () => {
 					block: 0.6,
 					warn: 0.3,
 				},
+				baseRiskScores: {
+					invalidFormat: 0.8,
+					disposableDomain: 0.95,
+					highEntropy: 0.7,
+				},
+				confidenceThresholds: {
+					markovFraud: 0.7,
+					markovRisk: 0.6,
+					patternRisk: 0.5,
+				},
 				riskWeights: {
 					entropy: 0.05,
 					domainReputation: 0.15,
@@ -207,6 +217,16 @@ describe('A/B Testing Framework', () => {
 				riskThresholds: {
 					block: 0.6,
 					warn: 0.3,
+				},
+				baseRiskScores: {
+					invalidFormat: 0.8,
+					disposableDomain: 0.95,
+					highEntropy: 0.7,
+				},
+				confidenceThresholds: {
+					markovFraud: 0.7,
+					markovRisk: 0.6,
+					patternRisk: 0.5,
 				},
 				riskWeights: {
 					entropy: 0.05,

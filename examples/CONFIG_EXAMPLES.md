@@ -183,6 +183,16 @@ All configurations must include these fields:
     "block": 0.6,    // Must be > warn (0-1)
     "warn": 0.3      // Must be < block (0-1)
   },
+  "baseRiskScores": {
+    "invalidFormat": 0.8,      // Risk score for invalid email format
+    "disposableDomain": 0.95,  // Risk score for disposable domains
+    "highEntropy": 0.7         // Entropy threshold for high randomness
+  },
+  "confidenceThresholds": {
+    "markovFraud": 0.7,  // Markov must be 70%+ confident to flag fraud
+    "markovRisk": 0.6,   // Markov risk contribution threshold
+    "patternRisk": 0.5   // Pattern detection risk threshold
+  },
   "features": {
     "enableMxCheck": false,
     "enableDisposableCheck": true,
@@ -190,7 +200,8 @@ All configurations must include these fields:
     "enableNGramAnalysis": true,
     "enableTLDRiskProfiling": true,
     "enableBenfordsLaw": true,
-    "enableKeyboardWalkDetection": true
+    "enableKeyboardWalkDetection": true,
+    "enableMarkovChainDetection": true
   },
   "logging": {
     "logAllValidations": true,
@@ -204,10 +215,11 @@ All configurations must include these fields:
   },
   "actionOverride": "allow",  // "allow" | "warn" | "block"
   "riskWeights": {
-    "entropy": 0.2,           // Must sum to 1.0
-    "domainReputation": 0.1,
-    "tldRisk": 0.1,
-    "patternDetection": 0.6
+    "entropy": 0.05,          // Must sum to 1.0
+    "domainReputation": 0.15,
+    "tldRisk": 0.15,
+    "patternDetection": 0.30,
+    "markovChain": 0.35
   },
   "patternThresholds": {
     "sequential": 0.8,        // All 0-1
@@ -222,7 +234,12 @@ All configurations must include these fields:
     "maxValidationsPerHour": 1000
   },
   "admin": {
-    "enabled": true
+    "enabled": false
+  },
+  "markov": {
+    "adaptationRate": 0.5,
+    "minTrainingExamples": 100,
+    "retrainIntervalDays": 7
   }
 }
 ```
@@ -231,9 +248,12 @@ All configurations must include these fields:
 
 1. **riskThresholds.warn** must be less than **riskThresholds.block**
 2. **riskWeights** must sum to exactly **1.0** (±0.01 tolerance)
+   - Must include all 5 weights: `entropy`, `domainReputation`, `tldRisk`, `patternDetection`, `markovChain`
 3. All threshold values must be between **0 and 1**
 4. **actionOverride** must be one of: `"allow"`, `"warn"`, `"block"`
 5. **logLevel** must be one of: `"debug"`, `"info"`, `"warn"`, `"error"`
+6. **baseRiskScores** values must be between **0 and 1**
+7. **confidenceThresholds** values must be between **0 and 1**
 
 ---
 
@@ -254,8 +274,8 @@ All configurations must include these fields:
 ### "riskWeights must sum to 1.0"
 Ensure your weights add up exactly:
 ```javascript
-0.2 + 0.1 + 0.1 + 0.6 = 1.0  ✅
-0.2 + 0.1 + 0.1 + 0.5 = 0.9  ❌
+0.05 + 0.15 + 0.15 + 0.30 + 0.35 = 1.00  ✅
+0.05 + 0.15 + 0.15 + 0.30 + 0.30 = 0.95  ❌
 ```
 
 ### "riskThresholds.warn must be less than riskThresholds.block"

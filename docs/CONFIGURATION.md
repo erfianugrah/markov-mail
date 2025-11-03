@@ -34,6 +34,20 @@ Higher priority values override lower priority ones.
     warn: 0.3    // Warn if risk > 0.3
   },
 
+  // Base Risk Scores (configurable overrides for specific conditions)
+  baseRiskScores: {
+    invalidFormat: 0.8,      // Risk score for invalid email format
+    disposableDomain: 0.95,  // Risk score for disposable domains
+    highEntropy: 0.7         // Entropy threshold for high randomness
+  },
+
+  // Detection Confidence Thresholds
+  confidenceThresholds: {
+    markovFraud: 0.7,  // Markov must be 70%+ confident to flag fraud
+    markovRisk: 0.6,   // Markov risk contribution threshold
+    patternRisk: 0.5   // Pattern detection risk threshold
+  },
+
   // Feature Toggles
   features: {
     enableMxCheck: false,
@@ -42,7 +56,8 @@ Higher priority values override lower priority ones.
     enableNGramAnalysis: true,
     enableTLDRiskProfiling: true,
     enableBenfordsLaw: true,
-    enableKeyboardWalkDetection: true
+    enableKeyboardWalkDetection: true,
+    enableMarkovChainDetection: true  // Phase 7 feature
   },
 
   // Logging Configuration
@@ -64,10 +79,11 @@ Higher priority values override lower priority ones.
 
   // Risk Scoring Weights (must sum to 1.0)
   riskWeights: {
-    entropy: 0.20,
-    domainReputation: 0.10,
-    tldRisk: 0.10,
-    patternDetection: 0.50
+    entropy: 0.05,
+    domainReputation: 0.15,
+    tldRisk: 0.15,
+    patternDetection: 0.30,
+    markovChain: 0.35  // Phase 7 feature (highest weight for 90% accuracy)
   },
 
   // Pattern Detection Thresholds
@@ -89,6 +105,13 @@ Higher priority values override lower priority ones.
   // Admin API
   admin: {
     enabled: false  // Auto-enabled when ADMIN_API_KEY is set
+  },
+
+  // Markov Chain Configuration (Phase 7)
+  markov: {
+    adaptationRate: 0.5,         // Training adaptation rate (0-1)
+    minTrainingExamples: 100,    // Minimum examples to train
+    retrainIntervalDays: 7       // Days between retraining
   }
 }
 ```
@@ -313,17 +336,37 @@ This focuses only on pattern-based detection, disabling domain checks.
 ```json
 {
   "riskWeights": {
-    "entropy": 0.10,
+    "entropy": 0.05,
     "domainReputation": 0.20,
     "tldRisk": 0.20,
-    "patternDetection": 0.50
+    "patternDetection": 0.25,
+    "markovChain": 0.30
   }
 }
 ```
 
-This emphasizes domain/TLD reputation over entropy.
+This emphasizes domain/TLD reputation over pattern detection.
 
-### Example 4: Minimal Logging
+### Example 4: Custom Detection Thresholds
+
+```json
+{
+  "baseRiskScores": {
+    "invalidFormat": 0.9,
+    "disposableDomain": 1.0,
+    "highEntropy": 0.8
+  },
+  "confidenceThresholds": {
+    "markovFraud": 0.8,
+    "markovRisk": 0.7,
+    "patternRisk": 0.6
+  }
+}
+```
+
+This makes the system more sensitive by requiring higher confidence before flagging fraud.
+
+### Example 5: Minimal Logging
 
 ```json
 {
@@ -407,10 +450,10 @@ The `ORIGIN_URL` secret (if used for request forwarding):
 ### Issue: Validation fails with "riskWeights must sum to 1.0"
 
 **Solution:**
-- Ensure all four weights are provided
-- Verify they sum to 1.0: `entropy + domainReputation + tldRisk + patternDetection = 1.0`
-- Use: `0.20 + 0.10 + 0.10 + 0.50 = 0.90` ❌
-- Use: `0.20 + 0.10 + 0.10 + 0.60 = 1.00` ✅
+- Ensure all five weights are provided
+- Verify they sum to 1.0: `entropy + domainReputation + tldRisk + patternDetection + markovChain = 1.0`
+- Use: `0.05 + 0.15 + 0.15 + 0.30 + 0.30 = 0.95` ❌
+- Use: `0.05 + 0.15 + 0.15 + 0.30 + 0.35 = 1.00` ✅
 
 ### Issue: "Property 'CONFIG' does not exist on type 'Env'"
 

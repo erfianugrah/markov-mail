@@ -18,7 +18,6 @@ export async function extractTrainingData(args: string[]) {
 			days: { type: 'string', default: '1' },
 			'min-confidence': { type: 'string', default: '0.8' },
 			'min-samples': { type: 'string', default: '100' },
-			output: { type: 'string', default: 'kv' }, // 'kv' or 'json'
 			remote: { type: 'boolean', default: false },
 			help: { type: 'boolean', short: 'h' },
 		},
@@ -31,8 +30,11 @@ export async function extractTrainingData(args: string[]) {
 ║        Extract Training Data from Analytics            ║
 ╚════════════════════════════════════════════════════════╝
 
+[OPTIONAL] Manual extraction for offline analysis and testing.
+Automated training fetches directly from Analytics Engine.
+
 Extracts validation results from Analytics Engine and applies
-heuristic labeling to create training datasets for model retraining.
+heuristic labeling to create training datasets saved as JSON files.
 
 USAGE
   npm run cli training:extract [options]
@@ -41,7 +43,6 @@ OPTIONS
   --days <n>              Days of data to extract (default: 1)
   --min-confidence <n>    Minimum confidence threshold (default: 0.8)
   --min-samples <n>       Minimum samples per class (default: 100)
-  --output <type>         Output format: kv|json (default: kv)
   --remote                Use production Analytics Engine
   --help, -h              Show this help message
 
@@ -52,11 +53,8 @@ EXAMPLES
   # Extract last 7 days with 90% confidence threshold
   npm run cli training:extract --days 7 --min-confidence 0.9
 
-  # Extract from production and save to KV
+  # Extract from production
   npm run cli training:extract --days 1 --remote
-
-  # Extract and save to JSON file
-  npm run cli training:extract --output json
 `);
 		return;
 	}
@@ -65,7 +63,6 @@ EXAMPLES
 		days: parseInt(values.days as string, 10),
 		minConfidence: parseFloat(values['min-confidence'] as string),
 		minSamples: parseInt(values['min-samples'] as string, 10),
-		output: values.output as string,
 		remote: values.remote,
 	};
 
@@ -153,13 +150,9 @@ EXAMPLES
 			},
 		};
 
-		// Step 5: Save dataset
-		console.log('\\n💾 Step 5: Saving dataset...');
-		if (options.output === 'kv') {
-			await saveToKV(dataset, options.remote);
-		} else {
-			await saveToJSON(dataset);
-		}
+		// Step 5: Save dataset as JSON
+		console.log('\\n💾 Step 5: Saving dataset to JSON file...');
+		await saveToJSON(dataset);
 
 		// Summary
 		console.log('\\n✅ Training Data Extraction Complete!');
@@ -200,7 +193,7 @@ async function queryAnalytics(days: number, remote: boolean): Promise<Validation
 			double6 as markov_confidence,
 			double3 as bot_score,
 			timestamp
-		FROM FRAUD_DETECTION_ANALYTICS
+		FROM ANALYTICS_DATASET
 		WHERE timestamp >= NOW() - INTERVAL '${days * 24}' HOUR
 			AND decision IN ('block', 'allow', 'warn')
 			AND blob2 IS NOT NULL
@@ -279,26 +272,6 @@ function convertToTrainingSamples(
 	});
 
 	return { legit, fraud };
-}
-
-/**
- * Save dataset to KV
- */
-async function saveToKV(dataset: TrainingDataset, remote: boolean) {
-	const key = `training_data_${dataset.date}`;
-	const value = JSON.stringify(dataset, null, 2);
-
-	// Save to temp file
-	const tempFile = `/tmp/training_data_${dataset.date}.json`;
-	await Bun.write(tempFile, value);
-
-	// Upload to KV
-	const remoteFlag = remote ? '--remote' : '';
-	const command = `npx wrangler kv key put "${key}" --path="${tempFile}" --binding=CONFIG ${remoteFlag}`;
-
-	execSync(command, { stdio: 'inherit' });
-
-	console.log(`✓ Saved to KV: ${key}`);
 }
 
 /**

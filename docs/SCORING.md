@@ -162,47 +162,144 @@ A domain can be BOTH (e.g., `user@tempmail.tk`), so we **add** both risks.
 
 ## Special Cases
 
+### Base Risk Scores (Configurable)
+
+The system uses configurable base risk scores for common fraud signals:
+
+```typescript
+baseRiskScores: {
+  invalidFormat: 0.8,      // Invalid email format
+  disposableDomain: 0.95,  // Known disposable domains
+  highEntropy: 0.7         // Entropy threshold for randomness
+}
+```
+
 ### 1. Invalid Email Format
 
 ```typescript
 if (!formatValid) {
-  riskScore = 0.8;
+  riskScore = config.baseRiskScores.invalidFormat;  // Default: 0.8
   blockReason = 'invalid_format';
 }
 ```
 
-**Rationale**: Invalid format is strong fraud signal (80% risk), but not 100% because some users genuinely make typos.
+**Rationale**:
+- Invalid format is strong fraud signal (80% risk default)
+- Not 100% because some users genuinely make typos
+- **Configurable**: Increase to 0.9 for stricter validation, decrease to 0.7 for lenient
 
 ### 2. Disposable Domain
 
 ```typescript
 if (isDisposableDomain) {
-  riskScore = 0.95;
+  riskScore = config.baseRiskScores.disposableDomain;  // Default: 0.95
   blockReason = 'disposable_domain';
 }
 ```
 
-**Rationale**: Known disposable domains (from 71,751-domain list) are almost always fraud (95% confidence). Bypasses normal scoring to ensure these are blocked.
+**Rationale**:
+- Known disposable domains (from 71,751-domain list) are almost always fraud
+- Default 95% confidence based on historical data
+- **Configurable**: Set to 1.0 for zero-tolerance, 0.85 for more lenient
+- Bypasses normal scoring to ensure these are caught
 
-### 3. High Entropy (Legacy)
+### 3. High Entropy
 
 ```typescript
-if (entropyScore > 0.7) {
+if (entropyScore > config.baseRiskScores.highEntropy) {  // Default: 0.7
   riskScore = entropyScore;  // 0.7 - 1.0
   blockReason = 'high_entropy';
 }
 ```
 
-**Rationale**: Extreme randomness (>70% entropy) is strong fraud signal. This is a fast-path check before running all detectors.
+**Rationale**:
+- Extreme randomness (>70% entropy default) is strong fraud signal
+- Fast-path check before running expensive detectors
+- **Configurable**: Increase to 0.8 to reduce false positives on random but legitimate usernames
 
 ### Priority Order
 
 ```typescript
-// Checks happen in this order:
-1. Invalid format (0.8)          ← Fast rejection
-2. Disposable domain (0.95)      ← Fast rejection
-3. High entropy (0.7+)           ← Fast rejection
-4. Normal scoring (0.0 - 1.0)    ← Full analysis
+// Checks happen in this order (all use configurable baseRiskScores):
+1. Invalid format (0.8 default)          ← Fast rejection
+2. Disposable domain (0.95 default)      ← Fast rejection
+3. High entropy (0.7+ default)           ← Fast rejection
+4. Normal scoring (0.0 - 1.0)            ← Full analysis
+```
+
+---
+
+## Confidence Thresholds
+
+### Detector Confidence Requirements
+
+Before detectors contribute to the risk score, they must meet minimum confidence thresholds:
+
+```typescript
+confidenceThresholds: {
+  markovFraud: 0.7,  // Markov must be 70%+ confident to flag as fraud
+  markovRisk: 0.6,   // Markov risk contribution threshold
+  patternRisk: 0.5   // Pattern detection risk threshold
+}
+```
+
+### Why Confidence Thresholds?
+
+**Problem**: Detectors can have low-confidence false positives:
+```
+Email: john@example.com
+
+Pattern Detector: 0.45 confidence (borderline)
+Markov Chain: 0.55 confidence (uncertain)
+
+Without thresholds:
+  patternRisk = 0.45 * 0.30 = 0.135
+  markovRisk = 0.55 * 0.35 = 0.193
+  Total = 0.328 → WARN (false positive!)
+```
+
+**Solution**: Only count high-confidence detections:
+```
+With thresholds (pattern: 0.5, markov: 0.6):
+  patternRisk = 0 (confidence 0.45 < 0.5 threshold)
+  markovRisk = 0 (confidence 0.55 < 0.6 threshold)
+  Total = 0.04 → ALLOW (correct!)
+```
+
+### Threshold Rationale
+
+#### markovFraud (0.7)
+- **Purpose**: Markov must be highly confident before flagging as fraudulent
+- **Why 70%**: Balances detection rate (90%) with false positives (<1%)
+- **Tuning**: Increase to 0.8 for fewer false positives, decrease to 0.6 for higher detection
+
+#### markovRisk (0.6)
+- **Purpose**: Minimum confidence for Markov to contribute to risk score
+- **Why 60%**: Allows Markov input without overwhelming other signals
+- **Tuning**: Should be lower than markovFraud to allow gradual risk contribution
+
+#### patternRisk (0.5)
+- **Purpose**: Minimum confidence for pattern detectors to contribute
+- **Why 50%**: Pattern detectors are rule-based, need clear matches
+- **Tuning**: Increase to 0.6 for stricter patterns, decrease to 0.4 for more sensitive
+
+### Example: Confidence Filtering
+
+```typescript
+// Markov detection
+if (markovResult.isLikelyFraudulent &&
+    markovResult.confidence > config.confidenceThresholds.markovFraud) {
+  markovRiskScore = markovResult.confidence;  // Only if confident enough
+} else {
+  markovRiskScore = 0;  // Ignore low-confidence detections
+}
+
+// Pattern detection
+if (patternScore > config.confidenceThresholds.patternRisk) {
+  // Use pattern score
+} else {
+  // Ignore weak pattern matches
+}
 ```
 
 ---
@@ -555,6 +652,101 @@ curl -X PUT https://fraud.erfi.dev/admin/config \
 # Verify configuration
 curl https://fraud.erfi.dev/admin/config \
   -H "X-API-Key: $ADMIN_API_KEY"
+```
+
+---
+
+## Configuration Summary
+
+### All Configurable Thresholds
+
+```typescript
+{
+  // Risk Thresholds (decision boundaries)
+  riskThresholds: {
+    block: 0.6,  // Block if risk >= 60%
+    warn: 0.3    // Warn if risk >= 30%
+  },
+
+  // Base Risk Scores (special case overrides)
+  baseRiskScores: {
+    invalidFormat: 0.8,      // Invalid email format → 80% risk
+    disposableDomain: 0.95,  // Known disposable → 95% risk
+    highEntropy: 0.7         // Entropy threshold (>70% triggers)
+  },
+
+  // Confidence Thresholds (detector requirements)
+  confidenceThresholds: {
+    markovFraud: 0.7,  // Markov needs 70%+ confidence to flag fraud
+    markovRisk: 0.6,   // Markov needs 60%+ to contribute to score
+    patternRisk: 0.5   // Patterns need 50%+ to contribute
+  },
+
+  // Risk Weights (detector importance)
+  riskWeights: {
+    entropy: 0.05,            // 5% weight
+    domainReputation: 0.15,   // 15% weight
+    tldRisk: 0.15,            // 15% weight
+    patternDetection: 0.30,   // 30% weight
+    markovChain: 0.35         // 35% weight (highest)
+  },
+
+  // Pattern Detection Thresholds (per-pattern sensitivity)
+  patternThresholds: {
+    sequential: 0.8,      // user123 patterns
+    dated: 0.7,           // user2024 patterns
+    plusAddressing: 0.6,  // user+tag patterns
+    keyboardWalk: 0.8,    // qwerty patterns
+    gibberish: 0.9        // random strings
+  }
+}
+```
+
+### Quick Reference: When to Adjust
+
+| Threshold | Increase When | Decrease When |
+|-----------|---------------|---------------|
+| **riskThresholds.block** | Too many legit users blocked | Missing too much fraud |
+| **riskThresholds.warn** | Too many warnings | Not enough review flagging |
+| **baseRiskScores.invalidFormat** | Typos are common | Want stricter format checks |
+| **baseRiskScores.disposableDomain** | Need zero-tolerance | Some disposable OK |
+| **baseRiskScores.highEntropy** | Random usernames common | Want to catch more gibberish |
+| **confidenceThresholds.markovFraud** | Too many Markov false positives | Missing Markov detections |
+| **confidenceThresholds.markovRisk** | Markov overwhelming other signals | Markov not contributing enough |
+| **confidenceThresholds.patternRisk** | Too many pattern false positives | Missing pattern detections |
+| **riskWeights.markovChain** | Markov models well-trained | Markov causing false positives |
+| **riskWeights.patternDetection** | Sophisticated rule-based attacks | Pattern false positives high |
+| **riskWeights.domainReputation** | Disposable domain attacks | Domain checks too aggressive |
+| **riskWeights.tldRisk** | Free TLD abuse increasing | TLD blocking legit users |
+| **riskWeights.entropy** | Need randomness baseline | Entropy causing false positives |
+
+### Recommended Profiles
+
+**Production Default** (balanced):
+```json
+{
+  "riskThresholds": { "block": 0.6, "warn": 0.3 },
+  "baseRiskScores": { "invalidFormat": 0.8, "disposableDomain": 0.95, "highEntropy": 0.7 },
+  "confidenceThresholds": { "markovFraud": 0.7, "markovRisk": 0.6, "patternRisk": 0.5 }
+}
+```
+
+**High Security** (financial services):
+```json
+{
+  "riskThresholds": { "block": 0.5, "warn": 0.25 },
+  "baseRiskScores": { "invalidFormat": 0.9, "disposableDomain": 1.0, "highEntropy": 0.8 },
+  "confidenceThresholds": { "markovFraud": 0.6, "markovRisk": 0.5, "patternRisk": 0.4 }
+}
+```
+
+**User Friendly** (consumer apps):
+```json
+{
+  "riskThresholds": { "block": 0.8, "warn": 0.5 },
+  "baseRiskScores": { "invalidFormat": 0.7, "disposableDomain": 0.85, "highEntropy": 0.6 },
+  "confidenceThresholds": { "markovFraud": 0.8, "markovRisk": 0.7, "patternRisk": 0.6 }
+}
 ```
 
 ---

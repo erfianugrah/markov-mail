@@ -235,16 +235,16 @@ npm run cli kv:delete old_config --binding CONFIG --remote
 
 ```bash
 # Simple count query
-npm run cli analytics:query "SELECT COUNT(*) FROM FRAUD_DETECTION_ANALYTICS"
+npm run cli analytics:query "SELECT COUNT(*) FROM ANALYTICS_DATASET"
 
 # Group by decision
-npm run cli analytics:query "SELECT decision, COUNT(*) as count FROM FRAUD_DETECTION_ANALYTICS WHERE timestamp >= NOW() - INTERVAL '24' HOUR GROUP BY decision"
+npm run cli analytics:query "SELECT decision, COUNT(*) as count FROM ANALYTICS_DATASET WHERE timestamp >= NOW() - INTERVAL '24' HOUR GROUP BY decision"
 
 # Format as table
-npm run cli analytics:query "SELECT * FROM FRAUD_DETECTION_ANALYTICS LIMIT 10" --format table
+npm run cli analytics:query "SELECT * FROM ANALYTICS_DATASET LIMIT 10" --format table
 
 # Save to file
-npm run cli analytics:query "SELECT * FROM FRAUD_DETECTION_ANALYTICS" --format json > results.json
+npm run cli analytics:query "SELECT * FROM ANALYTICS_DATASET" --format json > results.json
 ```
 
 **Options:**
@@ -560,7 +560,7 @@ npm run cli kv:put MM_legit_production --file models/legit.json --binding MARKOV
 npm run cli deploy:status
 
 # 2. Query analytics for errors
-npm run cli analytics:query "SELECT decision, COUNT(*) FROM FRAUD_DETECTION_ANALYTICS WHERE timestamp >= NOW() - INTERVAL '1' HOUR GROUP BY decision"
+npm run cli analytics:query "SELECT decision, COUNT(*) FROM ANALYTICS_DATASET WHERE timestamp >= NOW() - INTERVAL '1' HOUR GROUP BY decision"
 
 # 3. Check current configuration
 npm run cli config:list --remote
@@ -653,7 +653,7 @@ npm run cli training:validate --version latest
 npm run cli analytics:stats --last 24
 
 # Weekly summary
-npm run cli analytics:query "SELECT DATE(timestamp) as date, decision, COUNT(*) as count FROM FRAUD_DETECTION_ANALYTICS WHERE timestamp >= NOW() - INTERVAL '7' DAY GROUP BY date, decision"
+npm run cli analytics:query "SELECT DATE(timestamp) as date, decision, COUNT(*) as count FROM ANALYTICS_DATASET WHERE timestamp >= NOW() - INTERVAL '7' DAY GROUP BY date, decision"
 ```
 
 ### 5. Backup Before Changes

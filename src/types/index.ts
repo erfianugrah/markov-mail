@@ -58,3 +58,12 @@ export interface Fingerprint {
   botScore?: number;
   deviceType?: string;
 }
+
+// Fraud detection result stored in context by middleware
+export interface FraudDetectionResult {
+  decision: 'allow' | 'warn' | 'block';
+  riskScore: number;
+  blockReason: string;
+  valid: boolean;
+  signals: ValidationSignals;
+}

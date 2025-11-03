@@ -162,7 +162,7 @@ npm run cli test:multilang
 npm run cli kv:list --binding MARKOV_MODEL --remote
 
 # Query analytics
-npm run cli analytics:query "SELECT COUNT(*) FROM FRAUD_DETECTION_ANALYTICS"
+npm run cli analytics:query "SELECT COUNT(*) FROM ANALYTICS_DATASET"
 npm run cli analytics:stats --last 24
 
 # Test API
