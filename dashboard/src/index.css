@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
-@theme {
+* {
+  border-color: hsl(var(--color-border));
+}
+
+:root {
   --color-background: 0 0% 100%;
   --color-foreground: 222.2 84% 4.9%;
   --color-card: 0 0% 100%;
@@ -28,62 +32,35 @@
   --color-chart-5: 27 87% 67%;
 }
 
-@media (prefers-color-scheme: dark) {
-  @theme {
-    --color-background: 222.2 84% 4.9%;
-    --color-foreground: 210 40% 98%;
-    --color-card: 222.2 84% 4.9%;
-    --color-card-foreground: 210 40% 98%;
-    --color-popover: 222.2 84% 4.9%;
-    --color-popover-foreground: 210 40% 98%;
-    --color-primary: 210 40% 98%;
-    --color-primary-foreground: 222.2 47.4% 11.2%;
-    --color-secondary: 217.2 32.6% 17.5%;
-    --color-secondary-foreground: 210 40% 98%;
-    --color-muted: 217.2 32.6% 17.5%;
-    --color-muted-foreground: 215 20.2% 65.1%;
-    --color-accent: 217.2 32.6% 17.5%;
-    --color-accent-foreground: 210 40% 98%;
-    --color-destructive: 0 62.8% 30.6%;
-    --color-destructive-foreground: 210 40% 98%;
-    --color-border: 217.2 32.6% 35%;
-    --color-input: 217.2 32.6% 35%;
-    --color-ring: 212.7 26.8% 83.9%;
-    --color-chart-1: 220 70% 50%;
-    --color-chart-2: 160 60% 45%;
-    --color-chart-3: 30 80% 55%;
-    --color-chart-4: 280 65% 60%;
-    --color-chart-5: 340 75% 55%;
-  }
+.dark {
+  --color-background: 222.2 84% 4.9%;
+  --color-foreground: 210 40% 98%;
+  --color-card: 222.2 84% 4.9%;
+  --color-card-foreground: 210 40% 98%;
+  --color-popover: 222.2 84% 4.9%;
+  --color-popover-foreground: 210 40% 98%;
+  --color-primary: 210 40% 98%;
+  --color-primary-foreground: 222.2 47.4% 11.2%;
+  --color-secondary: 217.2 32.6% 17.5%;
+  --color-secondary-foreground: 210 40% 98%;
+  --color-muted: 217.2 32.6% 17.5%;
+  --color-muted-foreground: 215 20.2% 65.1%;
+  --color-accent: 217.2 32.6% 17.5%;
+  --color-accent-foreground: 210 40% 98%;
+  --color-destructive: 0 62.8% 30.6%;
+  --color-destructive-foreground: 210 40% 98%;
+  --color-border: 217.2 32.6% 35%;
+  --color-input: 217.2 32.6% 35%;
+  --color-ring: 212.7 26.8% 83.9%;
+  --color-chart-1: 220 70% 65%;
+  --color-chart-2: 160 60% 60%;
+  --color-chart-3: 30 80% 65%;
+  --color-chart-4: 280 65% 70%;
+  --color-chart-5: 340 75% 65%;
 }
 
-.dark {
-  @theme {
-    --color-background: 222.2 84% 4.9%;
-    --color-foreground: 210 40% 98%;
-    --color-card: 222.2 84% 4.9%;
-    --color-card-foreground: 210 40% 98%;
-    --color-popover: 222.2 84% 4.9%;
-    --color-popover-foreground: 210 40% 98%;
-    --color-primary: 210 40% 98%;
-    --color-primary-foreground: 222.2 47.4% 11.2%;
-    --color-secondary: 217.2 32.6% 17.5%;
-    --color-secondary-foreground: 210 40% 98%;
-    --color-muted: 217.2 32.6% 17.5%;
-    --color-muted-foreground: 215 20.2% 65.1%;
-    --color-accent: 217.2 32.6% 17.5%;
-    --color-accent-foreground: 210 40% 98%;
-    --color-destructive: 0 62.8% 30.6%;
-    --color-destructive-foreground: 210 40% 98%;
-    --color-border: 217.2 32.6% 35%;
-    --color-input: 217.2 32.6% 35%;
-    --color-ring: 212.7 26.8% 83.9%;
-    --color-chart-1: 220 70% 50%;
-    --color-chart-2: 160 60% 45%;
-    --color-chart-3: 30 80% 55%;
-    --color-chart-4: 280 65% 60%;
-    --color-chart-5: 340 75% 55%;
-  }
+html {
+  background-color: hsl(var(--color-background));
 }
 
 body {
@@ -96,4 +73,80 @@ body {
 
 #root {
   min-height: 100vh;
+  background-color: hsl(var(--color-background));
+}
+
+/* Ensure chart text is visible in both modes */
+.recharts-text {
+  fill: hsl(var(--color-foreground)) !important;
+}
+
+.recharts-cartesian-axis-tick-value {
+  fill: hsl(var(--color-muted-foreground)) !important;
+}
+
+.recharts-legend-item-text {
+  color: hsl(var(--color-foreground)) !important;
+}
+
+/* Fix bar chart colors in dark mode */
+.recharts-bar-rectangle path,
+.recharts-rectangle {
+  opacity: 1 !important;
+}
+
+/* Ensure bars inherit their fill colors properly */
+.recharts-layer.recharts-bar path {
+  stroke: none !important;
+}
+
+/* Fix grid lines in dark mode */
+.stroke-muted {
+  stroke: hsl(var(--color-border)) !important;
+  opacity: 0.5;
+}
+
+/* Ensure dropdowns have solid backgrounds and proper z-index */
+[data-radix-popper-content-wrapper] {
+  z-index: 99999 !important;
+}
+
+/* Ensure popover/dropdown backgrounds are always solid */
+[role="menu"],
+[role="listbox"] {
+  background-color: hsl(var(--color-popover)) !important;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.2) !important;
+}
+
+/* Smooth fullscreen transitions */
+.chart-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background-color: hsl(var(--color-card));
+}
+
+.chart-fullscreen {
+  animation: fadeIn 0.2s ease-in-out;
+  background-color: hsl(var(--color-card)) !important;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Fullscreen backdrop */
+.fullscreen-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background-color: rgb(0 0 0 / 0.7);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-in-out;
 }

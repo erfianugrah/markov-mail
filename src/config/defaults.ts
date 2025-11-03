@@ -60,13 +60,16 @@ export interface FraudDetectionConfig {
 	// Action Override
 	actionOverride: 'allow' | 'warn' | 'block'; // Override decision logic
 
-	// Risk Scoring Weights (must sum to 1.0)
+	// Risk Scoring Weights (DEPRECATED in v2.0+)
+	// These are kept for backwards compatibility but NOT used in scoring
+	// v2.0+ uses pure algorithmic scoring (Markov confidence directly)
+	// See docs/SCORING.md for current approach
 	riskWeights: {
-		entropy: number; // 0-1
-		domainReputation: number; // 0-1
-		tldRisk: number; // 0-1
-		patternDetection: number; // 0-1
-		markovChain: number; // 0-1 (Phase 7)
+		entropy: number; // DEPRECATED - Not used
+		domainReputation: number; // DEPRECATED - Now fixed at 0.2
+		tldRisk: number; // DEPRECATED - Now fixed at 0.1
+		patternDetection: number; // DEPRECATED - Not used
+		markovChain: number; // DEPRECATED - Confidence used directly
 	};
 
 	// Pattern Detection Thresholds
@@ -153,20 +156,20 @@ export const DEFAULT_CONFIG: FraudDetectionConfig = {
 	// No action override by default
 	actionOverride: 'allow',
 
-	// Risk weights optimized for max-based scoring (Quick Win #2) and expanded TLD database (Quick Win #3)
-	// Analysis showed:
-	// - Domain signals (domain + TLD) are independent → additive scoring
-	// - Local part signals (entropy + pattern + markov) overlap → max scoring
-	// - Weights rebalanced to account for this new logic
-	// - TLD weight increased: 154 TLDs (was 40), better coverage
-	// - Markov weight increased: 90% accuracy, most reliable detector
-	// Bergholz et al. (2008): DMC features alone achieved 97.95% F-measure
+	// Risk weights (DEPRECATED in v2.0+, kept for backwards compatibility only)
+	// v2.0+ uses pure algorithmic scoring - Markov confidence directly, no multiplication
+	// These values are ignored in current scoring logic
+	// See calculateAlgorithmicRiskScore() in fraud-detection.ts for actual implementation
+	// Current approach:
+	// - Primary: Markov confidence (0-1) used directly
+	// - Secondary: Pattern overrides (keyboard: 0.9, sequential: 0.8, dated: 0.7)
+	// - Tertiary: Domain signals (reputation * 0.2 + TLD * 0.1)
 	riskWeights: {
-		entropy: 0.05, // 5% - minimal weight, serves as floor for random strings
-		domainReputation: 0.15, // 15% - always contributes, reliable signal
-		tldRisk: 0.15, // 15% - expanded database (154 TLDs), improved from 10%
-		patternDetection: 0.30, // 30% - high accuracy (94% avg), reduced from 40%
-		markovChain: 0.35, // 35% - highest weight for 90% accuracy, increased from 25%
+		entropy: 0.05, // DEPRECATED - Not used in v2.0+
+		domainReputation: 0.10, // DEPRECATED - Now fixed at 0.2
+		tldRisk: 0.10, // DEPRECATED - Now fixed at 0.1
+		patternDetection: 0.50, // DEPRECATED - Pattern overrides used instead
+		markovChain: 0.25, // DEPRECATED - Confidence used directly (no multiplication)
 	},
 
 	// Pattern confidence thresholds

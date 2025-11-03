@@ -2,6 +2,31 @@
  * Pattern Detectors Index
  *
  * Central export point for all email pattern detection modules.
+ *
+ * ⚠️  SCORING STRATEGY UPDATE (2025-01-03):
+ * The fraud detection system now uses a simplified algorithmic approach:
+ *
+ * PRIMARY SCORING:
+ * - Markov Chain cross-entropy (NGramMarkovChain) - Use confidence directly
+ *
+ * SECONDARY OVERRIDES:
+ * - Keyboard Walk detection - Override to 0.9
+ * - Sequential patterns - Override to 0.8
+ * - Dated patterns - Override to 0.7
+ *
+ * DOMAIN SIGNALS (additive):
+ * - Disposable domains - Base risk 0.95
+ * - Domain reputation - Add +0.2
+ * - TLD risk - Add +0.1
+ *
+ * DEPRECATED FOR SCORING (kept for metrics/logging only):
+ * - getPatternRiskScore() - Hardcoded rules misclassify legitimate names
+ * - getNGramRiskScore() - Returns low values despite high gibberish confidence
+ * - Entropy scoring - Cannot distinguish legit from fraud (both ~0.47)
+ * - Plus addressing risk - Not seeing significant abuse
+ *
+ * These deprecated detectors are still exported for backwards compatibility
+ * and observability, but should NOT be used in risk score calculations.
  */
 
 // Sequential pattern detection

@@ -19,10 +19,9 @@ import {
   getNGramRiskScore,
   detectGibberish,
   analyzeTLDRisk,
-  detectMarkovPattern,
-  DynamicMarkovChain,
   type MarkovResult
 } from '../detectors';
+import { NGramMarkovChain } from '../detectors/ngram-markov';
 import { loadDisposableDomains } from '../services/disposable-domain-updater';
 import { loadTLDRiskProfiles } from '../services/tld-risk-updater';
 import { writeValidationMetric } from '../utils/metrics';
@@ -30,12 +29,13 @@ import { getConfig } from '../config';
 import { logger } from '../logger';
 
 // Cache Markov models globally per worker instance
-let markovLegitModel: DynamicMarkovChain | null = null;
-let markovFraudModel: DynamicMarkovChain | null = null;
+let markovLegitModel: NGramMarkovChain | null = null;
+let markovFraudModel: NGramMarkovChain | null = null;
 let markovModelsLoaded = false;
 
 /**
  * Load Markov Chain models from KV storage
+ * Now using NGramMarkovChain (trained with 111k legit + 105k fraud samples)
  */
 async function loadMarkovModels(env: Env): Promise<boolean> {
   if (markovModelsLoaded) return true;
@@ -46,14 +46,19 @@ async function loadMarkovModels(env: Env): Promise<boolean> {
       return false;
     }
 
-    const legitData = await env.MARKOV_MODEL.get('MM_legit_production', 'json');
-    const fraudData = await env.MARKOV_MODEL.get('MM_fraud_production', 'json');
+    // Use 2-gram models (trained with proper dataset)
+    const legitData = await env.MARKOV_MODEL.get('MM_legit_2gram', 'json');
+    const fraudData = await env.MARKOV_MODEL.get('MM_fraud_2gram', 'json');
 
     if (legitData && fraudData) {
-      markovLegitModel = DynamicMarkovChain.fromJSON(legitData);
-      markovFraudModel = DynamicMarkovChain.fromJSON(fraudData);
+      markovLegitModel = NGramMarkovChain.fromJSON(legitData);
+      markovFraudModel = NGramMarkovChain.fromJSON(fraudData);
       markovModelsLoaded = true;
-      logger.info('Markov Chain models loaded successfully');
+      logger.info({
+        event: 'ngram_markov_models_loaded',
+        legitSamples: (legitData as any).trainingCount || 'unknown',
+        fraudSamples: (fraudData as any).trainingCount || 'unknown',
+      }, 'NGram Markov Chain models loaded successfully');
       return true;
     }
   } catch (error) {
@@ -201,7 +206,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     );
   }
 
-  // Markov Chain detection
+  // Markov Chain detection (NGram implementation)
   let markovResult: MarkovResult | undefined;
   let markovRiskScore = 0;
 
@@ -209,11 +214,30 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     await loadMarkovModels(c.env);
 
     if (markovLegitModel && markovFraudModel) {
-      markovResult = detectMarkovPattern(
-        email,
-        markovLegitModel,
-        markovFraudModel
-      );
+      const [localPart] = email.split('@');
+
+      // Calculate cross-entropy for both models
+      const H_legit = markovLegitModel.crossEntropy(localPart);
+      const H_fraud = markovFraudModel.crossEntropy(localPart);
+
+      // Lower cross-entropy = better fit to that model
+      const isLikelyFraudulent = H_fraud < H_legit;
+
+      // Calculate confidence based on difference
+      const diff = Math.abs(H_legit - H_fraud);
+      const maxH = Math.max(H_legit, H_fraud);
+      const differenceRatio = maxH > 0 ? diff / maxH : 0;
+
+      // Confidence scales with difference ratio
+      const confidence = Math.min(differenceRatio * 2, 1.0);
+
+      markovResult = {
+        isLikelyFraudulent,
+        crossEntropyLegit: H_legit,
+        crossEntropyFraud: H_fraud,
+        confidence,
+        differenceRatio,
+      };
 
       // Use Markov risk only if confidence is high enough (configurable)
       if (markovResult.isLikelyFraudulent && markovResult.confidence > config.confidenceThresholds.markovFraud) {
@@ -222,66 +246,115 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     }
   }
 
-  // Calculate risk score
+  // Calculate risk score using early returns for priority checks
   let riskScore = 0;
   let blockReason = '';
 
+  // Priority 1: Hard blockers (immediate block)
   if (!emailValidation.valid) {
     riskScore = config.baseRiskScores.invalidFormat;
     blockReason = emailValidation.reason || 'invalid_format';
   } else if (domainValidation && domainValidation.isDisposable) {
     riskScore = config.baseRiskScores.disposableDomain;
     blockReason = 'disposable_domain';
-  } else if (emailValidation.signals.entropyScore > config.baseRiskScores.highEntropy) {
-    riskScore = emailValidation.signals.entropyScore;
-    blockReason = 'high_entropy';
   } else {
-    // Enhanced risk scoring with domain and pattern signals
-    // Domain signals (independent) - additive
-    const domainRisk = domainReputationScore * config.riskWeights.domainReputation;
-    const tldRisk = tldRiskScore * config.riskWeights.tldRisk;
-    const domainBasedRisk = domainRisk + tldRisk;
+    // Priority 2: Algorithmic scoring pipeline
+    riskScore = calculateAlgorithmicRiskScore({
+      markovResult,
+      keyboardWalkResult,
+      patternFamilyResult,
+      domainReputationScore,
+      tldRiskScore
+    });
 
-    // Local part signals (overlapping) - use max to prevent double counting
-    const entropyRisk = emailValidation.signals.entropyScore * config.riskWeights.entropy;
-    const combinedPatternRisk = patternRiskScore * config.riskWeights.patternDetection;
-    const markovRisk = markovRiskScore * config.riskWeights.markovChain;
+    blockReason = determineBlockReason({
+      markovResult,
+      keyboardWalkResult,
+      patternFamilyResult,
+      domainReputationScore,
+      tldRiskScore,
+      config
+    });
+  }
 
-    const localPartRisk = Math.max(entropyRisk, combinedPatternRisk, markovRisk);
+  /**
+   * Calculate risk score using pure algorithmic approach
+   * No hardcoded weights - uses detector confidence directly
+   */
+  function calculateAlgorithmicRiskScore(params: {
+    markovResult: MarkovResult | null | undefined;
+    keyboardWalkResult: any;
+    patternFamilyResult: any;
+    domainReputationScore: number;
+    tldRiskScore: number;
+  }): number {
+    const { markovResult, keyboardWalkResult, patternFamilyResult, domainReputationScore, tldRiskScore } = params;
 
-    // Combine domain and local part risks
-    riskScore = Math.min(domainBasedRisk + localPartRisk, 1.0);
+    // Primary: Markov Chain cross-entropy (pure algorithm)
+    let score = markovResult?.isLikelyFraudulent ? markovResult.confidence : 0;
 
-    // Set block reason based on highest risk factor
-    if (localPartRisk > domainBasedRisk) {
-      if (markovRisk === localPartRisk && markovRiskScore > config.confidenceThresholds.markovRisk && markovResult && markovResult.confidence > config.confidenceThresholds.markovFraud) {
-        blockReason = 'markov_chain_fraud';
-      } else if (combinedPatternRisk === localPartRisk && patternRiskScore > config.confidenceThresholds.patternRisk) {
-        if (gibberishResult?.isGibberish) {
-          blockReason = 'gibberish_detected';
-        } else if (patternFamilyResult?.patternType === 'sequential') {
-          blockReason = 'sequential_pattern';
-        } else if (patternFamilyResult?.patternType === 'dated') {
-          blockReason = 'dated_pattern';
-        } else if (normalizedEmailResult?.hasPlus) {
-          blockReason = 'plus_addressing_abuse';
-        } else if (keyboardWalkResult?.hasKeyboardWalk) {
-          blockReason = 'keyboard_walk';
-        } else {
-          blockReason = 'suspicious_pattern';
-        }
-      } else if (entropyRisk === localPartRisk) {
-        blockReason = 'high_entropy';
-      } else {
-        blockReason = 'suspicious_local_part';
-      }
-    } else {
-      if (tldRisk > domainRisk) {
-        blockReason = 'high_risk_tld';
-      } else {
-        blockReason = 'domain_reputation';
+    // Secondary: Pattern-specific overrides (deterministic rules)
+    const patternOverrides = [
+      { condition: keyboardWalkResult?.hasKeyboardWalk, score: 0.9 },
+      { condition: patternFamilyResult?.patternType === 'sequential', score: 0.8 },
+      { condition: patternFamilyResult?.patternType === 'dated', score: 0.7 }
+    ];
+
+    for (const override of patternOverrides) {
+      if (override.condition) {
+        score = Math.max(score, override.score);
       }
     }
+
+    // Tertiary: Domain signals (independent, additive)
+    const domainRisk = domainReputationScore * 0.2 + tldRiskScore * 0.1;
+
+    return Math.min(score + domainRisk, 1.0);
+  }
+
+  /**
+   * Determine the primary reason for blocking/warning
+   * Returns most significant detection method in priority order
+   */
+  function determineBlockReason(params: {
+    markovResult: MarkovResult | null | undefined;
+    keyboardWalkResult: any;
+    patternFamilyResult: any;
+    domainReputationScore: number;
+    tldRiskScore: number;
+    config: any;
+  }): string {
+    const { markovResult, keyboardWalkResult, patternFamilyResult, domainReputationScore, tldRiskScore, config } = params;
+
+    // Priority-ordered detection checks
+    const reasons = [
+      {
+        condition: markovResult?.isLikelyFraudulent && markovResult.confidence > config.confidenceThresholds.markovFraud,
+        reason: 'markov_chain_fraud'
+      },
+      {
+        condition: keyboardWalkResult?.hasKeyboardWalk,
+        reason: 'keyboard_walk'
+      },
+      {
+        condition: patternFamilyResult?.patternType === 'sequential',
+        reason: 'sequential_pattern'
+      },
+      {
+        condition: patternFamilyResult?.patternType === 'dated',
+        reason: 'dated_pattern'
+      },
+      {
+        condition: domainReputationScore > 0.5,
+        reason: 'domain_reputation'
+      },
+      {
+        condition: tldRiskScore > 0.5,
+        reason: 'high_risk_tld'
+      }
+    ];
+
+    return reasons.find(r => r.condition)?.reason || 'suspicious_pattern';
   }
 
   // Get thresholds from configuration

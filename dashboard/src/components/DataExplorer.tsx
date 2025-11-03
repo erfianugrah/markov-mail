@@ -28,7 +28,44 @@ const VIEWS = {
   },
   comprehensive: {
     name: 'Comprehensive View (All Columns)',
-    sql: `SELECT * FROM ANALYTICS ORDER BY timestamp DESC LIMIT {limit}`
+    sql: `SELECT
+      timestamp,
+      blob1 as decision,
+      blob2 as block_reason,
+      blob3 as country,
+      blob4 as risk_bucket,
+      blob5 as domain,
+      blob6 as tld,
+      blob7 as pattern_type,
+      blob8 as pattern_family,
+      blob9 as is_disposable,
+      blob10 as is_free_provider,
+      blob11 as has_plus_addressing,
+      blob12 as has_keyboard_walk,
+      blob13 as is_gibberish,
+      blob14 as email_local_part,
+      blob15 as client_ip,
+      blob16 as user_agent,
+      blob17 as variant,
+      blob18 as exclude_from_training,
+      blob19 as markov_detected,
+      blob20 as experiment_id,
+      double1 as risk_score,
+      double2 as entropy_score,
+      double3 as bot_score,
+      double4 as asn,
+      double5 as latency,
+      double6 as tld_risk_score,
+      double7 as domain_reputation_score,
+      double8 as pattern_confidence,
+      double9 as markov_confidence,
+      double10 as markov_cross_entropy_legit,
+      double11 as markov_cross_entropy_fraud,
+      double12 as ip_reputation_score,
+      double13 as bucket,
+      index1 as fingerprint_hash,
+      _sample_interval
+    FROM ANALYTICS ORDER BY timestamp DESC LIMIT {limit}`
   }
 }
 
@@ -51,8 +88,12 @@ export function DataExplorer() {
 
       // Add time filter if not in comprehensive view
       if (view !== 'comprehensive') {
-        sql = sql.replace('FROM ANALYTICS', `FROM ANALYTICS WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR AND`)
-        sql = sql.replace('WHERE AND', 'WHERE')
+        // Check if query already has WHERE clause
+        if (sql.includes('WHERE')) {
+          sql = sql.replace('WHERE', `WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR AND`)
+        } else {
+          sql = sql.replace('FROM ANALYTICS', `FROM ANALYTICS WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR`)
+        }
       }
 
       const response = await query(sql, hours)

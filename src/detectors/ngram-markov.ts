@@ -60,15 +60,16 @@ export class NGramMarkovChain {
 		// Calculate cross-entropy before training (for adaptive selection)
 		const H = this.crossEntropy(normalized);
 
-		// Adaptive training: skip examples the model already handles well
-		if (this.trainingCount > 10) {
-			const meanH = this.getMeanCrossEntropy();
-			const stdH = this.getStdCrossEntropy();
-
-			if (H - meanH <= adaptationRate * stdH) {
-				return false; // Skipped - already well understood
-			}
-		}
+		// Adaptive training: DISABLED for base model training
+		// This should only be used for online learning after a base model is established
+		// if (this.trainingCount > 10) {
+		// 	const meanH = this.getMeanCrossEntropy();
+		// 	const stdH = this.getStdCrossEntropy();
+		//
+		// 	if (H - meanH <= adaptationRate * stdH) {
+		// 		return false; // Skipped - already well understood
+		// 	}
+		// }
 
 		// Train based on order
 		for (let i = this.order - 1; i < normalized.length; i++) {

@@ -36,10 +36,10 @@
   "actionOverride": "allow",
   "riskWeights": {
     "entropy": 0.05,
-    "domainReputation": 0.15,
-    "tldRisk": 0.20,
-    "patternDetection": 0.30,
-    "markovChain": 0.30
+    "domainReputation": 0.10,
+    "tldRisk": 0.10,
+    "patternDetection": 0.50,
+    "markovChain": 0.25
   },
   "patternThresholds": {
     "sequential": 0.8,

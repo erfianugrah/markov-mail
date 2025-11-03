@@ -20,10 +20,9 @@ import {
 	detectGibberish,
 	analyzeTLDRisk,
 	isHighRiskTLD,
-	detectMarkovPattern,
-	DynamicMarkovChain,
 	type MarkovResult
 } from './detectors/index';
+import { NGramMarkovChain } from './detectors/ngram-markov';
 import { MarkovEnsembleDetector, type EnsembleResult } from './detectors/markov-ensemble';
 import { getConfig } from './config';
 import adminRoutes from './routes/admin';
@@ -63,8 +62,8 @@ type ContextVariables = {
  */
 
 // Global Markov Chain model cache (loaded once per worker instance)
-let markovLegitModel: DynamicMarkovChain | null = null;
-let markovFraudModel: DynamicMarkovChain | null = null;
+let markovLegitModel: NGramMarkovChain | null = null;
+let markovFraudModel: NGramMarkovChain | null = null;
 let markovModelsLoaded = false;
 
 // Global Ensemble Markov model cache
@@ -74,7 +73,7 @@ let ensembleModelsLoaded = false;
 /**
  * Load Markov Chain models from KV storage
  * Models are cached globally for the lifetime of the worker instance
- * Loads from MARKOV_MODEL namespace with simple keys (MM_legit_production, MM_fraud_production)
+ * Loads from MARKOV_MODEL namespace with 2-gram trained models (MM_legit_2gram, MM_fraud_2gram)
  */
 async function loadMarkovModels(env: Env): Promise<boolean> {
 	if (markovModelsLoaded) return true;
@@ -89,26 +88,26 @@ async function loadMarkovModels(env: Env): Promise<boolean> {
 			return false;
 		}
 
-		// Load from MARKOV_MODEL namespace (not CONFIG)
-		const legitData = await env.MARKOV_MODEL.get('MM_legit_production', 'json');
-		const fraudData = await env.MARKOV_MODEL.get('MM_fraud_production', 'json');
+		// Load from MARKOV_MODEL namespace (using 2-gram trained models)
+		const legitData = await env.MARKOV_MODEL.get('MM_legit_2gram', 'json');
+		const fraudData = await env.MARKOV_MODEL.get('MM_fraud_2gram', 'json');
 
 		if (legitData && fraudData) {
-			markovLegitModel = DynamicMarkovChain.fromJSON(legitData);
-			markovFraudModel = DynamicMarkovChain.fromJSON(fraudData);
+			markovLegitModel = NGramMarkovChain.fromJSON(legitData);
+			markovFraudModel = NGramMarkovChain.fromJSON(fraudData);
 			markovModelsLoaded = true;
 			logger.info({
 				event: 'markov_models_loaded',
-				model_type: 'production',
+				model_type: '2gram',
 				namespace: 'MARKOV_MODEL',
-				keys: ['MM_legit_production', 'MM_fraud_production'],
+				keys: ['MM_legit_2gram', 'MM_fraud_2gram'],
 			}, 'Markov Chain models loaded successfully');
 			return true;
 		} else {
 			logger.warn({
 				event: 'markov_models_not_found',
-				expected_keys: ['MM_legit_production', 'MM_fraud_production'],
-			}, 'No production Markov models found');
+				expected_keys: ['MM_legit_2gram', 'MM_fraud_2gram'],
+			}, 'No 2-gram Markov models found');
 		}
 	} catch (error) {
 		logger.error({

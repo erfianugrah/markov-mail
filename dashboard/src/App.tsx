@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useChartColor } from '@/hooks/useChartColor'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line } from 'recharts'
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line, Brush } from 'recharts'
 import {
   loadStats, loadDecisions, loadRiskDistribution, loadTimeline,
   loadCountries, loadPatternTypes, loadBlockReasons, loadDomains, loadTLDs,
@@ -88,6 +89,10 @@ function App() {
   const [decisionsFullscreen, setDecisionsFullscreen] = useState(false)
   const [riskFullscreen, setRiskFullscreen] = useState(false)
   const [timelineFullscreen, setTimelineFullscreen] = useState(false)
+  const [chartKey, setChartKey] = useState(0)
+
+  // Get computed chart colors for bars (CSS variables don't work in Recharts)
+  const barChartColor = useChartColor('--color-chart-1', darkMode)
 
   // Check for existing API key on mount
   useEffect(() => {
@@ -97,14 +102,31 @@ function App() {
 
   // Handle dark mode
   useEffect(() => {
+    console.log('[Dark Mode] Toggling to:', darkMode)
     if (darkMode) {
       document.documentElement.classList.add('dark')
       localStorage.setItem('darkMode', 'true')
+      console.log('[Dark Mode] Added .dark class, classes:', document.documentElement.className)
     } else {
       document.documentElement.classList.remove('dark')
       localStorage.setItem('darkMode', 'false')
+      console.log('[Dark Mode] Removed .dark class, classes:', document.documentElement.className)
     }
+
+    // Debug CSS variables
+    const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--color-background').trim()
+    console.log('[Dark Mode] CSS variable --color-background:', bgColor)
+    console.log('[Dark Mode] Body background:', getComputedStyle(document.body).backgroundColor)
+
+    // Force chart re-render when theme changes
+    setChartKey(prev => prev + 1)
   }, [darkMode])
+
+  // Force chart re-render when fullscreen changes
+  useEffect(() => {
+    const timer = setTimeout(() => setChartKey(prev => prev + 1), 150)
+    return () => clearTimeout(timer)
+  }, [decisionsFullscreen, riskFullscreen, timelineFullscreen])
 
   useEffect(() => {
     if (!hasApiKey) {
@@ -447,10 +469,45 @@ function App() {
           </div>
         )}
 
+        {/* Fullscreen Backdrops */}
+        {decisionsFullscreen && (
+          <div
+            className="fullscreen-backdrop"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setDecisionsFullscreen(false)
+              }
+            }}
+          />
+        )}
+        {riskFullscreen && (
+          <div
+            className="fullscreen-backdrop"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setRiskFullscreen(false)
+              }
+            }}
+          />
+        )}
+        {timelineFullscreen && (
+          <div
+            className="fullscreen-backdrop"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setTimelineFullscreen(false)
+              }
+            }}
+          />
+        )}
+
         {/* Charts Grid */}
         <div className="grid gap-6 md:grid-cols-2">
           {/* Decision Breakdown */}
-          <Card className={decisionsFullscreen ? "fixed inset-4 z-50 overflow-auto" : undefined}>
+          <Card
+            className={decisionsFullscreen ? "chart-fullscreen fixed inset-4 z-50 overflow-auto bg-card shadow-2xl" : "chart-card"}
+            onClick={(e) => decisionsFullscreen && e.stopPropagation()}
+          >
             <CardHeader
               actions={
                 <>
@@ -500,7 +557,7 @@ function App() {
                   }}
                   className={decisionsFullscreen ? 'h-[calc(100vh-200px)]' : 'h-[300px]'}
                 >
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" key={chartKey}>
                     <PieChart>
                       <Pie
                         data={decisions}
@@ -529,7 +586,10 @@ function App() {
           </Card>
 
           {/* Risk Distribution */}
-          <Card className={riskFullscreen ? "fixed inset-4 z-50 overflow-auto" : undefined}>
+          <Card
+            className={riskFullscreen ? "chart-fullscreen fixed inset-4 z-50 overflow-auto bg-card shadow-2xl" : "chart-card"}
+            onClick={(e) => riskFullscreen && e.stopPropagation()}
+          >
             <CardHeader
               actions={
                 <>
@@ -564,17 +624,17 @@ function App() {
               ) : (
                 <ChartContainer
                   config={{
-                    count: { label: 'Count', color: 'hsl(var(--chart-1))' },
+                    count: { label: 'Count', color: barChartColor },
                   }}
                   className={riskFullscreen ? 'h-[calc(100vh-200px)]' : 'h-[300px]'}
                 >
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" key={chartKey}>
                     <BarChart data={riskDistribution}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                       <XAxis dataKey="riskBucket" className="text-xs" />
                       <YAxis className="text-xs" />
                       <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar dataKey="count" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="count" fill={barChartColor} radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </ChartContainer>
@@ -584,7 +644,10 @@ function App() {
         </div>
 
         {/* Timeline Chart - Full Width */}
-        <Card className={timelineFullscreen ? "fixed inset-4 z-50 overflow-auto" : undefined}>
+        <Card
+          className={timelineFullscreen ? "chart-fullscreen fixed inset-4 z-50 overflow-auto bg-card shadow-2xl" : "chart-card"}
+          onClick={(e) => timelineFullscreen && e.stopPropagation()}
+        >
           <CardHeader
             actions={
               <>
@@ -634,7 +697,7 @@ function App() {
                 }}
                 className={timelineFullscreen ? 'h-[calc(100vh-200px)]' : 'h-[350px]'}
               >
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" key={chartKey}>
                   <LineChart data={timeline}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis
@@ -651,6 +714,16 @@ function App() {
                     <Line type="monotone" dataKey="allow" stroke={getColor('allow', darkMode)} strokeWidth={2} dot={false} />
                     <Line type="monotone" dataKey="warn" stroke={getColor('warn', darkMode)} strokeWidth={2} dot={false} />
                     <Line type="monotone" dataKey="block" stroke={getColor('block', darkMode)} strokeWidth={2} dot={false} />
+                    <Brush
+                      dataKey="hour"
+                      height={30}
+                      stroke="hsl(var(--color-primary))"
+                      fill="hsl(var(--color-muted))"
+                      tickFormatter={(value) => {
+                        const date = new Date(value)
+                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                      }}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </ChartContainer>
@@ -666,6 +739,7 @@ function App() {
             data={countries}
             dataKey="count"
             nameKey="country"
+            isDark={darkMode}
           />
 
           <SimpleBarChart
@@ -674,6 +748,7 @@ function App() {
             data={patternTypes}
             dataKey="count"
             nameKey="patternType"
+            isDark={darkMode}
             color="hsl(var(--chart-2))"
           />
 
@@ -683,6 +758,7 @@ function App() {
             data={blockReasons}
             dataKey="count"
             nameKey="reason"
+            isDark={darkMode}
             color="hsl(var(--chart-3))"
           />
 
@@ -692,6 +768,7 @@ function App() {
             data={domains}
             dataKey="count"
             nameKey="domain"
+            isDark={darkMode}
             color="hsl(var(--chart-4))"
           />
 
@@ -701,6 +778,7 @@ function App() {
             data={tlds}
             dataKey="count"
             nameKey="tld"
+            isDark={darkMode}
             color="hsl(var(--chart-5))"
           />
 
@@ -710,6 +788,7 @@ function App() {
             data={patternFamilies}
             dataKey="count"
             nameKey="family"
+            isDark={darkMode}
             color="hsl(var(--chart-1))"
           />
 
@@ -719,6 +798,7 @@ function App() {
             data={disposableDomains}
             dataKey="count"
             nameKey="domain"
+            isDark={darkMode}
             color="hsl(var(--chart-2))"
           />
 
@@ -728,6 +808,7 @@ function App() {
             data={freeProviders}
             dataKey="count"
             nameKey="domain"
+            isDark={darkMode}
             color="hsl(var(--chart-3))"
           />
 
@@ -737,6 +818,7 @@ function App() {
             data={plusAddressing}
             dataKey="count"
             nameKey="domain"
+            isDark={darkMode}
             color="hsl(var(--chart-4))"
           />
 
@@ -746,6 +828,7 @@ function App() {
             data={keyboardWalks}
             dataKey="count"
             nameKey="type"
+            isDark={darkMode}
             color="hsl(var(--chart-5))"
           />
 
@@ -755,6 +838,7 @@ function App() {
             data={gibberish}
             dataKey="count"
             nameKey="isGibberish"
+            isDark={darkMode}
             color="hsl(var(--chart-1))"
           />
 
@@ -764,6 +848,7 @@ function App() {
             data={entropyScores}
             dataKey="count"
             nameKey="bucket"
+            isDark={darkMode}
             color="hsl(var(--chart-2))"
           />
 
@@ -773,6 +858,7 @@ function App() {
             data={botScores}
             dataKey="count"
             nameKey="range"
+            isDark={darkMode}
             color="hsl(var(--chart-3))"
           />
 
@@ -782,6 +868,7 @@ function App() {
             data={latencyDist}
             dataKey="count"
             nameKey="range"
+            isDark={darkMode}
             color="hsl(var(--chart-4))"
           />
 
@@ -791,6 +878,7 @@ function App() {
             data={asns}
             dataKey="count"
             nameKey="asn"
+            isDark={darkMode}
             color="hsl(var(--chart-5))"
           />
 
@@ -800,6 +888,7 @@ function App() {
             data={tldRiskScores}
             dataKey="avgRisk"
             nameKey="tld"
+            isDark={darkMode}
             color="hsl(var(--chart-1))"
           />
 
@@ -809,6 +898,7 @@ function App() {
             data={domainReputation}
             dataKey="avgReputation"
             nameKey="domain"
+            isDark={darkMode}
             color="hsl(var(--chart-2))"
           />
 
@@ -818,6 +908,7 @@ function App() {
             data={patternConfidence}
             dataKey="count"
             nameKey="range"
+            isDark={darkMode}
             color="hsl(var(--chart-3))"
           />
         </div>

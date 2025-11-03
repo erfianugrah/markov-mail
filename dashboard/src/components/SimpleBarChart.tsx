@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts'
@@ -14,6 +14,7 @@ interface SimpleBarChartProps {
   color?: string
   loading?: boolean
   onRefresh?: () => void
+  isDark?: boolean
 }
 
 export function SimpleBarChart({
@@ -24,17 +25,57 @@ export function SimpleBarChart({
   nameKey,
   color = 'hsl(var(--chart-1))',
   loading = false,
-  onRefresh
+  onRefresh,
+  isDark = false
 }: SimpleBarChartProps) {
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [chartKey, setChartKey] = useState(0)
   const hasData = data && data.length > 0
+
+  // Compute color if it contains CSS variable
+  const computedColor = useMemo(() => {
+    if (!color || !color.includes('var(')) return color
+
+    // Extract variable name from 'hsl(var(--chart-1))'
+    const match = color.match(/var\((--[^)]+)\)/)
+    if (!match) return color
+
+    const cssVar = match[1]
+    const value = getComputedStyle(document.documentElement)
+      .getPropertyValue(cssVar)
+      .trim()
+
+    return value ? `hsl(${value})` : (isDark ? 'hsl(220 70% 65%)' : 'hsl(12 76% 61%)')
+  }, [color, isDark])
 
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen)
+    // Force chart re-render after delay to allow DOM to update
+    setTimeout(() => setChartKey(prev => prev + 1), 200)
   }
 
+  // Force re-render when fullscreen state changes
+  useEffect(() => {
+    const timer = setTimeout(() => setChartKey(prev => prev + 1), 200)
+    return () => clearTimeout(timer)
+  }, [isFullscreen])
+
   return (
-    <Card className={isFullscreen ? "fixed inset-4 z-50 overflow-auto" : undefined}>
+    <>
+      {isFullscreen && (
+        <div
+          className="fullscreen-backdrop"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsFullscreen(false)
+            }
+          }}
+        />
+      )}
+      <Card
+        className={isFullscreen ? "chart-fullscreen fixed inset-4 z-50 overflow-auto bg-card shadow-2xl" : "chart-card"}
+        onClick={(e) => isFullscreen && e.stopPropagation()}
+      >
       <CardHeader
         actions={
           <>
@@ -75,13 +116,13 @@ export function SimpleBarChart({
             }}
             className={isFullscreen ? 'h-[calc(100vh-200px)]' : 'h-[300px]'}
           >
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" key={chartKey}>
               <BarChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey={nameKey} className="text-xs" angle={-45} textAnchor="end" height={80} />
                 <YAxis className="text-xs" />
                 <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey={dataKey} fill={color} radius={[4, 4, 0, 0]} />
+                <Bar dataKey={dataKey} fill={computedColor} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </ChartContainer>
@@ -92,5 +133,6 @@ export function SimpleBarChart({
         )}
       </CardContent>
     </Card>
+    </>
   )
 }
