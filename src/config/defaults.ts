@@ -17,6 +17,20 @@ export interface FraudDetectionConfig {
 		warn: number; // Risk score above which to warn (0-1)
 	};
 
+	// Base Risk Scores (configurable overrides for specific conditions)
+	baseRiskScores: {
+		invalidFormat: number; // Risk score for invalid email format (default 0.8)
+		disposableDomain: number; // Risk score for disposable domains (default 0.95)
+		highEntropy: number; // Entropy threshold for high randomness (default 0.7)
+	};
+
+	// Detection Confidence Thresholds
+	confidenceThresholds: {
+		markovFraud: number; // Confidence threshold for Markov fraud detection (default 0.7)
+		markovRisk: number; // Markov risk score threshold (default 0.6)
+		patternRisk: number; // Pattern detection risk threshold (default 0.5)
+	};
+
 	// Feature Toggles
 	features: {
 		enableMxCheck: boolean; // Enable MX record validation
@@ -94,6 +108,20 @@ export const DEFAULT_CONFIG: FraudDetectionConfig = {
 	riskThresholds: {
 		block: 0.6, // Block high-risk emails
 		warn: 0.3, // Flag medium-risk for review
+	},
+
+	// Base risk scores for specific conditions
+	baseRiskScores: {
+		invalidFormat: 0.8, // Invalid email format gets high base risk
+		disposableDomain: 0.95, // Disposable domains are nearly certain fraud
+		highEntropy: 0.7, // Threshold for detecting random strings
+	},
+
+	// Detection confidence thresholds
+	confidenceThresholds: {
+		markovFraud: 0.7, // Markov must be 70%+ confident to flag fraud
+		markovRisk: 0.6, // Markov risk contribution threshold
+		patternRisk: 0.5, // Pattern detection risk threshold
 	},
 
 	// Enable all detection features by default

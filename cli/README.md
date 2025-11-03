@@ -15,7 +15,7 @@ npm run cli train:markov
 npm run cli deploy --minify
 
 # Query analytics
-npm run cli analytics:query "SELECT COUNT(*) FROM FRAUD_DETECTION_ANALYTICS"
+npm run cli analytics:query "SELECT COUNT(*) FROM ANALYTICS_DATASET"
 
 # List KV keys
 npm run cli kv:list --binding MARKOV_MODEL --remote
@@ -24,6 +24,24 @@ npm run cli kv:list --binding MARKOV_MODEL --remote
 ## Command Categories
 
 ### 📦 Training
+
+> **Note:** In production, training is fully automated via cron triggers (every 6 hours). The cron fetches data directly from Analytics Engine, trains models, validates them, and deploys via A/B testing. Manual training commands below are for development and testing only.
+
+**`training:extract`** - [Optional] Extract training data from Analytics Engine
+
+```bash
+# Extract last 24 hours (saves to JSON file for offline analysis)
+npm run cli training:extract
+
+# Extract last 7 days with 90% confidence threshold
+npm run cli training:extract --days 7 --min-confidence 0.9
+
+# Extract from production Analytics Engine
+npm run cli training:extract --days 1 --remote
+
+# Show help
+npm run cli training:extract --help
+```
 
 **`train:markov`** - Train Markov Chain models from CSV datasets
 
@@ -88,16 +106,32 @@ npm run cli kv:delete old_key --binding CONFIG --remote
 
 ```bash
 # Run SQL query
-npm run cli analytics:query "SELECT * FROM FRAUD_DETECTION_ANALYTICS LIMIT 10"
+npm run cli analytics:query "SELECT * FROM ANALYTICS_DATASET LIMIT 10"
 
 # Format as table
-npm run cli analytics:query "SELECT action, COUNT(*) as count FROM FRAUD_DETECTION_ANALYTICS GROUP BY action" --format table
+npm run cli analytics:query "SELECT blob1 as decision, COUNT(*) as count FROM ANALYTICS_DATASET GROUP BY blob1" --format table
 
 # Show statistics
 npm run cli analytics:stats --last 48
 ```
 
 ### 🧪 Testing
+
+**`test:cron`** - Test cron triggers locally
+
+```bash
+# Test with default settings (requires wrangler dev running)
+npm run cli test:cron
+
+# Test with specific cron pattern
+npm run cli test:cron --cron "0 */6 * * *"
+
+# Test with custom port
+npm run cli test:cron --port 9000
+
+# Show help
+npm run cli test:cron --help
+```
 
 **`test:generate`** - Generate test email dataset
 

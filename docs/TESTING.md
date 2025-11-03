@@ -6,15 +6,21 @@
 
 ## 📊 Test Status
 
-**Current Status**: ✅ **287 tests passing (100%)**
+**Current Status**: ⚠️ **388 tests passing (84.9%)**
 
 | Metric | Value | Status |
 |--------|-------|--------|
-| **Unit Tests** | 157 passing | ✅ |
-| **Integration Tests** | 130 passing | ✅ |
-| **Detection Rate** | 97.0% | ✅ Exceeds 80% target |
-| **Pass Rate** | 100% | ✅ |
-| **Duration** | ~3.8 seconds | ✅ Fast |
+| **Total Tests** | 457 tests | - |
+| **Passing** | 388 passing | ⚠️ 84.9% |
+| **Failing** | 66 failing | ⚠️ Needs attention |
+| **Skipped** | 3 skipped | - |
+| **Detection Rate** | 97.0% (E2E) | ✅ Exceeds 80% target |
+| **Duration** | ~11.2 seconds | ⚠️ Slower due to failures |
+
+**Known Issues**:
+- `bun:test` module resolution errors (3 unhandled errors)
+- Some training flow tests need updates after architecture changes
+- Test suite expanded significantly since last documentation update
 
 ---
 
@@ -513,6 +519,7 @@ DEBUG=* npm test
 
 ---
 
-**Last Updated**: 2025-11-01
-**Test Suite Version**: 1.2.0
-**Detection System**: Phase 6A Enhanced
+**Last Updated**: 2025-11-03
+**Test Suite Version**: 2.0.0
+**Detection System**: Phase 6A Enhanced + Automated Training
+**Total Test Files**: 22 files (14 failing, 8 passing)

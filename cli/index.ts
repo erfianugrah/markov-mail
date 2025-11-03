@@ -121,6 +121,11 @@ const COMMANDS = {
   },
 
   // Testing commands
+  'test:cron': {
+    description: 'Test cron triggers locally',
+    file: 'commands/test/cron.ts',
+    usage: 'test:cron [--port <port>] [--cron <pattern>] [--time <timestamp>]'
+  },
   'test:generate': {
     description: 'Generate test email dataset',
     file: 'commands/test/generate.ts',
@@ -247,7 +252,7 @@ EXAMPLES
   npm run cli train:markov --dataset ./dataset
   npm run cli deploy --minify
   npm run cli kv:list --binding MARKOV_MODEL
-  npm run cli analytics:query "SELECT COUNT(*) FROM FRAUD_DETECTION_ANALYTICS"
+  npm run cli analytics:query "SELECT COUNT(*) FROM ANALYTICS_DATASET"
   npm run cli test:generate --count 100 --patterns sequential,dated
 
 For detailed command help: npm run cli <command> --help

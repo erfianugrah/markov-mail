@@ -103,7 +103,7 @@ Examples:
 				-- Performance
 				AVG(double5) as avg_latency_ms,
 				quantile(0.95)(double5) as p95_latency_ms
-			FROM FRAUD_DETECTION_ANALYTICS
+			FROM ANALYTICS_DATASET
 			WHERE blob20 = '${options.experimentId}'
 				AND timestamp >= NOW() - INTERVAL '${options.hours}' HOUR
 			GROUP BY variant, experiment_id

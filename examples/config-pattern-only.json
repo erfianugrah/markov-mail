@@ -3,6 +3,16 @@
     "block": 0.6,
     "warn": 0.3
   },
+  "baseRiskScores": {
+    "invalidFormat": 0.8,
+    "disposableDomain": 0.5,
+    "highEntropy": 0.7
+  },
+  "confidenceThresholds": {
+    "markovFraud": 0.7,
+    "markovRisk": 0.6,
+    "patternRisk": 0.5
+  },
   "features": {
     "enableMxCheck": false,
     "enableDisposableCheck": false,
@@ -10,7 +20,8 @@
     "enableNGramAnalysis": true,
     "enableTLDRiskProfiling": false,
     "enableBenfordsLaw": true,
-    "enableKeyboardWalkDetection": true
+    "enableKeyboardWalkDetection": true,
+    "enableMarkovChainDetection": true
   },
   "logging": {
     "logAllValidations": true,
@@ -24,10 +35,11 @@
   },
   "actionOverride": "allow",
   "riskWeights": {
-    "entropy": 0.1,
+    "entropy": 0.10,
     "domainReputation": 0.05,
     "tldRisk": 0.05,
-    "patternDetection": 0.8
+    "patternDetection": 0.40,
+    "markovChain": 0.40
   },
   "patternThresholds": {
     "sequential": 0.75,
@@ -42,6 +54,11 @@
     "maxValidationsPerHour": 1000
   },
   "admin": {
-    "enabled": true
+    "enabled": false
+  },
+  "markov": {
+    "adaptationRate": 0.5,
+    "minTrainingExamples": 100,
+    "retrainIntervalDays": 7
   }
 }

@@ -6,7 +6,7 @@ import { validateDomain, getDomainReputationScore } from './validators/domain';
 import { generateFingerprint, extractAllSignals } from './fingerprint';
 import { logger, logValidation, logBlock, logError } from './logger';
 import { writeValidationMetric } from './utils/metrics';
-import type { ValidationResult } from './types';
+import type { ValidationResult, FraudDetectionResult } from './types';
 import { loadDisposableDomains, updateDisposableDomains } from './services/disposable-domain-updater';
 import { loadTLDRiskProfiles } from './services/tld-risk-updater';
 import {
@@ -36,6 +36,14 @@ import {
 	type ABTestConfig,
 	type ABTestAssignment
 } from './ab-testing';
+import { fraudDetectionMiddleware } from './middleware/fraud-detection';
+
+// Extend Hono context with middleware variables
+type ContextVariables = {
+	fraudDetection?: FraudDetectionResult;
+	requestBody?: any;
+	skipFraudDetection?: boolean;
+};
 
 /**
  * Bogus Email Pattern Recognition Worker
@@ -178,10 +186,14 @@ function ensembleToMarkovResult(ensemble: EnsembleResult): MarkovResult {
 	};
 }
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env; Variables: ContextVariables }>();
 
 // Enable CORS for all routes
 app.use('/*', cors());
+
+// 🆕 GLOBAL FRAUD DETECTION - Runs on ALL POST routes by default!
+// Routes can opt-out by setting: c.set('skipFraudDetection', true)
+app.use('/*', fraudDetectionMiddleware);
 
 // Mount admin routes (protected by API key)
 app.route('/admin', adminRoutes);
@@ -190,15 +202,26 @@ app.route('/admin', adminRoutes);
 app.get('/', (c) => {
 	return c.text(`Bogus Email Pattern Recognition API
 
+🔒 Fraud Detection Status: ACTIVE on all POST routes with 'email' field
+
 Endpoints:
-- POST /validate { "email": "test@example.com" }
+- POST /* (any route with email field gets validated automatically!)
+- POST /validate { "email": "test@example.com" } (backward compatible)
 - GET /debug (shows all request signals)
 - /admin/* (requires X-API-Key header)
 
-Example:
+Examples:
+# Legacy endpoint (still works)
 curl -X POST https://your-worker.dev/validate \\
   -H "Content-Type: application/json" \\
   -d '{"email":"test@example.com"}'
+
+# New: Any POST endpoint with email gets validated
+curl -X POST https://your-worker.dev/signup \\
+  -H "Content-Type: application/json" \\
+  -d '{"email":"user@example.com","password":"secret"}'
+
+Monitoring Mode: Set "actionOverride": "allow" in config.json
 `);
 });
 
@@ -213,479 +236,128 @@ app.get('/debug', async (c) => {
 	});
 });
 
-// Main validation endpoint
+// Main validation endpoint (backward compatible)
+// Note: Middleware already ran validation, we just return the result
 app.post('/validate', async (c) => {
-	const startTime = Date.now();
-	const env = c.env;
+	const fraud = c.get('fraudDetection');
+	const body = c.get('requestBody');
+	const fingerprint = await generateFingerprint(c.req.raw);
 
-	// Load configuration from KV (with caching)
-	let config = await getConfig(env.CONFIG, {
-		ADMIN_API_KEY: env.ADMIN_API_KEY,
-		ORIGIN_URL: env.ORIGIN_URL,
-	});
+	// If no fraud detection ran (no email in body), return error
+	if (!fraud) {
+		return c.json({ error: 'Email is required' }, 400);
+	}
 
-	// A/B Testing: Load experiment config and assign variant
-	let abTestConfig: ABTestConfig | null = null;
-	let abAssignment: ABTestAssignment | null = null;
-
-	try {
-		const body = await c.req.json<{ email?: string }>();
-
-		if (!body.email) {
-			return c.json({ error: 'Email is required' }, 400);
-		}
-
-		// Generate fingerprint
-		const fingerprint = await generateFingerprint(c.req.raw);
-
-		// A/B Testing: Check for active experiment and assign variant
-		try {
-			abTestConfig = await loadABTestConfig(env.CONFIG);
-			if (abTestConfig) {
-				abAssignment = getAssignment(fingerprint.hash, abTestConfig);
-				// Merge variant-specific config overrides with base config
-				config = getVariantConfig(abAssignment.variant, abTestConfig, config);
-
-				if (config.logging.logAllValidations) {
-					logger.info({
-						event: 'ab_test_assignment',
-						experiment_id: abTestConfig.experimentId,
-						variant: abAssignment.variant,
-						bucket: abAssignment.bucket,
-					}, 'A/B test variant assigned');
-				}
-			}
-		} catch (abError) {
-			// Don't fail validation if A/B test loading fails
-			logger.error({
-				event: 'ab_test_load_failed',
-				error: abError instanceof Error ? {
-					message: abError.message,
-					stack: abError.stack,
-				} : String(abError),
-			}, 'Failed to load A/B test config');
-		}
-
-		// Validate email format
-		const emailValidation = validateEmail(body.email);
-
-		// Load disposable domains from KV (with caching and fallback to hardcoded)
-		let disposableDomains: Set<string> | undefined;
-		if (env.DISPOSABLE_DOMAINS_LIST && config.features.enableDisposableCheck) {
-			try {
-				disposableDomains = await loadDisposableDomains(env.DISPOSABLE_DOMAINS_LIST);
-			} catch (error) {
-				logger.warn({
-					event: 'disposable_domains_load_failed',
-					error: error instanceof Error ? error.message : String(error)
-				}, 'Failed to load disposable domains from KV, using hardcoded fallback');
-			}
-		}
-
-		// Load TLD risk profiles from KV (with caching and fallback to hardcoded)
-		let tldRiskProfiles: Map<string, any> | undefined;
-		if (env.TLD_LIST && config.features.enableTLDRiskProfiling) {
-			try {
-				tldRiskProfiles = await loadTLDRiskProfiles(env.TLD_LIST);
-			} catch (error) {
-				logger.warn({
-					event: 'tld_profiles_load_failed',
-					error: error instanceof Error ? error.message : String(error)
-				}, 'Failed to load TLD profiles from KV, using hardcoded fallback');
-			}
-		}
-
-		// Validate domain (if format is valid)
-		let domainValidation;
-		let domainReputationScore = 0;
-		let tldRiskScore = 0;
-
-		if (emailValidation.valid) {
-			const [, domain] = body.email.split('@');
-			if (domain && config.features.enableDisposableCheck) {
-				domainValidation = validateDomain(domain, disposableDomains);
-				domainReputationScore = getDomainReputationScore(domain, disposableDomains);
-
-				// TLD risk profiling (Phase 6A)
-				if (config.features.enableTLDRiskProfiling) {
-					const tldAnalysis = analyzeTLDRisk(domain, tldRiskProfiles);
-					tldRiskScore = tldAnalysis.riskScore;
-				}
-			}
-		}
-
-		// Pattern analysis (if enabled and format is valid)
-		let patternFamilyResult;
-		let normalizedEmailResult;
-		let keyboardWalkResult;
-		let gibberishResult;
-		let patternRiskScore = 0;
-
-		if (emailValidation.valid && config.features.enablePatternCheck) {
-			// Extract pattern family (sequential, dated, etc.)
-			patternFamilyResult = await extractPatternFamily(body.email);
-			patternRiskScore = getPatternRiskScore(patternFamilyResult);
-
-			// Normalize email (plus-addressing detection)
-			normalizedEmailResult = normalizeEmail(body.email);
-			const plusAddressingRisk = getPlusAddressingRiskScore(body.email);
-
-			// Keyboard walk detection
-			keyboardWalkResult = detectKeyboardWalk(body.email);
-			const keyboardWalkRisk = getKeyboardWalkRiskScore(keyboardWalkResult);
-
-			// N-Gram gibberish detection (Phase 6A)
-			const [localPart] = body.email.split('@');
-			const ngramRisk = getNGramRiskScore(localPart);
-			gibberishResult = detectGibberish(body.email);
-
-			// Combine pattern risks
-			patternRiskScore = Math.max(
-				patternRiskScore,
-				plusAddressingRisk,
-				keyboardWalkRisk,
-				ngramRisk
-			);
-		}
-
-		// Markov Chain detection (Phase 7)
-		let markovResult: MarkovResult | undefined;
-		let markovRiskScore = 0;
-		let markovDetectorType = 'none'; // 'bigram' or 'ensemble'
-
-		if (emailValidation.valid && config.features.enableMarkovChainDetection) {
-			const [localPart] = body.email.split('@');
-
-			// A/B Test: Use ensemble for treatment variant, current 2-gram for control
-			const useEnsemble = abAssignment?.variant === 'treatment';
-
-			if (useEnsemble) {
-				// Treatment: Use Ensemble Markov (1-gram + 2-gram + 3-gram)
-				await loadEnsembleModels(env);
-
-				if (ensembleDetector) {
-					const ensembleResult = ensembleDetector.detect(localPart);
-
-					// Convert to MarkovResult format for backward compatibility
-					markovResult = ensembleToMarkovResult(ensembleResult);
-					markovDetectorType = 'ensemble';
-
-					// Use confidence threshold (0.7)
-					if (ensembleResult.prediction === 'fraud' && ensembleResult.confidence > 0.7) {
-						markovRiskScore = ensembleResult.confidence;
-					}
-				}
-			} else {
-				// Control: Use current 2-gram Markov Chain
-				await loadMarkovModels(env);
-
-				if (markovLegitModel && markovFraudModel) {
-					markovResult = detectMarkovPattern(
-						body.email,
-						markovLegitModel,
-						markovFraudModel
-					);
-					markovDetectorType = 'bigram';
-
-					// Use Markov risk only if confidence is high enough (>0.7)
-					// This reduces false positives from ambiguous patterns
-					// Confidence threshold: 0.7 = high-confidence fraud signals only
-					if (markovResult.isLikelyFraudulent && markovResult.confidence > 0.7) {
-						markovRiskScore = markovResult.confidence;
-					}
-				}
-			}
-		}
-
-		// Calculate risk score with domain and pattern signals
-		let riskScore = 0;
-		let blockReason = '';
-
-		if (!emailValidation.valid) {
-			riskScore = 0.8;
-			blockReason = emailValidation.reason || 'invalid_format';
-		} else if (domainValidation && domainValidation.isDisposable) {
-			// Disposable domains are high risk
-			riskScore = 0.95;
-			blockReason = 'disposable_domain';
-		} else if (emailValidation.signals.entropyScore > 0.7) {
-			riskScore = emailValidation.signals.entropyScore;
-			blockReason = 'high_entropy';
-		} else {
-			// Enhanced risk scoring with pattern analysis (Phase 7 updated)
-			// Use configurable risk weights from KV configuration
-			//
-			// Scoring strategy:
-			// 1. Domain signals (domain + TLD) are independent → additive
-			// 2. Local part signals (entropy, pattern, markov) can overlap → use max
-			//    - Prevents double-counting same fraud signal
-			//    - Example: Sequential pattern detected by both pattern detector AND markov
-
-			// Domain-based risks (independent signals)
-			const domainRisk = domainReputationScore * config.riskWeights.domainReputation;
-			const tldRisk = tldRiskScore * config.riskWeights.tldRisk;
-			const domainBasedRisk = domainRisk + tldRisk;
-
-			// Local part risks (overlapping signals - use max to prevent double counting)
-			const entropyRisk = emailValidation.signals.entropyScore * config.riskWeights.entropy;
-			const combinedPatternRisk = patternRiskScore * config.riskWeights.patternDetection;
-			const markovRisk = markovRiskScore * config.riskWeights.markovChain;
-
-			// Take max of local part signals to avoid scoring same pattern multiple times
-			const localPartRisk = Math.max(entropyRisk, combinedPatternRisk, markovRisk);
-
-			// Combine domain and local part risks
-			riskScore = Math.min(domainBasedRisk + localPartRisk, 1.0);
-
-			// Set block reason based on highest risk factor
-			// Determine which signal contributed most to the final risk score
-
-			// Check if local part risk is dominant
-			if (localPartRisk > domainBasedRisk) {
-				// Local part is the issue - determine which detector triggered
-				if (markovRisk === localPartRisk && markovRiskScore > 0.6 && markovResult && markovResult.confidence > 0.7) {
-					blockReason = 'markov_chain_fraud';
-				} else if (combinedPatternRisk === localPartRisk && patternRiskScore > 0.5) {
-					// Pattern detection was highest - identify specific pattern
-					if (gibberishResult?.isGibberish) {
-						blockReason = 'gibberish_detected';
-					} else if (patternFamilyResult?.patternType === 'sequential') {
-						blockReason = 'sequential_pattern';
-					} else if (patternFamilyResult?.patternType === 'dated') {
-						blockReason = 'dated_pattern';
-					} else if (normalizedEmailResult?.hasPlus) {
-						blockReason = 'plus_addressing_abuse';
-					} else if (keyboardWalkResult?.hasKeyboardWalk) {
-						blockReason = 'keyboard_walk';
-					} else {
-						blockReason = 'suspicious_pattern';
-					}
-				} else if (entropyRisk === localPartRisk) {
-					blockReason = 'high_entropy';
-				} else {
-					blockReason = 'suspicious_local_part';
-				}
-			} else {
-				// Domain-based risk is dominant
-				if (tldRisk > domainRisk) {
-					blockReason = 'high_risk_tld';
-				} else {
-					blockReason = 'domain_reputation';
-				}
-			}
-		}
-
-		// Get thresholds from configuration
-		const blockThreshold = config.riskThresholds.block;
-		const warnThreshold = config.riskThresholds.warn;
-
-		// Determine decision
-		let decision: 'allow' | 'warn' | 'block' = 'allow';
-		if (riskScore > blockThreshold) {
-			decision = 'block';
-		} else if (riskScore > warnThreshold) {
-			decision = 'warn';
-		}
-
-		// Apply action override if configured
-		if (config.actionOverride !== 'allow') {
-			if (config.actionOverride === 'block' && decision === 'warn') {
-				decision = 'block'; // Escalate warnings to blocks
-			}
-			// Note: 'warn' override would escalate 'allow' to 'warn' (future feature)
-		}
-
-		const result: ValidationResult = {
-			valid: emailValidation.valid && (!domainValidation || !domainValidation.isDisposable),
-			riskScore: Math.round(riskScore * 100) / 100,
-			signals: {
-				formatValid: emailValidation.signals.formatValid,
-				entropyScore: Math.round(emailValidation.signals.entropyScore * 100) / 100,
-				localPartLength: emailValidation.signals.localPartLength,
-				isDisposableDomain: domainValidation?.isDisposable || false,
-				isFreeProvider: domainValidation?.isFreeProvider || false,
-				domainReputationScore: Math.round(domainReputationScore * 100) / 100,
-				// Pattern detection signals
-				...(config.features.enablePatternCheck && patternFamilyResult && {
-					patternFamily: patternFamilyResult.family,
-					patternType: patternFamilyResult.patternType,
-					patternConfidence: Math.round(patternFamilyResult.confidence * 100) / 100,
-					patternRiskScore: Math.round(patternRiskScore * 100) / 100,
-					normalizedEmail: normalizedEmailResult?.normalized,
-					hasPlusAddressing: normalizedEmailResult?.hasPlus || false,
-					hasKeyboardWalk: keyboardWalkResult?.hasKeyboardWalk || false,
-					keyboardWalkType: keyboardWalkResult?.walkType,
-					// Phase 6A signals
-					isGibberish: gibberishResult?.isGibberish || false,
-					gibberishConfidence: gibberishResult ? Math.round(gibberishResult.confidence * 100) / 100 : undefined,
-					tldRiskScore: Math.round(tldRiskScore * 100) / 100,
-				}),
-				// Phase 7: Markov Chain signals
-				...(config.features.enableMarkovChainDetection && markovResult && {
-					markovDetected: markovResult.isLikelyFraudulent,
-					markovConfidence: Math.round(markovResult.confidence * 100) / 100,
-					markovCrossEntropyLegit: Math.round(markovResult.crossEntropyLegit * 100) / 100,
-					markovCrossEntropyFraud: Math.round(markovResult.crossEntropyFraud * 100) / 100,
-				}),
-			},
-			decision,
-			message: domainValidation?.reason || emailValidation.reason || 'Email validation completed',
-		};
-
-		// Calculate latency
-		const latency = Date.now() - startTime;
-
-		// Log validation event (if enabled)
-		if (config.logging.logAllValidations) {
-			await logValidation({
-				email: body.email,
-				fingerprint: fingerprint.hash,
-				riskScore: result.riskScore,
-				decision: result.decision,
-				signals: result.signals,
-				latency,
-			});
-		}
-
-		// Log blocks separately for alerting (if enabled)
-		if (decision === 'block' && config.logging.logBlocks) {
-			await logBlock({
-				email: body.email,
-				fingerprint: fingerprint.hash,
-				riskScore: result.riskScore,
-				reason: blockReason,
-				signals: result.signals,
-			});
-		}
-
-		// Write metrics to Analytics Engine (with enhanced data)
-		const [localPart, domain] = body.email.split('@');
-		const tld = domain ? domain.split('.').pop() : undefined;
-
-		writeValidationMetric(env.ANALYTICS, {
-			decision: result.decision,
-			riskScore: result.riskScore,
-			entropyScore: result.signals.entropyScore,
-			botScore: fingerprint.botScore,
+	// Return validation result (middleware already did all the work!)
+	return c.json({
+		valid: fraud.valid,
+		riskScore: fraud.riskScore,
+		signals: fraud.signals,
+		decision: fraud.decision,
+		message: fraud.blockReason || 'Email validation completed',
+		fingerprint: {
+			hash: fingerprint.hash,
 			country: fingerprint.country,
 			asn: fingerprint.asn,
-			blockReason: decision === 'block' ? blockReason : undefined,
-			fingerprintHash: fingerprint.hash,
-			latency,
-			// Enhanced data
-			emailLocalPart: localPart,
-			domain: domain,
-			tld: tld,
-			patternType: result.signals.patternType,
-			patternFamily: result.signals.patternFamily,
-			isDisposable: result.signals.isDisposableDomain,
-			isFreeProvider: result.signals.isFreeProvider,
-			hasPlusAddressing: result.signals.hasPlusAddressing,
-			hasKeyboardWalk: result.signals.hasKeyboardWalk,
-			isGibberish: result.signals.isGibberish,
-			tldRiskScore: result.signals.tldRiskScore,
-			domainReputationScore: result.signals.domainReputationScore,
-			patternConfidence: result.signals.patternConfidence,
-			// Phase 7: Markov Chain data
-			markovDetected: result.signals.markovDetected,
-			markovConfidence: result.signals.markovConfidence,
-			markovCrossEntropyLegit: result.signals.markovCrossEntropyLegit,
-			markovCrossEntropyFraud: result.signals.markovCrossEntropyFraud,
-			// Phase 8: Online Learning data
-			clientIp: fingerprint.ip,               // For fraud pattern analysis
-			userAgent: fingerprint.userAgent,       // For bot detection
-			modelVersion: 'production',             // A/B testing: will be dynamic later
-			excludeFromTraining: false,             // Security: will check IP reputation later
-			ipReputationScore: 0,                   // Will implement IP reputation checks later
-			// A/B Testing data
-			experimentId: abAssignment?.experimentId,
-			variant: abAssignment?.variant,
-			bucket: abAssignment?.bucket,
+			botScore: fingerprint.botScore,
+		},
+	});
+});
+
+// 🆕 EXAMPLE ROUTES - Demonstrate automatic fraud detection
+// These routes show that ANY endpoint with 'email' field gets automatic validation
+
+app.post('/signup', async (c) => {
+	const fraud = c.get('fraudDetection');
+	const body = c.get('requestBody');
+
+	// Middleware already validated the email!
+	// In enforcement mode, bad emails are already blocked
+	// In monitoring mode, this logs but continues
+
+	return c.json({
+		success: true,
+		message: 'User account created',
+		userId: 'user_' + Math.random().toString(36).substr(2, 9),
+		riskScore: fraud?.riskScore,
+		decision: fraud?.decision,
+	});
+});
+
+app.post('/newsletter', async (c) => {
+	const fraud = c.get('fraudDetection');
+	const body = c.get('requestBody');
+
+	return c.json({
+		success: true,
+		message: 'Subscribed to newsletter',
+		riskScore: fraud?.riskScore,
+		decision: fraud?.decision,
+	});
+});
+
+app.post('/login', async (c) => {
+	const fraud = c.get('fraudDetection');
+	const body = c.get('requestBody');
+
+	return c.json({
+		success: true,
+		message: 'Login successful',
+		riskScore: fraud?.riskScore,
+		decision: fraud?.decision,
+	});
+});
+
+/**
+ * RPC Entrypoint for Service Bindings
+ * RPC Entrypoint for Service Bindings
+ *
+ * Allows other Workers to call fraud detection directly without HTTP overhead.
+ *
+ * Example usage from another worker:
+ *
+ * // wrangler.jsonc of consuming worker:
+ * {
+ *   "services": [{
+ *     "binding": "FRAUD_DETECTOR",
+ *     "service": "bogus-email-pattern-recognition",
+ *     "entrypoint": "FraudDetectionService"
+ *   }]
+ * }
+ *
+ * // In consuming worker code:
+ * const result = await env.FRAUD_DETECTOR.validate({
+ *   email: "user123@gmail.com",
+ *   consumer: "MY_APP",
+ *   flow: "SIGNUP_EMAIL_VERIFY"
+ * });
+ *
+ * if (result.decision === 'block') {
+ *   return new Response('Email rejected', { status: 400 });
+ * }
+ */
+
+// 🆕 CATCH-ALL ROUTE - Handle ANY POST request with email field
+// MUST be LAST to not interfere with specific routes above
+// This ensures fraud detection runs on ALL endpoints, even undefined ones
+app.post('/*', async (c) => {
+	const fraud = c.get('fraudDetection');
+	const body = c.get('requestBody');
+
+	// If fraud detection ran, return the validation result
+	if (fraud) {
+		return c.json({
+			success: true,
+			message: 'Request processed with fraud detection',
+			path: c.req.path,
+			riskScore: fraud.riskScore,
+			decision: fraud.decision,
+			blockReason: fraud.blockReason,
 		});
-
-		// Build response
-		const response = c.json(
-			{
-				...result,
-				fingerprint: {
-					hash: fingerprint.hash,
-					country: fingerprint.country,
-					asn: fingerprint.asn,
-					botScore: fingerprint.botScore,
-				},
-				latency_ms: latency,
-			},
-			result.valid ? 200 : 400
-		);
-
-		// Add custom response headers if enabled
-		if (config.headers.enableResponseHeaders) {
-			response.headers.set('X-Risk-Score', result.riskScore.toString());
-			response.headers.set('X-Fraud-Decision', result.decision);
-			response.headers.set('X-Fraud-Reason', blockReason || 'none');
-			response.headers.set('X-Fingerprint-Hash', fingerprint.hash);
-			response.headers.set('X-Bot-Score', (fingerprint.botScore ?? 0).toString());
-			response.headers.set('X-Country', fingerprint.country || 'unknown');
-			response.headers.set('X-Detection-Latency-Ms', latency.toString());
-
-			// Pattern detection headers (if available)
-			if (patternFamilyResult) {
-				response.headers.set('X-Pattern-Type', patternFamilyResult.patternType || 'none');
-				response.headers.set('X-Pattern-Confidence', patternFamilyResult.confidence.toFixed(2));
-			}
-			if (gibberishResult?.isGibberish) {
-				response.headers.set('X-Has-Gibberish', 'true');
-			}
-		}
-
-		// Forward request to origin if configured
-		if (config.headers.enableOriginHeaders && config.headers.originUrl) {
-			try {
-				const originHeaders = new Headers(c.req.raw.headers);
-
-				// Add fraud detection headers to origin request
-				originHeaders.set('X-Fraud-Risk-Score', result.riskScore.toString());
-				originHeaders.set('X-Fraud-Decision', result.decision);
-				originHeaders.set('X-Fraud-Reason', blockReason || 'none');
-				originHeaders.set('X-Fraud-Fingerprint', fingerprint.hash);
-				originHeaders.set('X-Fraud-Bot-Score', (fingerprint.botScore ?? 0).toString());
-				originHeaders.set('X-Fraud-Country', fingerprint.country || 'unknown');
-				originHeaders.set('X-Fraud-ASN', (fingerprint.asn ?? 0).toString());
-
-				if (patternFamilyResult) {
-					originHeaders.set('X-Fraud-Pattern-Type', patternFamilyResult.patternType || 'none');
-					originHeaders.set('X-Fraud-Pattern-Confidence', patternFamilyResult.confidence.toFixed(2));
-				}
-				if (gibberishResult?.isGibberish) {
-					originHeaders.set('X-Fraud-Has-Gibberish', 'true');
-				}
-
-				// Forward to origin (fire and forget - don't wait for response)
-				c.executionCtx.waitUntil(
-					fetch(config.headers.originUrl, {
-						method: c.req.method,
-						headers: originHeaders,
-						body: c.req.raw.body,
-					})
-				);
-			} catch (error) {
-				// Log error but don't fail the request
-				logger.error({
-					event: 'origin_forward_failed',
-					origin_url: config.headers.originUrl,
-					error: error instanceof Error ? {
-						message: error.message,
-						stack: error.stack,
-					} : String(error),
-				}, 'Failed to forward request to origin');
-			}
-		}
-
-		return response;
-	} catch (error) {
-		logError(error as Error, { endpoint: '/validate' });
-		return c.json({ error: 'Invalid request body' }, 400);
 	}
+
+	// No email in body, return generic 404
+	return c.notFound();
 });
 
 /**
@@ -807,15 +479,15 @@ export default {
 			trigger_type: 'scheduled',
 		}, 'Starting automated N-gram model training');
 
-		// Use new training worker for N-gram ensemble models
-		if (env.MARKOV_MODEL) {
-			ctx.waitUntil(trainingWorkerScheduled(event, env as any, ctx));
-		} else {
-			logger.warn('MARKOV_MODEL KV namespace not configured, skipping training');
-		}
+		// Use direct Analytics Engine training (no KV extraction step needed)
+		ctx.waitUntil(retrainLegacyModels(env));
 
-		// Optional: Keep legacy training for backward compatibility
-		// ctx.waitUntil(retrainLegacyModels(env));
+		// Optional: Use KV-based training worker (requires manual extraction step)
+		// if (env.MARKOV_MODEL) {
+		// 	ctx.waitUntil(trainingWorkerScheduled(event, env as any, ctx));
+		// } else {
+		// 	logger.warn('MARKOV_MODEL KV namespace not configured, skipping training');
+		// }
 	}
 };
 

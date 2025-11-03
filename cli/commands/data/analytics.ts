@@ -71,15 +71,15 @@ async function stats(args: string[]) {
   const queries = [
     {
       name: 'Total Validations',
-      sql: `SELECT COUNT(*) as total FROM FRAUD_DETECTION_ANALYTICS WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR`
+      sql: `SELECT COUNT(*) as total FROM ANALYTICS_DATASET WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR`
     },
     {
       name: 'By Action',
-      sql: `SELECT action, COUNT(*) as count FROM FRAUD_DETECTION_ANALYTICS WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR GROUP BY action ORDER BY count DESC`
+      sql: `SELECT action, COUNT(*) as count FROM ANALYTICS_DATASET WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR GROUP BY action ORDER BY count DESC`
     },
     {
       name: 'Average Risk Score',
-      sql: `SELECT AVG(double1) as avg_risk FROM FRAUD_DETECTION_ANALYTICS WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR`
+      sql: `SELECT AVG(double1) as avg_risk FROM ANALYTICS_DATASET WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR`
     }
   ];
 
@@ -145,8 +145,8 @@ ENVIRONMENT VARIABLES
   CLOUDFLARE_ACCOUNT_ID     Your Cloudflare account ID
 
 EXAMPLES
-  npm run cli analytics:query "SELECT COUNT(*) FROM FRAUD_DETECTION_ANALYTICS"
-  npm run cli analytics:query "SELECT * FROM FRAUD_DETECTION_ANALYTICS LIMIT 10" --format table
+  npm run cli analytics:query "SELECT COUNT(*) FROM ANALYTICS_DATASET"
+  npm run cli analytics:query "SELECT * FROM ANALYTICS_DATASET LIMIT 10" --format table
   npm run cli analytics:stats --last 48
 `);
     return;

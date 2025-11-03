@@ -267,7 +267,7 @@ export async function loadDisposableDomains(hours: number = 24) {
   const result = await query(`
     SELECT blob5 as domain, SUM(_sample_interval) as count
     FROM ANALYTICS
-    ${buildTimeFilterWith(hours, "blob9 = 'true'")}
+    ${buildTimeFilterWith(hours, "blob9 = 'disposable'")}
     GROUP BY domain
     ORDER BY count DESC
     LIMIT 10
@@ -279,7 +279,7 @@ export async function loadFreeProviders(hours: number = 24) {
   const result = await query(`
     SELECT blob5 as domain, SUM(_sample_interval) as count
     FROM ANALYTICS
-    ${buildTimeFilterWith(hours, "blob10 = 'true'")}
+    ${buildTimeFilterWith(hours, "blob10 = 'free'")}
     GROUP BY domain
     ORDER BY count DESC
     LIMIT 10
@@ -291,7 +291,7 @@ export async function loadPlusAddressing(hours: number = 24) {
   const result = await query(`
     SELECT blob5 as domain, SUM(_sample_interval) as count
     FROM ANALYTICS
-    ${buildTimeFilterWith(hours, "blob11 = 'true'")}
+    ${buildTimeFilterWith(hours, "blob11 = 'yes'")}
     GROUP BY domain
     ORDER BY count DESC
     LIMIT 10
@@ -303,10 +303,9 @@ export async function loadKeyboardWalks(hours: number = 24) {
   const result = await query(`
     SELECT blob12 as walk_type, SUM(_sample_interval) as count
     FROM ANALYTICS
-    ${buildTimeFilterWith(hours, "blob12 != 'none'")}
+    ${buildTimeFilter(hours)}
     GROUP BY walk_type
     ORDER BY count DESC
-    LIMIT 10
   `, hours);
   return (result.data || []).map((row) => ({ type: String(row.walk_type), count: Number(row.count) }));
 }
@@ -324,18 +323,51 @@ export async function loadGibberish(hours: number = 24) {
 
 export async function loadEntropyScores(hours: number = 24) {
   const result = await query(`
-    SELECT blob4 as entropy_bucket, SUM(_sample_interval) as count
+    SELECT double2 as entropy_score, SUM(_sample_interval) as count
     FROM ANALYTICS
     ${buildTimeFilter(hours)}
-    GROUP BY entropy_bucket
-    ORDER BY entropy_bucket
+    GROUP BY entropy_score
+    ORDER BY entropy_score
   `, hours);
-  return (result.data || []).map((row) => ({ bucket: String(row.entropy_bucket), count: Number(row.count) }));
+
+  // Bucket the scores client-side (0.0-1.0 range, buckets of 0.1)
+  const buckets = new Map<string, number>([
+    ['0.0-0.1', 0],
+    ['0.1-0.2', 0],
+    ['0.2-0.3', 0],
+    ['0.3-0.4', 0],
+    ['0.4-0.5', 0],
+    ['0.5-0.6', 0],
+    ['0.6-0.7', 0],
+    ['0.7-0.8', 0],
+    ['0.8-0.9', 0],
+    ['0.9-1.0', 0],
+  ]);
+
+  if (result.data) {
+    result.data.forEach((row) => {
+      const score = Number(row.entropy_score);
+      const count = Number(row.count);
+
+      if (score < 0.1) buckets.set('0.0-0.1', buckets.get('0.0-0.1')! + count);
+      else if (score < 0.2) buckets.set('0.1-0.2', buckets.get('0.1-0.2')! + count);
+      else if (score < 0.3) buckets.set('0.2-0.3', buckets.get('0.2-0.3')! + count);
+      else if (score < 0.4) buckets.set('0.3-0.4', buckets.get('0.3-0.4')! + count);
+      else if (score < 0.5) buckets.set('0.4-0.5', buckets.get('0.4-0.5')! + count);
+      else if (score < 0.6) buckets.set('0.5-0.6', buckets.get('0.5-0.6')! + count);
+      else if (score < 0.7) buckets.set('0.6-0.7', buckets.get('0.6-0.7')! + count);
+      else if (score < 0.8) buckets.set('0.7-0.8', buckets.get('0.7-0.8')! + count);
+      else if (score < 0.9) buckets.set('0.8-0.9', buckets.get('0.8-0.9')! + count);
+      else buckets.set('0.9-1.0', buckets.get('0.9-1.0')! + count);
+    });
+  }
+
+  return Array.from(buckets.entries()).map(([bucket, count]) => ({ bucket, count }));
 }
 
 export async function loadBotScores(hours: number = 24) {
   const result = await query(`
-    SELECT double2 as bot_score, SUM(_sample_interval) as count
+    SELECT double3 as bot_score, SUM(_sample_interval) as count
     FROM ANALYTICS
     ${buildTimeFilter(hours)}
     GROUP BY bot_score
@@ -403,7 +435,7 @@ export async function loadLatencyDistribution(hours: number = 24) {
 
 export async function loadASNs(hours: number = 24) {
   const result = await query(`
-    SELECT double3 as asn, SUM(_sample_interval) as count
+    SELECT double4 as asn, SUM(_sample_interval) as count
     FROM ANALYTICS
     ${buildTimeFilter(hours)}
     GROUP BY asn
