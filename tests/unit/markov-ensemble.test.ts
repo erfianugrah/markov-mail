@@ -2,7 +2,7 @@
  * Unit Tests for Ensemble Markov Chain Detector
  */
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect } from 'vitest';
 import { NGramMarkovChain } from '../../src/detectors/ngram-markov';
 import {
 	MarkovEnsembleDetector,

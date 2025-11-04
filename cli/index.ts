@@ -121,6 +121,16 @@ const COMMANDS = {
   },
 
   // Testing commands
+  'test:live': {
+    description: 'Run live tests against production with curated test cases',
+    file: 'commands/test-live.ts',
+    usage: 'test:live [--endpoint <url>] [--verbose]'
+  },
+  'test:batch': {
+    description: 'Batch test large email datasets against production',
+    file: 'commands/test/batch.ts',
+    usage: 'test:batch --input <path> [--endpoint <url>] [--concurrency <n>]'
+  },
   'test:cron': {
     description: 'Test cron triggers locally',
     file: 'commands/test/cron.ts',
@@ -228,6 +238,8 @@ Usage: npm run cli <command> [options]
   tld:cache:clear           Clear TLD cache
 
 🧪 TESTING COMMANDS
+  test:live                 Run live production tests (curated dataset)
+  test:batch                Batch test large datasets (5k+ emails)
   test:generate             Generate test dataset
   test:detectors            Test pattern detectors
   test:api                  Test API endpoints

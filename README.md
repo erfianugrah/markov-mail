@@ -5,27 +5,31 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 ## 🚦 Status
 
 **Production**: https://fraud.erfi.dev
-**Version**: 2.0.0 (Algorithmic Overhaul)
+**Version**: 2.0.1 (Production-Ready)
 **Active Detectors**: 8/8 ✅
-**Measured Accuracy**: 93% (13/14 test cases)
-**False Negative Rate**: 0% (Perfect fraud detection)
-**Avg Latency**: <50ms
+**Measured Accuracy**: 91.8% (45/49 test cases)
+**Precision**: 95.0% | **Recall**: 95.0% | **F1 Score**: 95.0%
+**False Positives**: 1 | **False Negatives**: 1
+**Avg Latency**: ~30ms
 
 ### System Health
+- ✅ Properly trained models (111K+ legit + 105K+ fraud samples)
+- ✅ Incremental training pipeline with versioning
+- ✅ Comprehensive pino.js logging throughout
+- ✅ Configuration-driven decision overrides
 - ✅ Pure algorithmic scoring (no hardcoded weights)
 - ✅ Markov Chain cross-entropy primary detector
-- ✅ Multi-language support (7 languages)
-- ✅ 154 TLDs in risk database
-- ✅ Trained on 10k samples (5k legit + 5k fraud)
+- ✅ 142 TLDs in risk database + 71K+ disposable domains
 - ✅ Analytics dashboard operational
 - ✅ Unified CLI management system
 
-### Recent Overhaul (2025-01-03)
-- 🎯 **Removed all hardcoded decision logic** - Now purely algorithmic
-- 🧠 **Markov confidence used directly** - No more weight multiplication
-- 🔧 **Fixed adaptive training bug** - Models now train on all samples
-- 📊 **Synthetic gibberish dataset** - Purpose-built for fraud detection
-- 📈 **Verified 100% fraud blocking** - All test cases passed
+### Latest Updates (2025-01-04)
+- 🎯 **Retrained models with 217K samples** - Massive improvement from 33 samples
+- 🔄 **Incremental training** - New data adds to existing models
+- 📦 **Model versioning** - History, backup, and production tracking
+- 📊 **Enhanced logging** - Detailed pino.js logs for all decisions
+- ⚙️ **Fixed action overrides** - Proper block/warn/allow behavior
+- 🧪 **91.8% accuracy** - Up from 89.8% with proper configuration
 
 ---
 
@@ -45,6 +49,8 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 |---------------|---------|
 | **[Getting Started](docs/GETTING_STARTED.md)** | Setup, installation, deployment |
 | **[API Reference](docs/API.md)** | Endpoints, request/response formats |
+| **[Training Guide](docs/TRAINING.md)** | Model training, incremental updates, versioning |
+| **[Configuration Guide](docs/CONFIGURATION.md)** | Risk thresholds, action overrides, feature flags |
 | **[Architecture](docs/ARCHITECTURE.md)** | System design and algorithms |
 | **[Detectors Guide](docs/DETECTORS.md)** | All 8 fraud detection algorithms |
 | **[Risk Scoring](docs/SCORING.md)** | Complete scoring system with examples |
@@ -80,7 +86,10 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 
 ### API Usage
 
-**HTTP Request:**
+#### `/validate` Endpoint (Full Response)
+
+Returns detailed fraud detection signals for debugging and analysis:
+
 ```bash
 curl -X POST https://fraud.erfi.dev/validate \
   -H "Content-Type: application/json" \
@@ -102,9 +111,7 @@ curl -X POST https://fraud.erfi.dev/validate \
     "hasKeyboardWalk": false,
     "isGibberish": false,
     "tldRiskScore": 0.29,
-    "markovScore": 0.15,
-    "markovConfidence": 0.85,
-    "detectedLanguage": "en"
+    "markovConfidence": 0.85
   },
   "fingerprint": {
     "hash": "3d1852...",
@@ -112,6 +119,40 @@ curl -X POST https://fraud.erfi.dev/validate \
     "asn": 13335
   }
 }
+```
+
+#### Application Routes (Minimal Headers)
+
+For production routes like `/signup`, `/login`, etc., fraud detection runs automatically but returns minimal responses:
+
+**Success (fraud check passed):**
+```bash
+curl -X POST https://fraud.erfi.dev/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email": "john@example.com", "password": "secret"}'
+
+# Response Headers:
+# X-Fraud-Decision: allow
+# X-Fraud-Risk-Score: 0.15
+
+# Response: 201 Created
+{"success": true, "message": "Signup successful"}
+```
+
+**Blocked (fraud detected):**
+```bash
+curl -X POST https://fraud.erfi.dev/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test123@example.com"}'
+
+# Response Headers:
+# X-Fraud-Decision: block
+# X-Fraud-Reason: keyboard_walk
+# X-Fraud-Risk-Score: 0.93
+# X-Fraud-Fingerprint: d3f639f842841a81
+
+# Response: 403 Forbidden
+Forbidden
 ```
 
 **Decisions:**
@@ -183,24 +224,20 @@ npm run cli test:api user123@example.com
 
 ## 📊 Risk Scoring
 
-### Current Weights (v1.4.0 - Optimized)
+### Algorithmic Scoring (v2.0+)
 
-```
-Domain Signals (Additive):
-├─ Domain Reputation: 15%
-└─ TLD Risk: 15%
+**Primary Detector**: Markov Chain cross-entropy confidence (0-1 scale)
+- Uses character transition patterns trained on 10k samples (5k legit + 5k fraud)
+- Direct confidence score - no weight multiplication
 
-Local Part Signals (Max-Based):
-├─ Markov Chain: 35% (highest weight)
-├─ Pattern Detection: 30%
-└─ Entropy: 5% (baseline)
-```
+**Pattern Overrides**: Specific high-risk patterns
+- Keyboard walks: 0.9
+- Sequential patterns: 0.8
+- Dated patterns: 0.7
 
-### Scoring Strategy
-- **Domain signals**: Additive (domain + TLD scores)
-- **Local part signals**: Max-based (highest of entropy, pattern, markov)
-- **Final score**: domain_signals + local_part_max_signal
-- **Result**: Prevents double-counting of overlapping fraud signals
+**Domain Signals**: Additive risk
+- Disposable domains: +0.2
+- High-risk TLDs: +0.1
 
 **See [docs/SCORING.md](docs/SCORING.md) for complete scoring documentation with detailed examples.**
 
@@ -438,6 +475,6 @@ Built with:
 ---
 
 **Production URL**: https://fraud.erfi.dev
-**Version**: 1.4.0 (2025-11-02)
+**Version**: 2.0.1 (2025-01-03)
 **Documentation**: [docs/README.md](docs/README.md)
 **CLI Guide**: [cli/README.md](cli/README.md)

@@ -4,7 +4,7 @@
  * Tests the generalized Markov Chain implementation supporting 1-gram, 2-gram, 3-gram
  */
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect } from 'vitest';
 import { NGramMarkovChain } from '../../src/detectors/ngram-markov';
 
 describe('NGramMarkovChain', () => {

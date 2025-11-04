@@ -2,7 +2,7 @@
  * Unit Tests for Heuristic Labeling
  */
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect } from 'vitest';
 import { applyHeuristicLabel, batchLabel, validateDatasetQuality } from '../../src/training/heuristic-labeling';
 import type { ValidationRecord } from '../../src/training/types';
 

@@ -11,12 +11,8 @@ import { loadDisposableDomains, updateDisposableDomains } from './services/dispo
 import { loadTLDRiskProfiles } from './services/tld-risk-updater';
 import {
 	extractPatternFamily,
-	getPatternRiskScore,
 	normalizeEmail,
 	detectKeyboardWalk,
-	getKeyboardWalkRiskScore,
-	getPlusAddressingRiskScore,
-	getNGramRiskScore,
 	detectGibberish,
 	analyzeTLDRisk,
 	isHighRiskTLD,
@@ -247,8 +243,25 @@ app.post('/validate', async (c) => {
 		return c.json({ error: 'Email is required' }, 400);
 	}
 
-	// Return validation result (middleware already did all the work!)
-	return c.json({
+	// Get model version metadata
+	let modelVersion = 'unknown';
+	let modelTrainingCount = 0;
+	try {
+		if (c.env.MARKOV_MODEL) {
+			const modelData = await c.env.MARKOV_MODEL.get('MM_legit_2gram', 'json') as any;
+			if (modelData?.trainingCount) {
+				modelTrainingCount = modelData.trainingCount;
+			}
+			// Try to get versioned model info
+			const versionKey = await c.env.MARKOV_MODEL.get('production_model_version', 'text');
+			modelVersion = versionKey || `trained_${modelTrainingCount}`;
+		}
+	} catch (e) {
+		// Fail silently - version metadata is non-critical
+	}
+
+	// Return validation result with version metadata
+	const response = c.json({
 		valid: fraud.valid,
 		riskScore: fraud.riskScore,
 		signals: fraud.signals,
@@ -260,7 +273,33 @@ app.post('/validate', async (c) => {
 			asn: fingerprint.asn,
 			botScore: fingerprint.botScore,
 		},
+		metadata: {
+			version: '2.0.3',
+			modelVersion,
+			modelTrainingCount,
+		},
 	});
+
+	// Add version headers
+	response.headers.set('X-Worker-Version', '2.0.3');
+	response.headers.set('X-Model-Version', modelVersion);
+	response.headers.set('X-Model-Training-Count', modelTrainingCount.toString());
+
+	return response;
+});
+
+// Example application route: /signup
+// Demonstrates minimal response headers on fraud block
+app.post('/signup', async (c) => {
+	const body = c.get('requestBody');
+
+	// If we got here, fraud detection passed!
+	// (Middleware would have blocked if fraud was detected)
+	return c.json({
+		success: true,
+		message: 'Signup successful',
+		email: body.email
+	}, 201);
 });
 
 // 🆕 EXAMPLE ROUTES - Demonstrate automatic fraud detection
