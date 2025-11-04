@@ -44,7 +44,52 @@ export function detectSequentialPattern(email: string): SequentialPatternResult 
   if (trailingNumberMatch) {
     const [, base, numberStr] = trailingNumberMatch;
     const sequence = parseInt(numberStr, 10);
+
+    // EXCEPTION 1: Check if it looks like a birth year (4 digits, plausible range)
+    // Birth years should NOT be flagged as sequential patterns
+    if (numberStr.length === 4) {
+      const currentYear = new Date().getFullYear();
+      const year = parseInt(numberStr, 10);
+      const yearAge = currentYear - year;
+
+      // If it's in the plausible birth year range (13-100 years old), don't flag as sequential
+      if (year >= 1900 && year <= currentYear && yearAge >= 13 && yearAge <= 100) {
+        // This is likely a birth year, not a sequential number
+        return {
+          isSequential: false,
+          basePattern: localPart,
+          sequence: null,
+          confidence: 0.0
+        };
+      }
+    }
+
+    // EXCEPTION 2: Small memorable numbers (1-3 digits, not years)
+    // alice42@, bob007@, user1@ vs user123@
+    // Very short numbers (<= 3 digits) are too ambiguous to confidently flag
+    // UNLESS they have leading zeros (001, 007) or common sequential bases (user, test)
     const hasLeadingZeros = numberStr.length > 1 && numberStr[0] === '0';
+
+    if (numberStr.length <= 3 && base.length >= 4 && !hasLeadingZeros) {
+      // Check if base contains common sequential patterns
+      const commonBases = [
+        'test', 'user', 'account', 'email', 'temp', 'demo', 'admin', 'guest',
+        'trial', 'sample', 'hello', 'service', 'team'
+      ];
+      const hasCommonBase = commonBases.some(common => base.includes(common));
+
+      // If it's a normal name + small number (no leading zeros), likely memorable/personal
+      if (!hasCommonBase) {
+        return {
+          isSequential: false,
+          basePattern: localPart,
+          sequence: null,
+          confidence: 0.0
+        };
+      }
+    }
+
+    // Now continue with normal sequential detection
     const sequenceLength = numberStr.length;
 
     // Calculate confidence based on several factors

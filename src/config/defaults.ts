@@ -58,7 +58,7 @@ export interface FraudDetectionConfig {
 	};
 
 	// Action Override
-	actionOverride: 'allow' | 'warn' | 'block'; // Override decision logic
+	actionOverride?: 'allow' | 'warn' | 'block' | null; // Override decision logic (null = no override)
 
 	// Risk Scoring Weights (DEPRECATED in v2.0+)
 	// These are kept for backwards compatibility but NOT used in scoring
@@ -153,8 +153,8 @@ export const DEFAULT_CONFIG: FraudDetectionConfig = {
 		originUrl: '', // Must be configured
 	},
 
-	// No action override by default
-	actionOverride: 'allow',
+	// No action override by default (null = enforcement mode)
+	actionOverride: null,
 
 	// Risk weights (DEPRECATED in v2.0+, kept for backwards compatibility only)
 	// v2.0+ uses pure algorithmic scoring - Markov confidence directly, no multiplication

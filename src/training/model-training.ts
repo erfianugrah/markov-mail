@@ -88,11 +88,18 @@ export async function loadTrainingDatasets(
 
 /**
  * Train models for specified n-gram orders
+ * If existingModels are provided, training continues incrementally on those models
  */
 export function trainModels(
 	legitSamples: string[],
 	fraudSamples: string[],
-	config: TrainingConfig
+	config: TrainingConfig,
+	existingModels?: {
+		[order: number]: {
+			legit: NGramMarkovChain;
+			fraud: NGramMarkovChain;
+		};
+	}
 ): {
 	[order: number]: {
 		legit: NGramMarkovChain;
@@ -112,8 +119,10 @@ export function trainModels(
 			order,
 		}, 'Training n-gram models');
 
-		// Train legitimate model
-		const legitModel = new NGramMarkovChain(order);
+		// Load existing model or create new one
+		const legitModel = existingModels?.[order]?.legit || new NGramMarkovChain(order);
+		const previousLegitCount = legitModel.getStats().trainingExamples;
+
 		let trained = 0;
 		for (const sample of legitSamples) {
 			if (legitModel.train(sample, config.adaptationRate)) {
@@ -125,10 +134,14 @@ export function trainModels(
 			order,
 			samples_used: trained,
 			total_samples: legitSamples.length,
-		}, 'Legitimate model trained');
+			previous_training_count: previousLegitCount,
+			new_training_count: legitModel.getStats().trainingExamples,
+		}, existingModels ? 'Legitimate model updated incrementally' : 'Legitimate model trained');
 
-		// Train fraud model
-		const fraudModel = new NGramMarkovChain(order);
+		// Load existing model or create new one
+		const fraudModel = existingModels?.[order]?.fraud || new NGramMarkovChain(order);
+		const previousFraudCount = fraudModel.getStats().trainingExamples;
+
 		trained = 0;
 		for (const sample of fraudSamples) {
 			if (fraudModel.train(sample, config.adaptationRate)) {
@@ -140,7 +153,9 @@ export function trainModels(
 			order,
 			samples_used: trained,
 			total_samples: fraudSamples.length,
-		}, 'Fraud model trained');
+			previous_training_count: previousFraudCount,
+			new_training_count: fraudModel.getStats().trainingExamples,
+		}, existingModels ? 'Fraud model updated incrementally' : 'Fraud model trained');
 
 		models[order] = {
 			legit: legitModel,
@@ -167,15 +182,16 @@ export function generateVersion(): string {
 }
 
 /**
- * Save trained models to KV with versioning
+ * Save trained models to KV with versioning and backup
  */
 export async function saveTrainedModels(
 	kv: KVNamespace,
-	trainedModels: TrainedModels
+	trainedModels: TrainedModels,
+	updateProduction: boolean = true
 ): Promise<void> {
 	const { version, models } = trainedModels;
 
-	// Save each model with versioned key
+	// Step 1: Save versioned models (history)
 	for (const [order, { legit, fraud }] of Object.entries(models)) {
 		const legitKey = `MM_legit_${order}gram_${version}`;
 		const fraudKey = `MM_fraud_${order}gram_${version}`;
@@ -184,20 +200,125 @@ export async function saveTrainedModels(
 		await kv.put(fraudKey, JSON.stringify(fraud.toJSON()));
 
 		logger.info({
-			event: 'models_saved',
+			event: 'versioned_models_saved',
 			order,
 			legit_key: legitKey,
 			fraud_key: fraudKey,
-		}, 'Saved models to KV');
+		}, `Saved versioned ${order}-gram models`);
 	}
 
-	// Save metadata
+	// Step 2: Save metadata for this version
 	const metadataKey = `model_metadata_${version}`;
 	await kv.put(metadataKey, JSON.stringify(trainedModels.metadata));
 	logger.info({
 		event: 'model_metadata_saved',
 		metadata_key: metadataKey,
 	}, 'Saved model metadata');
+
+	// Step 3: Update production keys if requested
+	if (updateProduction) {
+		for (const [order, { legit, fraud }] of Object.entries(models)) {
+			const productionLegitKey = `MM_legit_${order}gram`;
+			const productionFraudKey = `MM_fraud_${order}gram`;
+
+			// Backup current production models before replacing
+			const currentLegit = await kv.get(productionLegitKey, 'json');
+			const currentFraud = await kv.get(productionFraudKey, 'json');
+
+			if (currentLegit && currentFraud) {
+				const backupLegitKey = `MM_legit_${order}gram_backup`;
+				const backupFraudKey = `MM_fraud_${order}gram_backup`;
+
+				await kv.put(backupLegitKey, JSON.stringify(currentLegit));
+				await kv.put(backupFraudKey, JSON.stringify(currentFraud));
+
+				logger.info({
+					event: 'production_models_backed_up',
+					order,
+					backup_legit_key: backupLegitKey,
+					backup_fraud_key: backupFraudKey,
+				}, `Backed up current production ${order}-gram models`);
+			}
+
+			// Update production keys
+			await kv.put(productionLegitKey, JSON.stringify(legit.toJSON()));
+			await kv.put(productionFraudKey, JSON.stringify(fraud.toJSON()));
+
+			logger.info({
+				event: 'production_models_updated',
+				order,
+				legit_key: productionLegitKey,
+				fraud_key: productionFraudKey,
+			}, `Updated production ${order}-gram models`);
+		}
+
+		// Update production version pointer
+		await kv.put('production_model_version', version);
+		logger.info({
+			event: 'production_version_updated',
+			version,
+		}, 'Updated production model version');
+	}
+}
+
+/**
+ * Load production models from KV for incremental training
+ */
+export async function loadProductionModels(
+	kv: KVNamespace,
+	orders: number[]
+): Promise<{
+	[order: number]: {
+		legit: NGramMarkovChain;
+		fraud: NGramMarkovChain;
+	};
+} | null> {
+	try {
+		const models: {
+			[order: number]: {
+				legit: NGramMarkovChain;
+				fraud: NGramMarkovChain;
+			};
+		} = {};
+
+		for (const order of orders) {
+			const legitKey = `MM_legit_${order}gram`;
+			const fraudKey = `MM_fraud_${order}gram`;
+
+			const legitData = await kv.get(legitKey, 'json');
+			const fraudData = await kv.get(fraudKey, 'json');
+
+			if (!legitData || !fraudData) {
+				logger.info({
+					event: 'production_model_not_found',
+					order,
+					legit_key: legitKey,
+					fraud_key: fraudKey,
+				}, `No production ${order}-gram models found - will train from scratch`);
+				continue;
+			}
+
+			models[order] = {
+				legit: NGramMarkovChain.fromJSON(legitData),
+				fraud: NGramMarkovChain.fromJSON(fraudData),
+			};
+
+			logger.info({
+				event: 'production_model_loaded',
+				order,
+				legit_training_count: models[order].legit.getStats().trainingExamples,
+				fraud_training_count: models[order].fraud.getStats().trainingExamples,
+			}, `Loaded production ${order}-gram models for incremental training`);
+		}
+
+		return Object.keys(models).length > 0 ? models : null;
+	} catch (error) {
+		logger.warn({
+			event: 'production_models_load_failed',
+			error: error instanceof Error ? error.message : String(error),
+		}, 'Failed to load production models - will train from scratch');
+		return null;
+	}
 }
 
 /**
@@ -206,13 +327,15 @@ export async function saveTrainedModels(
 export async function runTrainingPipeline(
 	kv: KVNamespace,
 	config: TrainingConfig,
-	days: number = 7
+	days: number = 7,
+	incremental: boolean = true
 ): Promise<TrainedModels> {
 	logger.info({
 		event: 'training_pipeline_started',
 		orders: config.orders,
 		days,
 		min_samples_per_class: config.minSamplesPerClass,
+		incremental,
 	}, 'Starting automated training pipeline');
 
 	const startTime = Date.now();
@@ -243,15 +366,25 @@ export async function runTrainingPipeline(
 		datasets: dates,
 	}, 'Training datasets loaded');
 
-	// Step 2: Train models
+	// Step 2: Load existing production models if incremental training is enabled
+	let existingModels = null;
+	if (incremental) {
+		logger.info({
+			event: 'loading_production_models',
+		}, 'Loading existing production models for incremental training');
+		existingModels = await loadProductionModels(kv, config.orders);
+	}
+
+	// Step 3: Train models (incrementally or from scratch)
 	logger.info({
 		event: 'model_training',
-	}, 'Training models');
-	const models = trainModels(legit, fraud, config);
+		mode: existingModels ? 'incremental' : 'from_scratch',
+	}, existingModels ? 'Training models incrementally' : 'Training models from scratch');
+	const models = trainModels(legit, fraud, config, existingModels || undefined);
 
 	const trainingDuration = Date.now() - startTime;
 
-	// Step 3: Package results
+	// Step 4: Package results
 	const version = generateVersion();
 	const trainedModels: TrainedModels = {
 		version,
@@ -269,7 +402,7 @@ export async function runTrainingPipeline(
 		},
 	};
 
-	// Step 4: Save models
+	// Step 5: Save models
 	logger.info({
 		event: 'models_saving',
 	}, 'Saving trained models');
@@ -280,6 +413,7 @@ export async function runTrainingPipeline(
 		version,
 		duration_ms: trainingDuration,
 		duration_seconds: (trainingDuration / 1000).toFixed(1),
+		mode: existingModels ? 'incremental' : 'from_scratch',
 	}, 'Training complete');
 
 	return trainedModels;

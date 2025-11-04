@@ -108,9 +108,178 @@ describe('Dated Pattern Detector', () => {
     expect(result.confidence).toBeGreaterThan(0.8);
   });
 
-  it('should not detect old years as dated patterns', () => {
+  it('should detect birth years as dated patterns with LOW risk', () => {
+    // 2010 = 15 years old = plausible birth year (Gen Z)
     const result = detectDatedPattern('john.doe.2010@gmail.com');
-    expect(result.hasDatedPattern).toBe(false);
+    expect(result.hasDatedPattern).toBe(true);
+    expect(result.metadata?.ageCategory).toBe('plausible_birth_year');
+    expect(result.metadata?.isSuspicious).toBe(false);
+    expect(result.confidence).toBeLessThan(0.3); // Low risk
+  });
+
+  // Age-Aware Algorithm Tests
+  describe('Age-Aware Birth Year Detection', () => {
+    it('should allow Millennial birth years (1981-1996)', () => {
+      const millennialYears = [1985, 1990, 1995];
+
+      for (const year of millennialYears) {
+        const result = detectDatedPattern(`sarah${year}@gmail.com`);
+        expect(result.hasDatedPattern).toBe(true);
+        expect(result.metadata?.ageCategory).toBe('plausible_birth_year');
+        expect(result.metadata?.isSuspicious).toBe(false);
+        expect(result.confidence).toBeLessThan(0.3); // Low risk
+      }
+    });
+
+    it('should allow Gen X birth years (1965-1980)', () => {
+      const genXYears = [1970, 1975, 1980];
+
+      for (const year of genXYears) {
+        const result = detectDatedPattern(`mike_${year}@yahoo.com`);
+        expect(result.hasDatedPattern).toBe(true);
+        expect(result.metadata?.ageCategory).toBe('plausible_birth_year');
+        expect(result.metadata?.isSuspicious).toBe(false);
+        expect(result.confidence).toBeLessThan(0.3);
+      }
+    });
+
+    it('should allow Gen Z birth years (1997-2012)', () => {
+      const genZYears = [2000, 2005, 2010];
+
+      for (const year of genZYears) {
+        const result = detectDatedPattern(`alex.${year}@gmail.com`);
+        expect(result.hasDatedPattern).toBe(true);
+        expect(result.metadata?.ageCategory).toBe('plausible_birth_year');
+        expect(result.metadata?.isSuspicious).toBe(false);
+        expect(result.confidence).toBeLessThan(0.3);
+      }
+    });
+
+    it('should block recent years as fraud timestamps', () => {
+      const recentYears = [currentYear, currentYear - 1, currentYear + 1];
+
+      for (const year of recentYears) {
+        const result = detectDatedPattern(`user${year}@gmail.com`);
+        expect(result.hasDatedPattern).toBe(true);
+        expect(result.metadata?.ageCategory).toMatch(/recent_timestamp|future/);
+        expect(result.metadata?.isSuspicious).toBe(true);
+        expect(result.confidence).toBeGreaterThan(0.8); // High risk
+      }
+    });
+
+    it('should block underage years (too young)', () => {
+      const underageYears = [currentYear - 5, currentYear - 10];
+
+      for (const year of underageYears) {
+        const result = detectDatedPattern(`kid${year}@gmail.com`);
+        expect(result.hasDatedPattern).toBe(true);
+        expect(result.metadata?.ageCategory).toBe('underage');
+        expect(result.metadata?.isSuspicious).toBe(true);
+        expect(result.confidence).toBeGreaterThan(0.6); // Medium-high risk
+      }
+    });
+
+    it('should handle elderly birth years appropriately', () => {
+      const elderlyYears = [1950, 1945, 1940];
+
+      for (const year of elderlyYears) {
+        const result = detectDatedPattern(`senior${year}@aol.com`);
+        expect(result.hasDatedPattern).toBe(true);
+        expect(result.metadata?.ageCategory).toBe('elderly_birth_year');
+        expect(result.metadata?.isSuspicious).toBe(false);
+        expect(result.confidence).toBeLessThan(0.5); // Low-medium risk
+      }
+    });
+
+    it('should allow 2-digit Millennial birth years (85, 90, 95)', () => {
+      const twoDigitYears = ['85', '90', '95'];
+
+      for (const year of twoDigitYears) {
+        const result = detectDatedPattern(`sarah${year}@gmail.com`);
+        expect(result.hasDatedPattern).toBe(true);
+        expect(result.dateType).toBe('short-year');
+        expect(result.metadata?.ageCategory).toBe('plausible_birth_year');
+        expect(result.metadata?.isSuspicious).toBe(false);
+        expect(result.confidence).toBeLessThan(0.3); // Low risk
+      }
+    });
+
+    it('should allow 2-digit Gen X birth years (70, 75, 80)', () => {
+      const twoDigitYears = ['70', '75', '80'];
+
+      for (const year of twoDigitYears) {
+        const result = detectDatedPattern(`mike${year}@yahoo.com`);
+        expect(result.hasDatedPattern).toBe(true);
+        expect(result.dateType).toBe('short-year');
+        expect(result.metadata?.ageCategory).toBe('plausible_birth_year');
+        expect(result.metadata?.isSuspicious).toBe(false);
+        expect(result.confidence).toBeLessThan(0.3);
+      }
+    });
+
+    it('should allow 2-digit Gen Z birth years (00, 05, 10)', () => {
+      const twoDigitYears = ['00', '05', '10'];
+
+      for (const year of twoDigitYears) {
+        const result = detectDatedPattern(`alex${year}@gmail.com`);
+        expect(result.hasDatedPattern).toBe(true);
+        expect(result.dateType).toBe('short-year');
+        expect(result.metadata?.ageCategory).toBe('plausible_birth_year');
+        expect(result.metadata?.isSuspicious).toBe(false);
+        expect(result.confidence).toBeLessThan(0.3);
+      }
+    });
+
+    it('should block 2-digit recent years as fraud (24, 25)', () => {
+      const recentTwoDigit = ['24', '25'];
+
+      for (const year of recentTwoDigit) {
+        const result = detectDatedPattern(`user${year}@gmail.com`);
+        expect(result.hasDatedPattern).toBe(true);
+        expect(result.dateType).toBe('short-year');
+        expect(result.metadata?.ageCategory).toMatch(/recent_timestamp|future/);
+        expect(result.metadata?.isSuspicious).toBe(true);
+        expect(result.confidence).toBeGreaterThan(0.7); // High risk
+      }
+    });
+
+    it('should skip 2-digit patterns with short bases (avoid false positives)', () => {
+      // Short bases like "a85", "xy90" are ambiguous (could be random numbers)
+      const ambiguous = ['a85@gmail.com', 'xy90@yahoo.com', 'foo42@test.com'];
+
+      for (const email of ambiguous) {
+        const result = detectDatedPattern(email);
+        expect(result.hasDatedPattern).toBe(false); // Should NOT detect
+      }
+    });
+
+    it('should block ancient/implausible years', () => {
+      const ancientYears = [1900, 1920];
+
+      for (const year of ancientYears) {
+        const result = detectDatedPattern(`old${year}@gmail.com`);
+        expect(result.hasDatedPattern).toBe(true);
+        expect(result.metadata?.ageCategory).toBe('ancient');
+        expect(result.metadata?.isSuspicious).toBe(true);
+        expect(result.confidence).toBeGreaterThan(0.7); // High risk
+      }
+    });
+
+    it('should flag month-year patterns even in birth range as suspicious', () => {
+      const result = detectDatedPattern('sarah_jan1990@gmail.com');
+      expect(result.hasDatedPattern).toBe(true);
+      expect(result.dateType).toBe('month-year');
+      expect(result.metadata?.isSuspicious).toBe(true);
+      expect(result.confidence).toBeGreaterThan(0.5); // Suspicious formatting
+    });
+
+    it('should flag full-date patterns even in birth range as very suspicious', () => {
+      const result = detectDatedPattern('john_19900115@gmail.com');
+      expect(result.hasDatedPattern).toBe(true);
+      expect(result.dateType).toBe('full-date');
+      expect(result.metadata?.isSuspicious).toBe(true);
+      expect(result.confidence).toBeGreaterThan(0.7); // Very suspicious
+    });
   });
 
   it('should extract pattern family for dated emails', () => {

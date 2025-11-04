@@ -11,12 +11,8 @@ import { validateEmail } from '../validators/email';
 import { validateDomain, getDomainReputationScore } from '../validators/domain';
 import {
   extractPatternFamily,
-  getPatternRiskScore,
   normalizeEmail,
   detectKeyboardWalk,
-  getKeyboardWalkRiskScore,
-  getPlusAddressingRiskScore,
-  getNGramRiskScore,
   detectGibberish,
   analyzeTLDRisk,
   type MarkovResult
@@ -115,6 +111,19 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     return next();
   }
 
+  // Wrap entire fraud detection logic in try-catch
+  try {
+    logger.info({
+      event: 'fraud_detection_started',
+      email: email.substring(0, 3) + '***',
+      path,
+    }, 'Starting fraud detection');
+  } catch (logError) {
+    // Continue even if logging fails
+  }
+
+  try {
+
   // Load configuration
   const config = await getConfig(c.env.CONFIG, {
     ADMIN_API_KEY: c.env.ADMIN_API_KEY,
@@ -177,48 +186,45 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
   let normalizedEmailResult;
   let keyboardWalkResult;
   let gibberishResult;
-  let patternRiskScore = 0;
 
   if (emailValidation.valid && config.features.enablePatternCheck) {
-    // Extract pattern family
-    patternFamilyResult = await extractPatternFamily(email);
-    patternRiskScore = getPatternRiskScore(patternFamilyResult);
-
-    // Normalize email (plus-addressing detection)
+    logger.info({ event: 'pattern_detection_starting' }, 'Starting pattern detection');
+    // Normalize email FIRST (plus-addressing detection)
+    // This ensures pattern detectors don't flag john+test1@ as sequential
     normalizedEmailResult = normalizeEmail(email);
-    const plusAddressingRisk = getPlusAddressingRiskScore(email);
+    const emailForPatternDetection = normalizedEmailResult.normalized;
+
+    // Extract pattern family (for signals/observability only)
+    // Use normalized email to avoid false positives on plus-addressed emails
+    logger.info({ event: 'pattern_family_starting' }, 'Extracting pattern family');
+    patternFamilyResult = await extractPatternFamily(emailForPatternDetection);
+    logger.info({ event: 'pattern_family_done', family: patternFamilyResult?.family }, 'Pattern family extracted');
 
     // Keyboard walk detection
-    keyboardWalkResult = detectKeyboardWalk(email);
-    const keyboardWalkRisk = getKeyboardWalkRiskScore(keyboardWalkResult);
+    keyboardWalkResult = detectKeyboardWalk(emailForPatternDetection);
 
     // N-Gram gibberish detection
-    const [localPart] = email.split('@');
-    const ngramRisk = getNGramRiskScore(localPart);
-    gibberishResult = detectGibberish(email);
-
-    // Combine pattern risks
-    patternRiskScore = Math.max(
-      patternRiskScore,
-      plusAddressingRisk,
-      keyboardWalkRisk,
-      ngramRisk
-    );
+    gibberishResult = detectGibberish(emailForPatternDetection);
+    logger.info({ event: 'pattern_detection_done' }, 'Pattern detection complete');
   }
 
-  // Markov Chain detection (NGram implementation)
+  // Markov Chain detection (NGram implementation) - PRIMARY SCORING METHOD
   let markovResult: MarkovResult | undefined;
-  let markovRiskScore = 0;
 
   if (emailValidation.valid && config.features.enableMarkovChainDetection) {
+    logger.info({ event: 'markov_starting', email: email.substring(0, 3) + '***' }, 'Starting Markov detection');
     await loadMarkovModels(c.env);
 
     if (markovLegitModel && markovFraudModel) {
       const [localPart] = email.split('@');
+      logger.info({ event: 'markov_calculating', localPart: localPart.substring(0, 3) + '***' }, 'Calculating cross-entropy');
 
       // Calculate cross-entropy for both models
       const H_legit = markovLegitModel.crossEntropy(localPart);
+      logger.info({ event: 'markov_legit_done', H_legit }, 'Legit cross-entropy calculated');
+
       const H_fraud = markovFraudModel.crossEntropy(localPart);
+      logger.info({ event: 'markov_fraud_done', H_fraud }, 'Fraud cross-entropy calculated');
 
       // Lower cross-entropy = better fit to that model
       const isLikelyFraudulent = H_fraud < H_legit;
@@ -238,11 +244,6 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
         confidence,
         differenceRatio,
       };
-
-      // Use Markov risk only if confidence is high enough (configurable)
-      if (markovResult.isLikelyFraudulent && markovResult.confidence > config.confidenceThresholds.markovFraud) {
-        markovRiskScore = markovResult.confidence;
-      }
     }
   }
 
@@ -254,15 +255,33 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
   if (!emailValidation.valid) {
     riskScore = config.baseRiskScores.invalidFormat;
     blockReason = emailValidation.reason || 'invalid_format';
+    logger.info({
+      event: 'hard_blocker_invalid_format',
+      riskScore,
+      reason: blockReason,
+    }, 'Email failed format validation');
   } else if (domainValidation && domainValidation.isDisposable) {
     riskScore = config.baseRiskScores.disposableDomain;
     blockReason = 'disposable_domain';
+    const [, emailDomain] = email.split('@');
+    logger.info({
+      event: 'hard_blocker_disposable',
+      riskScore,
+      domain: emailDomain,
+    }, 'Disposable domain detected');
   } else {
     // Priority 2: Algorithmic scoring pipeline
+    logger.info({
+      event: 'algorithmic_scoring_starting',
+      email: email.substring(0, 3) + '***',
+    }, 'Starting algorithmic risk calculation');
+
     riskScore = calculateAlgorithmicRiskScore({
+      email,
       markovResult,
       keyboardWalkResult,
       patternFamilyResult,
+      gibberishResult,
       domainReputationScore,
       tldRiskScore
     });
@@ -271,10 +290,37 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       markovResult,
       keyboardWalkResult,
       patternFamilyResult,
+      gibberishResult,
       domainReputationScore,
       tldRiskScore,
       config
     });
+
+    logger.info({
+      event: 'algorithmic_scoring_complete',
+      riskScore: Math.round(riskScore * 100) / 100,
+      reason: blockReason,
+      markovDetected: markovResult?.isLikelyFraudulent,
+      markovConfidence: markovResult?.confidence,
+    }, 'Risk score calculated');
+  }
+
+  /**
+   * Detect professional/business email patterns
+   * contact@, info@, support@, admin@, sales@, etc.
+   */
+  function isProfessionalEmail(email: string): boolean {
+    const [localPart] = email.toLowerCase().split('@');
+
+    // Common professional email prefixes
+    const professionalPrefixes = [
+      'contact', 'info', 'support', 'help', 'sales', 'admin',
+      'hello', 'team', 'service', 'inquiry', 'business', 'office',
+      'hr', 'jobs', 'careers', 'marketing', 'press', 'media',
+      'billing', 'accounts', 'legal', 'privacy'
+    ];
+
+    return professionalPrefixes.includes(localPart);
   }
 
   /**
@@ -282,22 +328,43 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
    * No hardcoded weights - uses detector confidence directly
    */
   function calculateAlgorithmicRiskScore(params: {
+    email: string;
     markovResult: MarkovResult | null | undefined;
     keyboardWalkResult: any;
     patternFamilyResult: any;
+    gibberishResult: any;
     domainReputationScore: number;
     tldRiskScore: number;
   }): number {
-    const { markovResult, keyboardWalkResult, patternFamilyResult, domainReputationScore, tldRiskScore } = params;
+    const { email, markovResult, keyboardWalkResult, patternFamilyResult, gibberishResult, domainReputationScore, tldRiskScore } = params;
+
+    // Check if this is a professional email
+    const isProfessional = isProfessionalEmail(email);
+
+    // Check if this looks like an international name (short, simple pattern)
+    const [localPart] = email.split('@');
+    const isInternationalName = localPart.includes('.') &&
+                                localPart.split('.').every(part => part.length >= 2 && part.length <= 7) &&
+                                /^[a-z.]+$/.test(localPart);
 
     // Primary: Markov Chain cross-entropy (pure algorithm)
+    // Reduce Markov weight for professional emails and international names
+    // (they may look "gibberish" to an English-trained model)
     let score = markovResult?.isLikelyFraudulent ? markovResult.confidence : 0;
+    if (isProfessional && score < 0.7) {
+      score = score * 0.5; // Reduce Markov confidence for professional emails
+    } else if (isInternationalName && score < 0.7) {
+      score = score * 0.6; // Reduce Markov confidence for international names (yuki.tanaka, li.wei)
+    }
 
     // Secondary: Pattern-specific overrides (deterministic rules)
     const patternOverrides = [
       { condition: keyboardWalkResult?.hasKeyboardWalk, score: 0.9 },
       { condition: patternFamilyResult?.patternType === 'sequential', score: 0.8 },
-      { condition: patternFamilyResult?.patternType === 'dated', score: 0.7 }
+      // Dated patterns now use confidence from age-aware algorithm (0.2 for birth years, 0.9 for fraud)
+      { condition: patternFamilyResult?.patternType === 'dated', score: patternFamilyResult?.confidence || 0.7 },
+      // Gibberish detection with high confidence should override low Markov scores
+      { condition: gibberishResult?.isGibberish && gibberishResult?.confidence > 0.7, score: 0.75 }
     ];
 
     for (const override of patternOverrides) {
@@ -307,7 +374,11 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     }
 
     // Tertiary: Domain signals (independent, additive)
-    const domainRisk = domainReputationScore * 0.2 + tldRiskScore * 0.1;
+    // Reduce TLD risk for professional emails (many legitimate businesses use new gTLDs)
+    let domainRisk = domainReputationScore * 0.2 + tldRiskScore * 0.1;
+    if (isProfessional) {
+      domainRisk = domainRisk * 0.5; // Halve domain risk for professional emails
+    }
 
     return Math.min(score + domainRisk, 1.0);
   }
@@ -320,17 +391,22 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     markovResult: MarkovResult | null | undefined;
     keyboardWalkResult: any;
     patternFamilyResult: any;
+    gibberishResult: any;
     domainReputationScore: number;
     tldRiskScore: number;
     config: any;
   }): string {
-    const { markovResult, keyboardWalkResult, patternFamilyResult, domainReputationScore, tldRiskScore, config } = params;
+    const { markovResult, keyboardWalkResult, patternFamilyResult, gibberishResult, domainReputationScore, tldRiskScore, config } = params;
 
     // Priority-ordered detection checks
     const reasons = [
       {
         condition: markovResult?.isLikelyFraudulent && markovResult.confidence > config.confidenceThresholds.markovFraud,
         reason: 'markov_chain_fraud'
+      },
+      {
+        condition: gibberishResult?.isGibberish && gibberishResult?.confidence > 0.7,
+        reason: 'gibberish_pattern'
       },
       {
         condition: keyboardWalkResult?.hasKeyboardWalk,
@@ -361,20 +437,57 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
   const blockThreshold = config.riskThresholds.block;
   const warnThreshold = config.riskThresholds.warn;
 
-  // Determine decision
+  // Determine base decision based on risk score
   let decision: 'allow' | 'warn' | 'block' = 'allow';
-  if (riskScore > blockThreshold) {
-    decision = 'block';
-  } else if (riskScore > warnThreshold) {
-    decision = 'warn';
-  }
+  const originalDecision: 'allow' | 'warn' | 'block' =
+    riskScore > blockThreshold ? 'block' :
+    riskScore > warnThreshold ? 'warn' :
+    'allow';
 
-  // Apply action override if configured
-  if (config.actionOverride !== 'allow') {
-    if (config.actionOverride === 'block' && decision === 'warn') {
-      decision = 'block'; // Escalate warnings to blocks
+  decision = originalDecision;
+
+  // Apply action override if configured (with detailed logging)
+  if (config.actionOverride && config.actionOverride !== originalDecision) {
+    logger.info({
+      event: 'decision_override_applied',
+      originalDecision,
+      overrideTo: config.actionOverride,
+      riskScore: Math.round(riskScore * 100) / 100,
+      email: email.substring(0, 3) + '***',
+      reason: blockReason,
+    }, `Override: ${originalDecision} → ${config.actionOverride}`);
+
+    // Apply override based on mode
+    if (config.actionOverride === 'allow') {
+      // Monitoring mode: allow everything
+      decision = 'allow';
+    } else if (config.actionOverride === 'block') {
+      // Strict mode: escalate warnings to blocks, keep blocks
+      if (originalDecision === 'warn' || originalDecision === 'block') {
+        decision = 'block';
+      }
+    } else if (config.actionOverride === 'warn') {
+      // Warning mode: downgrade blocks to warns, keep warns
+      if (originalDecision === 'block') {
+        decision = 'warn';
+      } else if (originalDecision === 'warn') {
+        decision = 'warn';
+      }
     }
   }
+
+  // Log final decision
+  logger.info({
+    event: 'fraud_detection_decision',
+    decision,
+    originalDecision: config.actionOverride ? originalDecision : decision,
+    riskScore: Math.round(riskScore * 100) / 100,
+    blockReason,
+    overrideApplied: config.actionOverride ? true : false,
+    override: config.actionOverride,
+    email: email.substring(0, 3) + '***',
+    latency: Date.now() - startTime,
+  }, `Decision: ${decision} (score: ${riskScore.toFixed(2)}, reason: ${blockReason})`);
 
   // Write metrics to Analytics Engine
   const [localPart, domain] = email.split('@');
@@ -426,7 +539,6 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
         patternFamily: patternFamilyResult.family,
         patternType: patternFamilyResult.patternType,
         patternConfidence: Math.round(patternFamilyResult.confidence * 100) / 100,
-        patternRiskScore: Math.round(patternRiskScore * 100) / 100,
         normalizedEmail: normalizedEmailResult?.normalized,
         hasPlusAddressing: normalizedEmailResult?.hasPlus || false,
         hasKeyboardWalk: keyboardWalkResult?.hasKeyboardWalk || false,
@@ -459,14 +571,54 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
   }
 
   // ENFORCEMENT MODE: Block if needed
-  if (decision === 'block') {
-    return c.json({
-      error: 'Email validation failed',
-      reason: blockReason,
-      riskScore: Math.round(riskScore * 100) / 100
-    }, 400);
+  // Exception: /validate endpoint always passes through for full analysis response
+  const isValidateEndpoint = path === '/validate';
+
+  if (decision === 'block' && !isValidateEndpoint) {
+    // Minimal response for all routes, with fraud signals in headers
+    const response = new Response('Forbidden', { status: 403 });
+
+    // Add fraud detection signals as response headers for observability
+    response.headers.set('X-Fraud-Decision', decision);
+    response.headers.set('X-Fraud-Reason', blockReason);
+    response.headers.set('X-Fraud-Risk-Score', riskScore.toFixed(2));
+    response.headers.set('X-Fraud-Fingerprint', fingerprint.hash.substring(0, 16)); // First 16 chars
+
+    return response;
   }
+
+  // ALLOW or /validate endpoint: Add fraud signals to response headers for observability
+  // This allows downstream routes to see the fraud check happened
+  c.header('X-Fraud-Decision', decision);
+  c.header('X-Fraud-Risk-Score', riskScore.toFixed(2));
 
   // Continue to next handler
   return next();
+
+  } catch (error) {
+    // Log the error with full details
+    logger.error({
+      event: 'fraud_detection_error',
+      email: email.substring(0, 3) + '***',
+      path,
+      error: error instanceof Error ? {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      } : String(error),
+      latency: Date.now() - startTime,
+    }, 'Fraud detection middleware error');
+
+    // Set fallback fraudDetection context
+    c.set('fraudDetection', {
+      decision: null,
+      riskScore: 0,
+      blockReason: 'error',
+      valid: null,
+      signals: {},
+    });
+
+    // Continue to next handler (fail open for better debugging)
+    return next();
+  }
 }
