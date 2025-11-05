@@ -42,9 +42,17 @@ async function loadMarkovModels(env: Env): Promise<boolean> {
       return false;
     }
 
-    // Use 2-gram models (trained with proper dataset)
-    const legitData = await env.MARKOV_MODEL.get('MM_legit_2gram', 'json');
-    const fraudData = await env.MARKOV_MODEL.get('MM_fraud_2gram', 'json');
+    // Use 3-gram models for better context (trained with 111k+ samples)
+    const legitData = await env.MARKOV_MODEL.get('MM_legit_3gram', 'json');
+    const fraudData = await env.MARKOV_MODEL.get('MM_fraud_3gram', 'json');
+
+    logger.info({
+      event: 'markov_kv_fetch_result',
+      hasLegitData: !!legitData,
+      hasFraudData: !!fraudData,
+      legitOrder: legitData ? (legitData as any).order : null,
+      fraudOrder: fraudData ? (fraudData as any).order : null,
+    }, 'KV fetch result');
 
     if (legitData && fraudData) {
       markovLegitModel = NGramMarkovChain.fromJSON(legitData);
@@ -56,6 +64,12 @@ async function loadMarkovModels(env: Env): Promise<boolean> {
         fraudSamples: (fraudData as any).trainingCount || 'unknown',
       }, 'NGram Markov Chain models loaded successfully');
       return true;
+    } else {
+      logger.warn({
+        event: 'markov_data_missing',
+        hasLegitData: !!legitData,
+        hasFraudData: !!fraudData,
+      }, 'Missing Markov model data from KV');
     }
   } catch (error) {
     logger.error({
@@ -213,37 +227,45 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 
   if (emailValidation.valid && config.features.enableMarkovChainDetection) {
     logger.info({ event: 'markov_starting', email: email.substring(0, 3) + '***' }, 'Starting Markov detection');
-    await loadMarkovModels(c.env);
+    const modelsLoaded = await loadMarkovModels(c.env);
+    logger.info({ event: 'markov_load_result', modelsLoaded, hasLegit: !!markovLegitModel, hasFraud: !!markovFraudModel }, 'Models load result');
 
     if (markovLegitModel && markovFraudModel) {
-      const [localPart] = email.split('@');
-      logger.info({ event: 'markov_calculating', localPart: localPart.substring(0, 3) + '***' }, 'Calculating cross-entropy');
+      try {
+        const [localPart] = email.split('@');
+        logger.info({ event: 'markov_calculating', localPart: localPart.substring(0, 3) + '***' }, 'Calculating cross-entropy');
 
-      // Calculate cross-entropy for both models
-      const H_legit = markovLegitModel.crossEntropy(localPart);
-      logger.info({ event: 'markov_legit_done', H_legit }, 'Legit cross-entropy calculated');
+        // Calculate cross-entropy for both models
+        const H_legit = markovLegitModel.crossEntropy(localPart);
+        logger.info({ event: 'markov_legit_done', H_legit }, 'Legit cross-entropy calculated');
 
-      const H_fraud = markovFraudModel.crossEntropy(localPart);
-      logger.info({ event: 'markov_fraud_done', H_fraud }, 'Fraud cross-entropy calculated');
+        const H_fraud = markovFraudModel.crossEntropy(localPart);
+        logger.info({ event: 'markov_fraud_done', H_fraud }, 'Fraud cross-entropy calculated');
 
-      // Lower cross-entropy = better fit to that model
-      const isLikelyFraudulent = H_fraud < H_legit;
+        // Lower cross-entropy = better fit to that model
+        const isLikelyFraudulent = H_fraud < H_legit;
 
-      // Calculate confidence based on difference
-      const diff = Math.abs(H_legit - H_fraud);
-      const maxH = Math.max(H_legit, H_fraud);
-      const differenceRatio = maxH > 0 ? diff / maxH : 0;
+        // Calculate confidence based on difference
+        const diff = Math.abs(H_legit - H_fraud);
+        const maxH = Math.max(H_legit, H_fraud);
+        const differenceRatio = maxH > 0 ? diff / maxH : 0;
 
-      // Confidence scales with difference ratio
-      const confidence = Math.min(differenceRatio * 2, 1.0);
+        // Confidence scales with difference ratio
+        const confidence = Math.min(differenceRatio * 2, 1.0);
 
-      markovResult = {
-        isLikelyFraudulent,
-        crossEntropyLegit: H_legit,
-        crossEntropyFraud: H_fraud,
-        confidence,
-        differenceRatio,
-      };
+        markovResult = {
+          isLikelyFraudulent,
+          crossEntropyLegit: H_legit,
+          crossEntropyFraud: H_fraud,
+          confidence,
+          differenceRatio,
+        };
+      } catch (crossEntropyError) {
+        logger.error({
+          event: 'markov_crossentropy_failed',
+          error: crossEntropyError instanceof Error ? crossEntropyError.message : String(crossEntropyError),
+        }, 'Failed to calculate cross-entropy');
+      }
     }
   }
 
@@ -283,7 +305,8 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       patternFamilyResult,
       gibberishResult,
       domainReputationScore,
-      tldRiskScore
+      tldRiskScore,
+      normalizedEmailResult
     });
 
     blockReason = determineBlockReason({
@@ -335,8 +358,9 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     gibberishResult: any;
     domainReputationScore: number;
     tldRiskScore: number;
+    normalizedEmailResult: any;
   }): number {
-    const { email, markovResult, keyboardWalkResult, patternFamilyResult, gibberishResult, domainReputationScore, tldRiskScore } = params;
+    const { email, markovResult, keyboardWalkResult, patternFamilyResult, gibberishResult, domainReputationScore, tldRiskScore, normalizedEmailResult } = params;
 
     // Check if this is a professional email
     const isProfessional = isProfessionalEmail(email);
@@ -358,13 +382,22 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     }
 
     // Secondary: Pattern-specific overrides (deterministic rules)
+    // IMPORTANT: Only apply these when Markov model agrees OR when patterns are deterministic (keyboard, sequential, plus-addressing)
     const patternOverrides = [
       { condition: keyboardWalkResult?.hasKeyboardWalk, score: 0.9 },
       { condition: patternFamilyResult?.patternType === 'sequential', score: 0.8 },
+      // Plus-addressing abuse (deterministic pattern)
+      { condition: normalizedEmailResult?.hasPlus, score: 0.6 },
       // Dated patterns now use confidence from age-aware algorithm (0.2 for birth years, 0.9 for fraud)
       { condition: patternFamilyResult?.patternType === 'dated', score: patternFamilyResult?.confidence || 0.7 },
-      // Gibberish detection with high confidence should override low Markov scores
-      { condition: gibberishResult?.isGibberish && gibberishResult?.confidence > 0.7, score: 0.75 }
+      // Gibberish detection: ONLY override if Markov also detects fraud OR Markov hasn't decided (low confidence)
+      // Don't override when Markov clearly says legitimate (markovDetected=false)
+      {
+        condition: gibberishResult?.isGibberish &&
+                   gibberishResult?.confidence > 0.7 &&
+                   (markovResult?.isLikelyFraudulent || !markovResult),
+        score: 0.75
+      }
     ];
 
     for (const override of patternOverrides) {
@@ -373,11 +406,24 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       }
     }
 
-    // Tertiary: Domain signals (independent, additive)
-    // Reduce TLD risk for professional emails (many legitimate businesses use new gTLDs)
-    let domainRisk = domainReputationScore * 0.2 + tldRiskScore * 0.1;
+    // Tertiary: Domain signals (stronger weight in ensemble)
+    // Increase TLD risk weight from 0.1 to 0.3 for better detection
+    let domainRisk = domainReputationScore * 0.2 + tldRiskScore * 0.3;
     if (isProfessional) {
       domainRisk = domainRisk * 0.5; // Halve domain risk for professional emails
+    }
+
+    // Ensemble boost: When multiple signals agree, increase confidence
+    // If Markov detects fraud AND high TLD risk (>0.5), boost the score
+    if (markovResult?.isLikelyFraudulent && tldRiskScore > 0.5) {
+      const ensembleBoost = Math.min(markovResult.confidence * tldRiskScore * 0.3, 0.3);
+      score += ensembleBoost;
+      logger.info({
+        event: 'ensemble_boost_applied',
+        markovConfidence: markovResult.confidence,
+        tldRiskScore,
+        boost: ensembleBoost,
+      }, 'Ensemble boost: Markov + TLD risk agreement');
     }
 
     return Math.min(score + domainRisk, 1.0);

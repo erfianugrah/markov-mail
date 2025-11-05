@@ -274,14 +274,14 @@ app.post('/validate', async (c) => {
 			botScore: fingerprint.botScore,
 		},
 		metadata: {
-			version: '2.0.3',
+			version: '2.0.4',
 			modelVersion,
 			modelTrainingCount,
 		},
 	});
 
 	// Add version headers
-	response.headers.set('X-Worker-Version', '2.0.3');
+	response.headers.set('X-Worker-Version', '2.0.4');
 	response.headers.set('X-Model-Version', modelVersion);
 	response.headers.set('X-Model-Training-Count', modelTrainingCount.toString());
 

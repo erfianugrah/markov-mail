@@ -8,7 +8,7 @@
  */
 
 import { logger } from '../logger';
-import { DynamicMarkovChain } from '../detectors/markov-chain';
+import { NGramMarkovChain } from '../detectors/ngram-markov';
 
 // ============================================================================
 // Types
@@ -165,8 +165,8 @@ export async function retrainMarkovModels(env: Env): Promise<TrainingResult> {
 			}, 'Anomaly check passed');
 
 			// 6. Load current production models
-			const productionLegitModel = await safeLoadModel(env, 'MM_legit_2gram');
-			const productionFraudModel = await safeLoadModel(env, 'MM_fraud_2gram');
+			const productionLegitModel = await safeLoadModel(env, 'MM_legit_3gram');
+			const productionFraudModel = await safeLoadModel(env, 'MM_fraud_3gram');
 
 			// 7. Train new models (incremental update from production)
 			const { legitimateModel: newLegitModel, fraudulentModel: newFraudModel } = await trainModel(
@@ -363,12 +363,13 @@ export function separateDataByLabel(data: TrainingData[]): {
 async function trainModel(
 	fraudSamples: string[],
 	legitSamples: string[],
-	existingModels: { legit: DynamicMarkovChain | null; fraud: DynamicMarkovChain | null } | null
-): Promise<{ legitimateModel: DynamicMarkovChain; fraudulentModel: DynamicMarkovChain }> {
+	existingModels: { legit: NGramMarkovChain | null; fraud: NGramMarkovChain | null } | null
+): Promise<{ legitimateModel: NGramMarkovChain; fraudulentModel: NGramMarkovChain }> {
 
 	// Create TWO separate Markov model instances (as per Bergholz et al. 2008)
-	const legitimateModel = new DynamicMarkovChain();
-	const fraudulentModel = new DynamicMarkovChain();
+	// Use order=3 for trigram model (3-character context for better semantic detection)
+	const legitimateModel = new NGramMarkovChain(3);
+	const fraudulentModel = new NGramMarkovChain(3);
 
 	// Train LEGITIMATE model on legitimate samples ONLY
 	// Use adaptationRate=-Infinity to disable adaptive skipping (train on ALL samples)
@@ -429,10 +430,10 @@ async function trainModel(
  */
 async function validateModel(
 	env: Env,
-	newLegitModel: DynamicMarkovChain,
-	newFraudModel: DynamicMarkovChain,
-	productionLegitModel: DynamicMarkovChain | null,
-	productionFraudModel: DynamicMarkovChain | null
+	newLegitModel: NGramMarkovChain,
+	newFraudModel: NGramMarkovChain,
+	productionLegitModel: NGramMarkovChain | null,
+	productionFraudModel: NGramMarkovChain | null
 ): Promise<ValidationMetrics> {
 
 	// For Phase 1, implement basic validation
@@ -569,8 +570,8 @@ export async function computeSHA256(data: string): Promise<string> {
  */
 async function saveModelsAsCandidate(
 	env: Env,
-	legitimateModel: DynamicMarkovChain,
-	fraudulentModel: DynamicMarkovChain,
+	legitimateModel: NGramMarkovChain,
+	fraudulentModel: NGramMarkovChain,
 	metadata: {
 		version: string;
 		fraud_count: number;
@@ -647,13 +648,13 @@ async function saveModelsAsCandidate(
 
 /**
  * Save models to production (replaces current production models)
- * Uses production key format: MM_legit_2gram, MM_fraud_2gram
+ * Uses production key format: MM_legit_3gram, MM_fraud_3gram
  * Creates backup before replacing
  */
 async function saveModelsToProduction(
 	env: Env,
-	legitimateModel: DynamicMarkovChain,
-	fraudulentModel: DynamicMarkovChain,
+	legitimateModel: NGramMarkovChain,
+	fraudulentModel: NGramMarkovChain,
 	metadata: {
 		version: string;
 		fraud_count: number;
@@ -668,11 +669,11 @@ async function saveModelsToProduction(
 	}
 
 	// 1. Create backup of existing production models
-	const existingLegit = await env.MARKOV_MODEL.get('MM_legit_2gram', 'text');
-	const existingFraud = await env.MARKOV_MODEL.get('MM_fraud_2gram', 'text');
+	const existingLegit = await env.MARKOV_MODEL.get('MM_legit_3gram', 'text');
+	const existingFraud = await env.MARKOV_MODEL.get('MM_fraud_3gram', 'text');
 
 	if (existingLegit) {
-		await env.MARKOV_MODEL.put('MM_legit_2gram_backup', existingLegit, {
+		await env.MARKOV_MODEL.put('MM_legit_3gram_backup', existingLegit, {
 			metadata: {
 				backup_timestamp: new Date().toISOString(),
 				reason: 'automated_training_update'
@@ -681,7 +682,7 @@ async function saveModelsToProduction(
 	}
 
 	if (existingFraud) {
-		await env.MARKOV_MODEL.put('MM_fraud_2gram_backup', existingFraud, {
+		await env.MARKOV_MODEL.put('MM_fraud_3gram_backup', existingFraud, {
 			metadata: {
 				backup_timestamp: new Date().toISOString(),
 				reason: 'automated_training_update'
@@ -693,7 +694,7 @@ async function saveModelsToProduction(
 	const legitJSON = JSON.stringify(legitimateModel.toJSON());
 	const legitChecksum = await computeSHA256(legitJSON);
 
-	await env.MARKOV_MODEL.put('MM_legit_2gram', legitJSON, {
+	await env.MARKOV_MODEL.put('MM_legit_3gram', legitJSON, {
 		metadata: {
 			full_version: metadata.version,
 			model_type: 'legitimate',
@@ -713,7 +714,7 @@ async function saveModelsToProduction(
 	const fraudJSON = JSON.stringify(fraudulentModel.toJSON());
 	const fraudChecksum = await computeSHA256(fraudJSON);
 
-	await env.MARKOV_MODEL.put('MM_fraud_2gram', fraudJSON, {
+	await env.MARKOV_MODEL.put('MM_fraud_3gram', fraudJSON, {
 		metadata: {
 			full_version: metadata.version,
 			model_type: 'fraudulent',
@@ -786,7 +787,7 @@ async function getNextModelVersion(env: Env): Promise<number> {
 async function safeLoadModel(
 	env: Env,
 	key: string
-): Promise<DynamicMarkovChain | null> {
+): Promise<NGramMarkovChain | null> {
 
 	try {
 		if (!env.MARKOV_MODEL) {
@@ -818,7 +819,7 @@ async function safeLoadModel(
 		}
 
 		// Load model
-		const model = DynamicMarkovChain.fromJSON(stored.value);
+		const model = NGramMarkovChain.fromJSON(stored.value);
 
 		if (!model || model.getTransitionCount() === 0) {
 			throw new Error(`Model ${key} has no transitions`);

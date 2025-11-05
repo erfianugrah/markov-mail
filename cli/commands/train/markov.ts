@@ -6,7 +6,6 @@
 
 import { readFile } from 'fs/promises';
 import { parse } from 'csv-parse/sync';
-import { DynamicMarkovChain } from '../../../src/detectors/markov-chain.ts';
 import { NGramMarkovChain } from '../../../src/detectors/ngram-markov.ts';
 import { logger } from '../../utils/logger.ts';
 import { parseArgs, getOption, hasFlag } from '../../utils/args.ts';

@@ -184,20 +184,24 @@ export class NGramMarkovChain {
 	}
 
 	/**
-	 * Get model statistics
+	 * Get total number of transitions in the model
 	 */
-	getStats() {
-		let totalStates = this.states.size;
+	getTransitionCount(): number {
 		let totalTransitions = 0;
-
 		for (const state of this.states.values()) {
 			totalTransitions += state.nextChars.size;
 		}
+		return totalTransitions;
+	}
 
+	/**
+	 * Get model statistics
+	 */
+	getStats() {
 		return {
 			order: this.order,
-			states: totalStates,
-			transitions: totalTransitions,
+			states: this.states.size,
+			transitions: this.getTransitionCount(),
 			trainingExamples: this.trainingCount,
 			meanCrossEntropy: this.getMeanCrossEntropy(),
 			stdCrossEntropy: this.getStdCrossEntropy(),
