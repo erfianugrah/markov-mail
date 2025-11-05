@@ -22,6 +22,28 @@ export interface SequentialPatternResult {
 }
 
 /**
+ * Helper: Check if a digit string contains a plausible birth year (1940-2025)
+ * Returns the year if found, null otherwise
+ */
+function extractBirthYear(digits: string): number | null {
+  const currentYear = new Date().getFullYear();
+
+  // Check for 4-digit years within the string
+  for (let i = 0; i <= digits.length - 4; i++) {
+    const yearStr = digits.substring(i, i + 4);
+    const year = parseInt(yearStr, 10);
+    const yearAge = currentYear - year;
+
+    // Plausible birth year: 13-100 years old
+    if (year >= 1940 && year <= currentYear && yearAge >= 13 && yearAge <= 100) {
+      return year;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Detects if an email follows a sequential numbering pattern
  */
 export function detectSequentialPattern(email: string): SequentialPatternResult {
@@ -45,23 +67,18 @@ export function detectSequentialPattern(email: string): SequentialPatternResult 
     const [, base, numberStr] = trailingNumberMatch;
     const sequence = parseInt(numberStr, 10);
 
-    // EXCEPTION 1: Check if it looks like a birth year (4 digits, plausible range)
+    // EXCEPTION 1: Check if it contains a birth year (4 digits, plausible range)
     // Birth years should NOT be flagged as sequential patterns
-    if (numberStr.length === 4) {
-      const currentYear = new Date().getFullYear();
-      const year = parseInt(numberStr, 10);
-      const yearAge = currentYear - year;
-
-      // If it's in the plausible birth year range (13-100 years old), don't flag as sequential
-      if (year >= 1900 && year <= currentYear && yearAge >= 13 && yearAge <= 100) {
-        // This is likely a birth year, not a sequential number
-        return {
-          isSequential: false,
-          basePattern: localPart,
-          sequence: null,
-          confidence: 0.0
-        };
-      }
+    // Handles both exact 4-digit years AND longer patterns like "198807" (year+month), "198145" (year+number)
+    const birthYear = extractBirthYear(numberStr);
+    if (birthYear !== null) {
+      // This contains a plausible birth year, likely legitimate
+      return {
+        isSequential: false,
+        basePattern: localPart,
+        sequence: null,
+        confidence: 0.0
+      };
     }
 
     // EXCEPTION 2: Small memorable numbers (1-3 digits, not years)

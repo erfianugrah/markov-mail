@@ -34,6 +34,28 @@ export interface KeyboardWalkResult {
   };
 }
 
+/**
+ * Helper: Check if a digit string contains a plausible birth year (1940-2025)
+ * Returns true if a birth year is found (indicates likely legitimate pattern)
+ */
+function containsBirthYear(digits: string): boolean {
+  const currentYear = new Date().getFullYear();
+
+  // Check for 4-digit years within the string
+  for (let i = 0; i <= digits.length - 4; i++) {
+    const yearStr = digits.substring(i, i + 4);
+    const year = parseInt(yearStr, 10);
+    const yearAge = currentYear - year;
+
+    // Plausible birth year: 13-100 years old
+    if (year >= 1940 && year <= currentYear && yearAge >= 13 && yearAge <= 100) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // Keyboard Layout Definitions
 interface KeyboardLayout {
   name: string;
@@ -289,37 +311,53 @@ export function detectKeyboardWalk(email: string): KeyboardWalkResult {
  */
 function detectHorizontalWalkForLayout(localPart: string, layout: KeyboardLayout): KeyboardWalkResult & { hasWalk: boolean } {
   for (const row of layout.rows) {
-    // Check for forward walks (qwerty, asdfgh, azerty, etc.)
+    const isNumberRow = row === layout.rows[0]; // First row is number row (1234567890)
+
+    // For number rows, require 5+ chars to reduce false positives on birth years and short sequences
+    // For letter rows, 4+ chars is fine (qwerty, asdfgh, etc.)
+    const minLength = isNumberRow ? 5 : 4;
+
+    // Check for forward walks (qwerty, asdfgh, azerty, 12345, etc.)
     const forwardMatch = findLongestSubsequence(localPart, row);
-    if (forwardMatch.length >= 4) {
+    if (forwardMatch.length >= minLength) {
+      // Skip if it's a numeric pattern that contains a birth year
+      if (isNumberRow && containsBirthYear(forwardMatch.sequence)) {
+        continue; // Don't flag birth years as keyboard walks
+      }
+
       return {
         hasWalk: true,
         hasKeyboardWalk: true,
         pattern: forwardMatch.sequence,
-        walkType: row === layout.rows[0] ? 'numeric' : 'horizontal',
+        walkType: isNumberRow ? 'numeric' : 'horizontal',
         confidence: calculateWalkConfidence(forwardMatch.length, forwardMatch.position),
         metadata: {
           walkLength: forwardMatch.length,
           position: forwardMatch.position,
-          keyboard: row === layout.rows[0] ? 'numeric' : layout.name as any
+          keyboard: isNumberRow ? 'numeric' : layout.name as any
         }
       };
     }
 
-    // Check for backward walks (trewq, hgfdsa, etc.)
+    // Check for backward walks (trewq, hgfdsa, 54321, etc.)
     const reversedRow = row.split('').reverse().join('');
     const backwardMatch = findLongestSubsequence(localPart, reversedRow);
-    if (backwardMatch.length >= 4) {
+    if (backwardMatch.length >= minLength) {
+      // Skip if it's a numeric pattern that contains a birth year
+      if (isNumberRow && containsBirthYear(backwardMatch.sequence)) {
+        continue; // Don't flag birth years as keyboard walks
+      }
+
       return {
         hasWalk: true,
         hasKeyboardWalk: true,
         pattern: backwardMatch.sequence,
-        walkType: row === layout.rows[0] ? 'numeric' : 'horizontal',
+        walkType: isNumberRow ? 'numeric' : 'horizontal',
         confidence: calculateWalkConfidence(backwardMatch.length, backwardMatch.position),
         metadata: {
           walkLength: backwardMatch.length,
           position: backwardMatch.position,
-          keyboard: row === layout.rows[0] ? 'numeric' : layout.name as any
+          keyboard: isNumberRow ? 'numeric' : layout.name as any
         }
       };
     }
@@ -447,7 +485,18 @@ function detectDiagonalWalk(localPart: string): KeyboardWalkResult & { hasWalk: 
  */
 function detectNumpadPattern(localPart: string): KeyboardWalkResult & { hasWalk: boolean } {
   for (const pattern of NUMPAD_PATTERNS) {
+    // Only flag patterns 5+ digits to reduce false positives on short sequences
+    // "123", "321", "456" are too common in legitimate emails
+    if (pattern.length < 5) {
+      continue;
+    }
+
     if (localPart.includes(pattern)) {
+      // Skip if contains birth year
+      if (containsBirthYear(pattern)) {
+        continue;
+      }
+
       const position = localPart === pattern ? 'full' :
                       localPart.startsWith(pattern) ? 'prefix' :
                       localPart.endsWith(pattern) ? 'suffix' : 'middle';
@@ -469,6 +518,11 @@ function detectNumpadPattern(localPart: string): KeyboardWalkResult & { hasWalk:
     // Check reversed
     const reversed = pattern.split('').reverse().join('');
     if (localPart.includes(reversed)) {
+      // Skip if contains birth year
+      if (containsBirthYear(reversed)) {
+        continue;
+      }
+
       const position = localPart === reversed ? 'full' :
                       localPart.startsWith(reversed) ? 'prefix' :
                       localPart.endsWith(reversed) ? 'suffix' : 'middle';
@@ -503,8 +557,14 @@ function detectNumericSequence(localPart: string): KeyboardWalkResult & { hasWal
   }
 
   for (const digits of digitMatches) {
+    // Skip if contains a birth year - likely legitimate
+    if (containsBirthYear(digits)) {
+      continue;
+    }
+
     // Check for sequential numbers (123, 234, 345, etc.)
-    if (isSequentialDigits(digits)) {
+    // Only flag if 5+ digits to reduce false positives on short sequences like "321"
+    if (isSequentialDigits(digits) && digits.length >= 5) {
       const position = localPart === digits ? 'full' :
                       localPart.startsWith(digits) ? 'prefix' :
                       localPart.endsWith(digits) ? 'suffix' : 'middle';

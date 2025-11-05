@@ -32,6 +32,7 @@ import {
 	type ABTestAssignment
 } from './ab-testing';
 import { fraudDetectionMiddleware } from './middleware/fraud-detection';
+import pkg from '../package.json';
 
 // Extend Hono context with middleware variables
 type ContextVariables = {
@@ -274,14 +275,14 @@ app.post('/validate', async (c) => {
 			botScore: fingerprint.botScore,
 		},
 		metadata: {
-			version: '2.0.4',
+			version: pkg.version,
 			modelVersion,
 			modelTrainingCount,
 		},
 	});
 
 	// Add version headers
-	response.headers.set('X-Worker-Version', '2.0.4');
+	response.headers.set('X-Worker-Version', pkg.version);
 	response.headers.set('X-Model-Version', modelVersion);
 	response.headers.set('X-Model-Training-Count', modelTrainingCount.toString());
 
