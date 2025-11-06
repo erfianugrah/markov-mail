@@ -71,7 +71,20 @@
 	"assets": {
 		"directory": "./public/",
 		"binding": "ASSETS"
-	}
+	},
+	/**
+	 * D1 Database - SQLite database with full SQL support
+	 * This will replace Analytics Engine after migration
+	 * https://developers.cloudflare.com/d1/
+	 */
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "ANALYTICS",
+			"database_id": "d0d5f809-dbae-47fd-af40-62941d4e5680",
+			"remote": true
+		}
+	]
 	/**
 	 * Smart Placement
 	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
