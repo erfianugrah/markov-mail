@@ -127,9 +127,9 @@ export async function loadStats(hours: number = 24): Promise<Stats> {
 export async function loadDecisions(hours: number = 24) {
   const result = await query(`
     SELECT
-      blob1 as decision,
-      SUM(_sample_interval) as count
-    FROM ANALYTICS
+      decision,
+      COUNT(*) as count
+    FROM validations
     ${buildTimeFilter(hours)}
     GROUP BY decision
     ORDER BY count DESC
@@ -144,9 +144,15 @@ export async function loadDecisions(hours: number = 24) {
 export async function loadRiskDistribution(hours: number = 24) {
   const result = await query(`
     SELECT
-      blob4 as risk_bucket,
-      SUM(_sample_interval) as count
-    FROM ANALYTICS
+      CASE
+        WHEN risk_score < 0.2 THEN 'very_low'
+        WHEN risk_score < 0.4 THEN 'low'
+        WHEN risk_score < 0.6 THEN 'medium'
+        WHEN risk_score < 0.8 THEN 'high'
+        ELSE 'very_high'
+      END as risk_bucket,
+      COUNT(*) as count
+    FROM validations
     ${buildTimeFilter(hours)}
     GROUP BY risk_bucket
     ORDER BY risk_bucket
@@ -161,10 +167,10 @@ export async function loadRiskDistribution(hours: number = 24) {
 export async function loadTimeline(hours: number = 24) {
   const result = await query(`
     SELECT
-      toStartOfHour(timestamp) as hour,
-      blob1 as decision,
-      SUM(_sample_interval) as count
-    FROM ANALYTICS
+      strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
+      decision,
+      COUNT(*) as count
+    FROM validations
     ${buildTimeFilter(hours)}
     GROUP BY hour, decision
     ORDER BY hour ASC
@@ -194,8 +200,8 @@ export async function loadTimeline(hours: number = 24) {
 // Additional chart data loaders
 export async function loadCountries(hours: number = 24) {
   const result = await query(`
-    SELECT blob3 as country, SUM(_sample_interval) as count
-    FROM ANALYTICS
+    SELECT country, COUNT(*) as count
+    FROM validations
     ${buildTimeFilter(hours)}
     GROUP BY country
     ORDER BY count DESC
@@ -206,9 +212,9 @@ export async function loadCountries(hours: number = 24) {
 
 export async function loadPatternTypes(hours: number = 24) {
   const result = await query(`
-    SELECT blob7 as pattern_type, SUM(_sample_interval) as count
-    FROM ANALYTICS
-    ${buildTimeFilterWith(hours, "blob7 != 'none'")}
+    SELECT pattern_type, COUNT(*) as count
+    FROM validations
+    ${buildTimeFilterWith(hours, "pattern_type IS NOT NULL AND pattern_type != 'none'")}
     GROUP BY pattern_type
     ORDER BY count DESC
     LIMIT 10
@@ -218,9 +224,9 @@ export async function loadPatternTypes(hours: number = 24) {
 
 export async function loadBlockReasons(hours: number = 24) {
   const result = await query(`
-    SELECT blob2 as block_reason, SUM(_sample_interval) as count
-    FROM ANALYTICS
-    ${buildTimeFilterWith(hours, "blob1 = 'block' AND blob2 != 'none'")}
+    SELECT block_reason, COUNT(*) as count
+    FROM validations
+    ${buildTimeFilterWith(hours, "decision = 'block' AND block_reason IS NOT NULL")}
     GROUP BY block_reason
     ORDER BY count DESC
     LIMIT 10
@@ -230,8 +236,8 @@ export async function loadBlockReasons(hours: number = 24) {
 
 export async function loadDomains(hours: number = 24) {
   const result = await query(`
-    SELECT blob5 as domain, SUM(_sample_interval) as count
-    FROM ANALYTICS
+    SELECT domain, COUNT(*) as count
+    FROM validations
     ${buildTimeFilter(hours)}
     GROUP BY domain
     ORDER BY count DESC
@@ -242,8 +248,8 @@ export async function loadDomains(hours: number = 24) {
 
 export async function loadTLDs(hours: number = 24) {
   const result = await query(`
-    SELECT blob6 as tld, SUM(_sample_interval) as count
-    FROM ANALYTICS
+    SELECT tld, COUNT(*) as count
+    FROM validations
     ${buildTimeFilter(hours)}
     GROUP BY tld
     ORDER BY count DESC
@@ -254,9 +260,9 @@ export async function loadTLDs(hours: number = 24) {
 
 export async function loadPatternFamilies(hours: number = 24) {
   const result = await query(`
-    SELECT blob8 as pattern_family, SUM(_sample_interval) as count
-    FROM ANALYTICS
-    ${buildTimeFilterWith(hours, "blob8 != 'none'")}
+    SELECT pattern_family, COUNT(*) as count
+    FROM validations
+    ${buildTimeFilterWith(hours, "pattern_family IS NOT NULL AND pattern_family != 'none'")}
     GROUP BY pattern_family
     ORDER BY count DESC
     LIMIT 10
@@ -266,9 +272,9 @@ export async function loadPatternFamilies(hours: number = 24) {
 
 export async function loadDisposableDomains(hours: number = 24) {
   const result = await query(`
-    SELECT blob5 as domain, SUM(_sample_interval) as count
-    FROM ANALYTICS
-    ${buildTimeFilterWith(hours, "blob9 = 'disposable'")}
+    SELECT domain, COUNT(*) as count
+    FROM validations
+    ${buildTimeFilterWith(hours, "is_disposable = 1")}
     GROUP BY domain
     ORDER BY count DESC
     LIMIT 10
@@ -278,9 +284,9 @@ export async function loadDisposableDomains(hours: number = 24) {
 
 export async function loadFreeProviders(hours: number = 24) {
   const result = await query(`
-    SELECT blob5 as domain, SUM(_sample_interval) as count
-    FROM ANALYTICS
-    ${buildTimeFilterWith(hours, "blob10 = 'free'")}
+    SELECT domain, COUNT(*) as count
+    FROM validations
+    ${buildTimeFilterWith(hours, "is_free_provider = 1")}
     GROUP BY domain
     ORDER BY count DESC
     LIMIT 10
@@ -290,9 +296,9 @@ export async function loadFreeProviders(hours: number = 24) {
 
 export async function loadPlusAddressing(hours: number = 24) {
   const result = await query(`
-    SELECT blob5 as domain, SUM(_sample_interval) as count
-    FROM ANALYTICS
-    ${buildTimeFilterWith(hours, "blob11 = 'yes'")}
+    SELECT domain, COUNT(*) as count
+    FROM validations
+    ${buildTimeFilterWith(hours, "has_plus_addressing = 1")}
     GROUP BY domain
     ORDER BY count DESC
     LIMIT 10
@@ -302,19 +308,19 @@ export async function loadPlusAddressing(hours: number = 24) {
 
 export async function loadKeyboardWalks(hours: number = 24) {
   const result = await query(`
-    SELECT blob12 as walk_type, SUM(_sample_interval) as count
-    FROM ANALYTICS
+    SELECT has_keyboard_walk, COUNT(*) as count
+    FROM validations
     ${buildTimeFilter(hours)}
-    GROUP BY walk_type
+    GROUP BY has_keyboard_walk
     ORDER BY count DESC
   `, hours);
-  return (result.data || []).map((row) => ({ type: String(row.walk_type), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({ hasWalk: Number(row.has_keyboard_walk), count: Number(row.count) }));
 }
 
 export async function loadGibberish(hours: number = 24) {
   const result = await query(`
-    SELECT blob13 as is_gibberish, SUM(_sample_interval) as count
-    FROM ANALYTICS
+    SELECT is_gibberish, COUNT(*) as count
+    FROM validations
     ${buildTimeFilter(hours)}
     GROUP BY is_gibberish
     ORDER BY count DESC
@@ -324,8 +330,8 @@ export async function loadGibberish(hours: number = 24) {
 
 export async function loadEntropyScores(hours: number = 24) {
   const result = await query(`
-    SELECT double2 as entropy_score, SUM(_sample_interval) as count
-    FROM ANALYTICS
+    SELECT entropy_score, COUNT(*) as count
+    FROM validations
     ${buildTimeFilter(hours)}
     GROUP BY entropy_score
     ORDER BY entropy_score
@@ -368,8 +374,8 @@ export async function loadEntropyScores(hours: number = 24) {
 
 export async function loadBotScores(hours: number = 24) {
   const result = await query(`
-    SELECT double3 as bot_score, SUM(_sample_interval) as count
-    FROM ANALYTICS
+    SELECT bot_score, COUNT(*) as count
+    FROM validations
     ${buildTimeFilter(hours)}
     GROUP BY bot_score
     ORDER BY bot_score
@@ -402,8 +408,8 @@ export async function loadBotScores(hours: number = 24) {
 
 export async function loadLatencyDistribution(hours: number = 24) {
   const result = await query(`
-    SELECT double5 as latency, SUM(_sample_interval) as count
-    FROM ANALYTICS
+    SELECT latency, COUNT(*) as count
+    FROM validations
     ${buildTimeFilter(hours)}
     GROUP BY latency
     ORDER BY latency
@@ -436,8 +442,8 @@ export async function loadLatencyDistribution(hours: number = 24) {
 
 export async function loadASNs(hours: number = 24) {
   const result = await query(`
-    SELECT double4 as asn, SUM(_sample_interval) as count
-    FROM ANALYTICS
+    SELECT asn, COUNT(*) as count
+    FROM validations
     ${buildTimeFilter(hours)}
     GROUP BY asn
     ORDER BY count DESC
@@ -449,10 +455,10 @@ export async function loadASNs(hours: number = 24) {
 export async function loadTLDRiskScores(hours: number = 24) {
   const result = await query(`
     SELECT
-      blob6 as tld,
-      SUM(_sample_interval * double6) / SUM(_sample_interval) as avg_risk,
-      SUM(_sample_interval) as count
-    FROM ANALYTICS
+      tld,
+      AVG(tld_risk_score) as avg_risk,
+      COUNT(*) as count
+    FROM validations
     ${buildTimeFilter(hours)}
     GROUP BY tld
     ORDER BY avg_risk DESC
@@ -464,10 +470,10 @@ export async function loadTLDRiskScores(hours: number = 24) {
 export async function loadDomainReputation(hours: number = 24) {
   const result = await query(`
     SELECT
-      blob5 as domain,
-      SUM(_sample_interval * double7) / SUM(_sample_interval) as avg_reputation,
-      SUM(_sample_interval) as count
-    FROM ANALYTICS
+      domain,
+      AVG(domain_reputation_score) as avg_reputation,
+      COUNT(*) as count
+    FROM validations
     ${buildTimeFilter(hours)}
     GROUP BY domain
     ORDER BY avg_reputation DESC
@@ -478,11 +484,11 @@ export async function loadDomainReputation(hours: number = 24) {
 
 export async function loadPatternConfidence(hours: number = 24) {
   const result = await query(`
-    SELECT double8 as confidence, SUM(_sample_interval) as count
-    FROM ANALYTICS
+    SELECT pattern_confidence, COUNT(*) as count
+    FROM validations
     ${buildTimeFilter(hours)}
-    GROUP BY confidence
-    ORDER BY confidence
+    GROUP BY pattern_confidence
+    ORDER BY pattern_confidence
   `, hours);
 
   // Bucket the confidence scores client-side
@@ -496,7 +502,7 @@ export async function loadPatternConfidence(hours: number = 24) {
 
   if (result.data) {
     result.data.forEach((row) => {
-      const confidence = Number(row.confidence);
+      const confidence = Number(row.pattern_confidence);
       const count = Number(row.count);
 
       if (confidence < 0.2) buckets.set('0-20%', buckets.get('0-20%')! + count);

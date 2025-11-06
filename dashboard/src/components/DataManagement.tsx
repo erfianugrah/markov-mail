@@ -12,17 +12,17 @@ export function DataManagement() {
 
   const generateTimeFilter = () => {
     const hours = parseInt(timeHours) || 24
-    const filter = `timestamp >= NOW() - INTERVAL '${hours}' HOUR`
+    const filter = `timestamp >= datetime('now', '-${hours} hours')`
     setTimeFilter(filter)
   }
 
   const generateTestDataFilter = () => {
     const filters = [
-      "blob5 NOT LIKE '%test%'",
-      "blob5 NOT LIKE '%example%'",
-      "blob5 NOT LIKE '%demo%'",
-      "blob14 NOT LIKE 'test%'",
-      "blob14 NOT LIKE '%+test%'"
+      "domain NOT LIKE '%test%'",
+      "domain NOT LIKE '%example%'",
+      "domain NOT LIKE '%demo%'",
+      "email_local_part NOT LIKE 'test%'",
+      "email_local_part NOT LIKE '%+test%'"
     ]
     setTestFilter(filters.join(' AND '))
   }
@@ -161,9 +161,9 @@ export function DataManagement() {
               Combine filters in your SQL queries:
             </p>
             <pre className="p-4 bg-muted rounded-md text-sm overflow-x-auto">
-{`SELECT * FROM ANALYTICS
-WHERE ${timeFilter || "timestamp >= NOW() - INTERVAL '24' HOUR"}
-  AND ${testFilter || "blob5 NOT LIKE '%test%'"}
+{`SELECT * FROM validations
+WHERE ${timeFilter || "timestamp >= datetime('now', '-24 hours')"}
+  AND ${testFilter || "domain NOT LIKE '%test%'"}
 ORDER BY timestamp DESC
 LIMIT 100`}
             </pre>

@@ -1,7 +1,7 @@
 /**
  * Online Learning for Markov Chain Models
  *
- * Trains models periodically using data from Analytics Engine.
+ * Trains models periodically using data from D1 database.
  * Implements A/B testing, validation gates, and security checks.
  *
  * Phase 8: Online Learning
