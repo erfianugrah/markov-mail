@@ -132,8 +132,14 @@ export default async function analytics(args: string[]) {
   if (hasFlag(parsed, 'help', 'h')) {
     console.log(`
 ╔════════════════════════════════════════════════════════╗
-║               Analytics Engine                         ║
+║        DEPRECATED - Migrated to D1 Database            ║
 ╚════════════════════════════════════════════════════════╝
+
+⚠️  This CLI tool queries the old Analytics Engine.
+   Use the admin API or wrangler d1 commands instead:
+
+   npx wrangler d1 execute ANALYTICS --remote --command "SELECT..."
+   curl https://your-worker.workers.dev/admin/analytics?type=summary
 
 Query and analyze fraud detection analytics.
 

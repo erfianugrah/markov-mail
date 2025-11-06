@@ -337,25 +337,27 @@ admin.get('/analytics', async (c) => {
 
 /**
  * GET /admin/analytics/info
- * Get Analytics Engine dataset information and data management options
+ * Get D1 database information and data management options
+ * Migration Note: Updated from Analytics Engine to D1
  */
 admin.get('/analytics/info', (c) => {
 	return c.json({
-		dataset: 'ANALYTICS',
+		database: 'ANALYTICS (D1)',
 		dataRetention: {
-			description: 'Analytics Engine stores data for 6 months by default',
-			automaticDeletion: 'Data older than 6 months is automatically deleted',
-			manualDeletion: 'Analytics Engine data is immutable - no manual deletion API available',
+			description: 'D1 database stores data indefinitely (no automatic deletion)',
+			manualDeletion: 'Delete data with SQL: DELETE FROM validations WHERE timestamp < datetime(\'now\', \'-N days\')',
+			backups: 'D1 supports point-in-time recovery and manual backups',
 		},
 		dataManagement: {
-			filterByTime: 'Use WHERE timestamp >= NOW() - INTERVAL \'X\' HOUR in queries to exclude old data',
-			excludeTestData: 'Use WHERE blob14 NOT LIKE \'test%\' to exclude test emails',
-			exportData: 'Use SQL queries to export specific data subsets',
+			filterByTime: 'Use WHERE timestamp >= datetime(\'now\', \'-N hours\') in queries to filter by time',
+			excludeTestData: 'Use WHERE email_local_part NOT LIKE \'test%\' to exclude test emails',
+			exportData: 'Use wrangler d1 execute or SQL queries to export data',
 		},
 		bestPractices: [
-			'Use time-based filtering to focus on relevant data',
+			'Use time-based filtering to improve query performance',
 			'Add identifying markers to test data for easy filtering',
-			'Export important data before 6-month retention expires',
+			'Regularly archive or delete old data to optimize database size',
+			'Use indexes for frequently queried columns',
 			'Use aggregate queries to reduce data volume in results',
 		],
 	});
@@ -363,56 +365,84 @@ admin.get('/analytics/info', (c) => {
 
 /**
  * POST /admin/analytics/truncate
- * Simulate data truncation by returning a query that excludes old data
- * Note: Analytics Engine data cannot be actually deleted
+ * Delete old data from D1 database
+ * Migration Note: Now actually deletes data (D1 supports DELETE)
  */
 admin.post('/analytics/truncate', async (c) => {
 	try {
 		const body = await c.req.json<{ olderThanHours?: number }>();
 		const hours = body.olderThanHours || 24;
 
-		// Return a query template that excludes old data
-		const filterQuery = `WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR`;
+		if (!c.env.DB) {
+			return c.json({ error: 'D1 database not configured' }, 503);
+		}
+
+		// Calculate cutoff timestamp
+		const cutoffQuery = `datetime('now', '-${hours} hours')`;
+
+		// Delete old data
+		const result = await c.env.DB.prepare(
+			`DELETE FROM validations WHERE timestamp < datetime('now', '-${hours} hours')`
+		).run();
 
 		return c.json({
 			success: true,
-			message: 'Generated filter query to exclude old data',
-			note: 'Analytics Engine data cannot be deleted. Use this filter in your queries.',
-			filterQuery,
-			example: `SELECT * FROM ANALYTICS ${filterQuery} ORDER BY timestamp DESC LIMIT 100`,
-			hoursToKeep: hours,
+			message: `Deleted data older than ${hours} hours`,
+			deletedRows: result.meta.changes,
+			hoursKept: hours,
+			cutoffTime: cutoffQuery,
 		});
 	} catch (error) {
 		return c.json(
 			{
-				error: 'Invalid request',
+				error: 'Delete failed',
 				message: error instanceof Error ? error.message : 'Unknown error',
 			},
-			400
+			500
 		);
 	}
 });
 
 /**
  * DELETE /admin/analytics/test-data
- * Return query to exclude test data patterns
+ * Delete test data from D1 database
+ * Migration Note: Now actually deletes data (D1 supports DELETE)
  */
-admin.delete('/analytics/test-data', (c) => {
-	const testPatterns = [
-		"blob14 NOT LIKE 'user%'",
-		"blob14 NOT LIKE 'test%'",
-		"blob5 NOT IN ('example.com', 'test.com')",
-		"blob7 != 'none' OR double1 >= 0.6", // Keep only pattern detections or high risk
-	];
+admin.delete('/analytics/test-data', async (c) => {
+	if (!c.env.DB) {
+		return c.json({ error: 'D1 database not configured' }, 503);
+	}
 
-	return c.json({
-		success: true,
-		message: 'Generated filters to exclude common test data patterns',
-		note: 'Analytics Engine data cannot be deleted. Apply these filters in queries.',
-		filters: testPatterns,
-		combinedFilter: testPatterns.join(' AND '),
-		example: `SELECT * FROM ANALYTICS WHERE ${testPatterns.join(' AND ')} ORDER BY timestamp DESC LIMIT 100`,
-	});
+	try {
+		// Delete common test data patterns
+		const result = await c.env.DB.prepare(`
+			DELETE FROM validations
+			WHERE email_local_part LIKE 'user%'
+			   OR email_local_part LIKE 'test%'
+			   OR domain IN ('example.com', 'test.com')
+			   OR (pattern_type IS NULL AND risk_score < 0.6)
+		`).run();
+
+		return c.json({
+			success: true,
+			message: 'Deleted common test data patterns',
+			deletedRows: result.meta.changes,
+			patterns: [
+				'email_local_part LIKE \'user%\'',
+				'email_local_part LIKE \'test%\'',
+				'domain IN (\'example.com\', \'test.com\')',
+				'Low risk with no pattern detection'
+			],
+		});
+	} catch (error) {
+		return c.json(
+			{
+				error: 'Delete failed',
+				message: error instanceof Error ? error.message : 'Unknown error',
+			},
+			500
+		);
+	}
 });
 
 /**

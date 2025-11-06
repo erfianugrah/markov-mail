@@ -55,7 +55,7 @@ type ContextVariables = {
  * - TLD risk profiling (40+ TLD categories) - Phase 6A
  * - Markov Chain detection (Phase 7) - Dynamic character transition models
  * - Structured logging with Pino
- * - Metrics collection with Analytics Engine
+ * - Metrics collection with D1 database
  */
 
 // Global Markov Chain model cache (loaded once per worker instance)
@@ -518,7 +518,7 @@ export default {
 			trigger_type: 'scheduled',
 		}, 'Starting automated N-gram model training');
 
-		// Use direct Analytics Engine training (no KV extraction step needed)
+		// Use direct D1 database training (no KV extraction step needed)
 		ctx.waitUntil(retrainLegacyModels(env));
 
 		// Optional: Use KV-based training worker (requires manual extraction step)
