@@ -535,11 +535,11 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     latency: Date.now() - startTime,
   }, `Decision: ${decision} (score: ${riskScore.toFixed(2)}, reason: ${blockReason})`);
 
-  // Write metrics to Analytics Engine and D1 (dual-write during migration)
+  // Write metrics to D1 (Analytics Engine removed in Phase 4)
   const [localPart, domain] = email.split('@');
   const tld = domain ? domain.split('.').pop() : undefined;
 
-  writeValidationMetric(c.env.ANALYTICS, c.env.DB, {
+  writeValidationMetric(c.env.DB, {
     decision,
     riskScore,
     entropyScore: emailValidation.signals.entropyScore,

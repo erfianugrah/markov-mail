@@ -44,15 +44,6 @@
 		},
 	],
 	/**
-	 * Analytics Engine
-	 * https://developers.cloudflare.com/analytics/analytics-engine/
-	 */
-	"analytics_engine_datasets": [
-		{
-			"binding": "ANALYTICS"
-		}
-	],
-	/**
 	 * Cron Triggers
 	 * Every 6 hours:
 	 * 1. Update disposable domain list from external sources (GitHub)
@@ -74,7 +65,7 @@
 	},
 	/**
 	 * D1 Database - SQLite database with full SQL support
-	 * This will replace Analytics Engine after migration
+	 * Stores all validation, training, A/B test, and admin metrics
 	 * https://developers.cloudflare.com/d1/
 	 */
 	"d1_databases": [

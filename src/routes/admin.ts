@@ -263,9 +263,10 @@ admin.get('/health', (c) => {
  * GET /admin/analytics
  * Query D1 database with analytics data
  * Query params:
- *   - query: SQL query to run (optional, defaults to summary)
+ *   - type: Pre-built query type (summary, blockReasons, etc.)
  *   - hours: Number of hours to look back (default: 24)
  *
+ * SECURITY: Custom SQL queries are NOT allowed to prevent SQL injection
  * Migration Note: Now uses D1 instead of Analytics Engine
  */
 admin.get('/analytics', async (c) => {
@@ -282,20 +283,46 @@ admin.get('/analytics', async (c) => {
 		}
 
 		const hours = parseInt(c.req.query('hours') || '24', 10);
-		const customQuery = c.req.query('query');
+		const queryType = c.req.query('type') || 'summary';
 
-		// Default query: Summary of decisions over time
-		const query = customQuery || D1Queries.summary(hours);
+		// SECURITY: Only allow pre-built queries to prevent SQL injection
+		const allowedQueries: Record<string, (hours: number) => string> = {
+			summary: D1Queries.summary,
+			blockReasons: D1Queries.blockReasons,
+			riskDistribution: D1Queries.riskDistribution,
+			topCountries: D1Queries.topCountries,
+			highRisk: D1Queries.highRiskEmails,
+			performance: D1Queries.performanceMetrics,
+			timeline: D1Queries.hourlyTimeline,
+			fingerprints: D1Queries.topFingerprints,
+			disposableDomains: D1Queries.disposableDomains,
+			patternFamilies: D1Queries.patternFamilies,
+			markovStats: D1Queries.markovStats,
+		};
+
+		if (!allowedQueries[queryType]) {
+			return c.json(
+				{
+					error: 'Invalid query type',
+					message: `Query type '${queryType}' is not allowed. Use /admin/analytics/queries to see available types.`,
+					available: Object.keys(allowedQueries),
+				},
+				400
+			);
+		}
+
+		const query = allowedQueries[queryType](hours);
 
 		// Execute query on D1
 		const data = await executeD1Query(c.env.DB, query);
 
 		return c.json({
 			success: true,
+			queryType,
 			query,
 			hours,
 			data,
-			note: 'Migrated to D1 - now uses proper column names instead of blob1/double1',
+			note: 'Migrated to D1 - uses pre-built queries only to prevent SQL injection',
 		});
 	} catch (error) {
 		return c.json(

@@ -27,7 +27,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 45,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			expect(mockAnalytics.writeDataPoint).toHaveBeenCalledTimes(1);
 			expect(capturedDataPoints).toHaveLength(1);
@@ -46,7 +46,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.blobs[0]).toBe('block');
@@ -60,7 +60,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.doubles[0]).toBe(0.67);
@@ -75,7 +75,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.blobs[1]).toBe('high_risk_score'); // blob2
@@ -89,7 +89,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.blobs[1]).toBe('none'); // blob2
@@ -113,7 +113,7 @@ describe('Analytics Engine Metrics', () => {
 					latency: 50,
 				};
 
-				writeValidationMetric(mockAnalytics, undefined, metric);
+				writeValidationMetric(undefined, metric);
 
 				const dataPoint = capturedDataPoints[0];
 				expect(dataPoint.blobs[3]).toBe(expected); // blob4 is risk bucket
@@ -130,7 +130,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.blobs[2]).toBe('GB'); // blob3
@@ -145,7 +145,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.blobs[2]).toBe('unknown'); // blob3
@@ -162,7 +162,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.blobs[4]).toBe('fraud.com'); // blob5 - domain
@@ -181,7 +181,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.blobs[6]).toBe('random'); // blob7 - patternType
@@ -202,7 +202,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.blobs[8]).toBe('disposable'); // blob9
@@ -224,7 +224,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.blobs[18]).toBe('yes'); // blob19 - markovDetected
@@ -244,7 +244,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.blobs[19]).toBe('exp_20250102'); // blob20 - experimentId
@@ -265,7 +265,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.blobs[14]).toBe('192.168.1.1'); // blob15 - clientIp
@@ -283,7 +283,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.indexes[0]).toHaveLength(32);
@@ -298,7 +298,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 127,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.doubles[4]).toBe(127); // double5 - latency
@@ -314,7 +314,7 @@ describe('Analytics Engine Metrics', () => {
 
 			// Should not throw
 			expect(() => {
-				writeValidationMetric(undefined, undefined, metric);
+				writeValidationMetric(undefined, metric);
 			}).not.toThrow();
 		});
 
@@ -336,7 +336,7 @@ describe('Analytics Engine Metrics', () => {
 
 			// Should not throw - errors are caught
 			expect(() => {
-				writeValidationMetric(failingAnalytics, undefined, metric);
+				writeValidationMetric(undefined, metric);
 			}).not.toThrow();
 
 			expect(consoleErrorSpy).toHaveBeenCalled();
@@ -381,7 +381,7 @@ describe('Analytics Engine Metrics', () => {
 				bucket: 73,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 
@@ -407,7 +407,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.blobs.length).toBeLessThanOrEqual(20);
@@ -421,7 +421,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.doubles.length).toBeLessThanOrEqual(20);
@@ -435,7 +435,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			expect(dataPoint.indexes).toHaveLength(1);
@@ -452,7 +452,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			dataPoint.blobs.forEach((blob: any) => {
@@ -470,7 +470,7 @@ describe('Analytics Engine Metrics', () => {
 				fingerprintHash: 'test123',
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, metric);
+			writeValidationMetric(undefined, metric);
 
 			const dataPoint = capturedDataPoints[0];
 			dataPoint.doubles.forEach((double: any) => {
@@ -486,7 +486,7 @@ describe('Analytics Engine Metrics', () => {
 				latency: 50,
 			};
 
-			writeValidationMetric(mockAnalytics, undefined, minimalMetric);
+			writeValidationMetric(undefined, minimalMetric);
 
 			const dataPoint = capturedDataPoints[0];
 
