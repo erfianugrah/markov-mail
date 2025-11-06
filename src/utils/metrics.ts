@@ -50,6 +50,8 @@ export interface ValidationMetric {
   experimentId?: string;        // ID of active A/B experiment
   variant?: 'control' | 'treatment';  // Assigned variant
   bucket?: number;              // Hash bucket (0-99)
+  // Algorithm versioning (v2.1+)
+  patternClassificationVersion?: string;  // Pattern detection algorithm version
 }
 
 /**

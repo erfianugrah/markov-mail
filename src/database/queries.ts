@@ -36,19 +36,21 @@ export const D1Queries = {
 
   /**
    * Top block reasons in the last N hours
+   * v2.1: Now groups by pattern_classification_version to separate old/new data
    */
   blockReasons: (hours: number) => `
     SELECT
       block_reason,
+      pattern_classification_version,
       COUNT(*) as count,
       AVG(risk_score) as avg_risk_score
     FROM validations
     WHERE timestamp >= datetime('now', '-${hours} hours')
       AND decision = 'block'
       AND block_reason IS NOT NULL
-    GROUP BY block_reason
+    GROUP BY block_reason, pattern_classification_version
     ORDER BY count DESC
-    LIMIT 10
+    LIMIT 20
   `,
 
   /**
@@ -190,18 +192,20 @@ export const D1Queries = {
 
   /**
    * Pattern family analysis
+   * v2.1: Now includes pattern_classification_version to separate old/new classifications
    */
   patternFamilies: (hours: number) => `
     SELECT
       pattern_family,
       pattern_type,
+      pattern_classification_version,
       COUNT(*) as count,
       AVG(risk_score) as avg_risk_score,
       SUM(CASE WHEN decision = 'block' THEN 1 ELSE 0 END) as blocks
     FROM validations
     WHERE timestamp >= datetime('now', '-${hours} hours')
       AND pattern_family IS NOT NULL
-    GROUP BY pattern_family, pattern_type
+    GROUP BY pattern_family, pattern_type, pattern_classification_version
     ORDER BY count DESC
     LIMIT 20
   `,

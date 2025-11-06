@@ -769,14 +769,17 @@ function App() {
 
           <SimpleBarChart
             title="Pattern Types"
-            description="Detected pattern types"
-            data={patternTypes}
+            description="Detected pattern types (grouped by algorithm version)"
+            data={patternTypes.map(p => ({
+              ...p,
+              displayName: p.version && p.version !== 'unknown' ? `${p.patternType} (v${p.version})` : p.patternType
+            }))}
             dataKey="count"
-            nameKey="patternType"
+            nameKey="displayName"
             isDark={darkMode}
             color="hsl(var(--chart-2))"
             getBarColor={(entry) => {
-              const type = String(entry.patternType).toLowerCase()
+              const type = String(entry.patternType || entry.displayName).toLowerCase()
               if (type.includes('keyboard')) return darkMode ? 'hsl(30 80% 55%)' : 'hsl(30 80% 50%)'
               if (type.includes('repeat')) return darkMode ? 'hsl(330 80% 60%)' : 'hsl(330 80% 55%)'
               if (type.includes('sequential')) return darkMode ? 'hsl(270 70% 60%)' : 'hsl(270 70% 55%)'
@@ -787,14 +790,17 @@ function App() {
 
           <SimpleBarChart
             title="Block Reasons"
-            description="Top reasons for blocking emails"
-            data={blockReasons}
+            description="Top reasons for blocking emails (grouped by algorithm version)"
+            data={blockReasons.map(r => ({
+              ...r,
+              displayName: r.version && r.version !== 'unknown' ? `${r.reason} (v${r.version})` : r.reason
+            }))}
             dataKey="count"
-            nameKey="reason"
+            nameKey="displayName"
             isDark={darkMode}
             color="hsl(var(--chart-3))"
             getBarColor={(entry) => {
-              const reason = String(entry.reason).toLowerCase()
+              const reason = String(entry.reason || entry.displayName).toLowerCase()
               if (reason.includes('keyboard')) return darkMode ? 'hsl(30 80% 55%)' : 'hsl(30 80% 50%)'
               if (reason.includes('sequential')) return darkMode ? 'hsl(270 70% 60%)' : 'hsl(270 70% 55%)'
               if (reason.includes('gibberish')) return darkMode ? 'hsl(0 80% 55%)' : 'hsl(0 80% 50%)'

@@ -513,13 +513,18 @@ export default {
 		}
 
 		// Task 2: Train N-gram ensemble models
-		logger.info({
-			event: 'training_started',
-			trigger_type: 'scheduled',
-		}, 'Starting automated N-gram model training');
+		// DISABLED: Online training uses circular reasoning (model predictions as labels)
+		// This can degrade model quality by reinforcing false positives.
+		// Use manual training with labeled CSV data instead: npm run cli train:markov
+		// See: /tmp/training-analysis.md for full analysis
+
+		// logger.info({
+		// 	event: 'training_started',
+		// 	trigger_type: 'scheduled',
+		// }, 'Starting automated N-gram model training');
 
 		// Use direct D1 database training (no KV extraction step needed)
-		ctx.waitUntil(retrainLegacyModels(env));
+		// ctx.waitUntil(retrainLegacyModels(env));
 
 		// Optional: Use KV-based training worker (requires manual extraction step)
 		// if (env.MARKOV_MODEL) {

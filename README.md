@@ -5,28 +5,34 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 ## 🚦 Status
 
 **Production**: https://your-worker.workers.dev
-**Version**: 2.0.5 (Production-Ready)
+**Version**: 2.1.0 (Production-Ready)
 **Active Detectors**: 8/8 ✅
-**Comprehensive Test Accuracy**: 85.0% (17/20 test cases)
-**False Positives**: <1% (improved with birth year protection) | **False Negatives**: 0
-**Fraud Detection Rate**: 100% (all fraud patterns caught)
+**Training Data**: Pattern-based labels (44.5K legit + 47.2K fraud, balanced)
+**Model Training Count**: 91,710 samples (cleaned, deduplicated)
 **Avg Latency**: ~35ms
 
 ### System Health
-- ✅ Properly trained models (111K+ legit + 105K+ fraud samples)
-- ✅ Incremental training pipeline with versioning
+- ✅ **Pattern-based training** (addresses, not message content) with 50/50 balance
+- ✅ **Markov-educated detectors** - Gibberish respects Markov confidence
+- ✅ Multi-factor pattern detection (n-grams + vowel density + entropy)
+- ✅ 2-gram & 3-gram Markov models (legit/fraud)
 - ✅ Comprehensive pino.js logging throughout
 - ✅ Configuration-driven decision overrides
 - ✅ Pure algorithmic scoring (no hardcoded weights)
-- ✅ Trigram Markov Chain cross-entropy primary detector (order=3)
 - ✅ 143 TLDs in risk database + 71K+ disposable domains
-- ✅ Analytics dashboard operational
-- ✅ Unified CLI management system
+- ✅ Analytics dashboard operational with pattern classification versioning
+- ✅ Unified CLI management system with `train:relabel` command
 
-### Latest Updates (v2.0.5 - 2025-11-05)
-- 🎯 **Birth Year Protection** - Sequential and Keyboard Walk detectors now whitelist birth years (1940-2025)
-- 📉 **False Positive Reduction** - Reduced from 3% to <1% by protecting legitimate emails with birth years
-- 🔢 **Smart Numeric Detection** - Increased minimum digits for keyboard walks to 5+ (prevents false positives on 321, 432, etc.)
+### Latest Updates (v2.1.0 - 2025-11-06)
+- 🎯 **Pattern-Based Training** - Re-labeled 91,966 emails based on ADDRESS PATTERNS (not message content)
+  - Fixed 47% mislabeled data (36,225 legit names rescued from "fraud" labels)
+  - Balanced dataset: 49% legit / 51% fraud (was 17% / 83%)
+- 🧠 **Markov-Educated Gibberish Detection** - Gibberish detector now respects Markov confidence
+  - When Markov is confident (>0.3), it overrides gibberish
+  - Protects multilingual names (German, Italian, Irish)
+- 🔧 **New CLI Command**: `train:relabel` - Re-labels datasets based on pattern analysis
+- 📊 **Multi-Factor Pattern Classification** - v2.1 algorithm with n-grams, vowel density, entropy >75%
+- 🏷️ **Pattern Classification Versioning** - Database tracks v2.0 vs v2.1 for analytics
 
 ### Previous Updates (v2.0.4 - 2025-11-05)
 - 🚀 **Trigram Models (order=3)** - Upgraded from bigrams for 3.4x better semantic detection
@@ -63,7 +69,8 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 |---------------|---------|
 | **[Getting Started](docs/GETTING_STARTED.md)** | Setup, installation, deployment |
 | **[API Reference](docs/API.md)** | Endpoints, request/response formats |
-| **[Training Guide](docs/TRAINING.md)** | Model training, incremental updates, versioning |
+| **[Training Guide](docs/TRAINING.md)** | Model training, pattern-based re-labeling, versioning |
+| **[Markov Retraining Summary](docs/MARKOV_RETRAINING_SUMMARY.md)** | Pattern-based training migration (v2.1) |
 | **[Configuration Guide](docs/CONFIGURATION.md)** | Risk thresholds, action overrides, feature flags |
 | **[Architecture](docs/ARCHITECTURE.md)** | System design and algorithms |
 | **[Detectors Guide](docs/DETECTORS.md)** | All 8 fraud detection algorithms |

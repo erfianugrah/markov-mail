@@ -212,26 +212,40 @@ export async function loadCountries(hours: number = 24) {
 
 export async function loadPatternTypes(hours: number = 24) {
   const result = await query(`
-    SELECT pattern_type, COUNT(*) as count
+    SELECT
+      pattern_type,
+      pattern_classification_version,
+      COUNT(*) as count
     FROM validations
     ${buildTimeFilterWith(hours, "pattern_type IS NOT NULL AND pattern_type != 'none'")}
-    GROUP BY pattern_type
+    GROUP BY pattern_type, pattern_classification_version
     ORDER BY count DESC
-    LIMIT 10
+    LIMIT 20
   `, hours);
-  return (result.data || []).map((row) => ({ patternType: String(row.pattern_type), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({
+    patternType: String(row.pattern_type),
+    version: String(row.pattern_classification_version || 'unknown'),
+    count: Number(row.count)
+  }));
 }
 
 export async function loadBlockReasons(hours: number = 24) {
   const result = await query(`
-    SELECT block_reason, COUNT(*) as count
+    SELECT
+      block_reason,
+      pattern_classification_version,
+      COUNT(*) as count
     FROM validations
     ${buildTimeFilterWith(hours, "decision = 'block' AND block_reason IS NOT NULL")}
-    GROUP BY block_reason
+    GROUP BY block_reason, pattern_classification_version
     ORDER BY count DESC
-    LIMIT 10
+    LIMIT 20
   `, hours);
-  return (result.data || []).map((row) => ({ reason: String(row.block_reason), count: Number(row.count) }));
+  return (result.data || []).map((row) => ({
+    reason: String(row.block_reason),
+    version: String(row.pattern_classification_version || 'unknown'),
+    count: Number(row.count)
+  }));
 }
 
 export async function loadDomains(hours: number = 24) {

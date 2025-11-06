@@ -5,6 +5,15 @@
  * Routes can opt-out by setting: c.set('skipFraudDetection', true)
  */
 
+/**
+ * Pattern Classification Algorithm Version
+ * Updated to v2.1 with multi-factor randomness detection and risk-tiered messaging
+ *
+ * v2.0: Original entropy-based pattern detection
+ * v2.1: Multi-factor detection (n-grams + vowel density + entropy) + dynamic messages
+ */
+export const PATTERN_CLASSIFICATION_VERSION = '2.1';
+
 import { Context, Next } from 'hono';
 import { generateFingerprint } from '../fingerprint';
 import { validateEmail } from '../validators/email';
@@ -310,6 +319,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     });
 
     blockReason = determineBlockReason({
+      riskScore,
       markovResult,
       keyboardWalkResult,
       patternFamilyResult,
@@ -390,12 +400,25 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       { condition: normalizedEmailResult?.hasPlus, score: 0.6 },
       // Dated patterns now use confidence from age-aware algorithm (0.2 for birth years, 0.9 for fraud)
       { condition: patternFamilyResult?.patternType === 'dated', score: patternFamilyResult?.confidence || 0.7 },
-      // Gibberish detection: ONLY override if Markov also detects fraud OR Markov hasn't decided (low confidence)
-      // Don't override when Markov clearly says legitimate (markovDetected=false)
+      // Gibberish detection: Trust Markov when it has learned patterns from multilingual data
+      // Only apply gibberish penalty when:
+      // 1. Markov is confident it's fraud (agrees with gibberish), OR
+      // 2. Markov hasn't run, OR
+      // 3. Pattern is unfamiliar to legit model (high cross-entropy > 3.0) AND Markov leans fraud
       {
         condition: gibberishResult?.isGibberish &&
                    gibberishResult?.confidence > 0.7 &&
-                   (markovResult?.isLikelyFraudulent || !markovResult),
+                   (
+                     // Markov confidently detects fraud (>0.3 confidence)
+                     (markovResult?.isLikelyFraudulent && markovResult.confidence > 0.3) ||
+                     // OR Markov didn't run
+                     !markovResult ||
+                     // OR pattern is unfamiliar to legit model but familiar to fraud model
+                     (markovResult &&
+                      markovResult.crossEntropyLegit > 3.0 &&
+                      markovResult.crossEntropyFraud < 2.5 &&
+                      markovResult.isLikelyFraudulent)
+                   ),
         score: 0.75
       }
     ];
@@ -430,10 +453,19 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
   }
 
   /**
-   * Determine the primary reason for blocking/warning
-   * Returns most significant detection method in priority order
+   * Determine the primary reason/message for the validation result
+   * Returns risk-appropriate message based on detection signals
+   *
+   * ALGORITHM CHANGE (v2.1.0):
+   * - Now uses risk-tiered messaging instead of generic fallback
+   * - High risk (≥0.6): Specific fraud reasons
+   * - Medium risk (0.3-0.6): Descriptive warnings
+   * - Low risk (<0.3): Legitimate pattern descriptions or "low_risk"
+   *
+   * This prevents confusing messages like "suspicious_pattern" for 0.09 risk scores.
    */
   function determineBlockReason(params: {
+    riskScore: number; // ADDED: Need actual risk to determine appropriate message
     markovResult: MarkovResult | null | undefined;
     keyboardWalkResult: any;
     patternFamilyResult: any;
@@ -442,10 +474,11 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     tldRiskScore: number;
     config: any;
   }): string {
-    const { markovResult, keyboardWalkResult, patternFamilyResult, gibberishResult, domainReputationScore, tldRiskScore, config } = params;
+    const { riskScore, markovResult, keyboardWalkResult, patternFamilyResult, gibberishResult, domainReputationScore, tldRiskScore, config } = params;
 
-    // Priority-ordered detection checks
-    const reasons = [
+    // TIER 1: HIGH CONFIDENCE DETECTIONS (any risk level)
+    // These are definitive fraud signals that override risk-based messaging
+    const highConfidenceReasons = [
       {
         condition: markovResult?.isLikelyFraudulent && markovResult.confidence > config.confidenceThresholds.markovFraud,
         reason: 'markov_chain_fraud'
@@ -462,21 +495,39 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
         condition: patternFamilyResult?.patternType === 'sequential',
         reason: 'sequential_pattern'
       },
-      {
-        condition: patternFamilyResult?.patternType === 'dated',
-        reason: 'dated_pattern'
-      },
-      {
-        condition: domainReputationScore > 0.5,
-        reason: 'domain_reputation'
-      },
-      {
-        condition: tldRiskScore > 0.5,
-        reason: 'high_risk_tld'
-      }
     ];
 
-    return reasons.find(r => r.condition)?.reason || 'suspicious_pattern';
+    // Check high-confidence detections first
+    const highConfidence = highConfidenceReasons.find(r => r.condition);
+    if (highConfidence) {
+      return highConfidence.reason;
+    }
+
+    // TIER 2: RISK-BASED MESSAGING
+    // Provide contextual messages based on actual risk level
+
+    if (riskScore >= config.riskThresholds.block) {
+      // HIGH RISK (≥0.6): Return strongest weak signal
+      if (tldRiskScore > 0.5) return 'high_risk_tld';
+      if (domainReputationScore > 0.5) return 'domain_reputation';
+      if (patternFamilyResult?.patternType === 'dated') return 'dated_pattern';
+      return 'high_risk_multiple_signals';
+    } else if (riskScore >= config.riskThresholds.warn) {
+      // MEDIUM RISK (0.3-0.6): Descriptive warnings
+      if (patternFamilyResult?.patternType === 'dated') return 'suspicious_dated_pattern';
+      if (tldRiskScore > 0.3) return 'suspicious_tld';
+      if (domainReputationScore > 0.3) return 'suspicious_domain';
+      return 'medium_risk';
+    } else {
+      // LOW RISK (<0.3): Legitimate descriptions
+      // Return a descriptive status that reflects the actual pattern type
+      if (patternFamilyResult?.patternType &&
+          patternFamilyResult.patternType !== 'unknown' &&
+          patternFamilyResult.patternType !== 'random') {
+        return `legitimate_${patternFamilyResult.patternType}`;
+      }
+      return 'low_risk';
+    }
   }
 
   // Get thresholds from configuration
@@ -566,6 +617,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     markovConfidence: markovResult?.confidence,
     markovCrossEntropyLegit: markovResult?.crossEntropyLegit,
     markovCrossEntropyFraud: markovResult?.crossEntropyFraud,
+    patternClassificationVersion: PATTERN_CLASSIFICATION_VERSION, // v2.1: Multi-factor detection
   });
 
   // Store validation result in context for downstream handlers

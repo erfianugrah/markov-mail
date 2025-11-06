@@ -177,10 +177,13 @@ function parseCSV(content: string): { emails: EmailData[], hasLabels: boolean } 
     // Extract type if column exists
     let emailType: 'legitimate' | 'fraudulent' = 'legitimate';
     if (typeCol !== -1 && columns[typeCol]) {
-      const normalized = columns[typeCol].toLowerCase();
-      if (normalized === 'fraudulent' || normalized === 'fraud') {
+      const value = columns[typeCol].trim();
+      const normalized = value.toLowerCase();
+
+      // Support both text and numeric labels
+      if (normalized === 'fraudulent' || normalized === 'fraud' || value === '1') {
         emailType = 'fraudulent';
-      } else if (normalized === 'legitimate' || normalized === 'legit') {
+      } else if (normalized === 'legitimate' || normalized === 'legit' || value === '0') {
         emailType = 'legitimate';
       } else {
         logger.warn(`Line ${i + 1}: unknown type "${columns[typeCol]}", defaulting to legitimate`);

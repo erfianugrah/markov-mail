@@ -4,6 +4,40 @@
 
 The fraud detection system uses NGram Markov Chain models trained on large datasets of legitimate and fraudulent email patterns. This guide covers training, deployment, and maintenance of these models.
 
+## ⚠️ CRITICAL: Pattern-Based vs Content-Based Labels
+
+**Most spam/phishing datasets label emails based on MESSAGE CONTENT (spam/phishing), not ADDRESS PATTERNS (bot-generated).** This causes severe training issues:
+
+**The Problem:**
+- Email like `taylor@s3.serveimage.com` might be labeled "fraud" because the message was spam
+- But the pattern `taylor@[domain]` is a **legitimate name pattern**!
+- Training on content-based labels teaches models the WRONG patterns
+
+**Our Solution: Pattern-Based Re-labeling**
+Before training Markov models, **always re-label your dataset** using pattern analysis:
+
+```bash
+# Re-label dataset based on email ADDRESS PATTERNS (not message content)
+npm run cli train:relabel --input ./dataset/raw_emails.csv --output ./dataset/pattern_labeled_emails.csv
+
+# Review changes
+# Typical result: 40-50% of labels change!
+# - Fraud → Legit: ~36,000 emails (legitimate names mislabeled as fraud)
+# - Legit → Fraud: ~7,000 emails (truly suspicious patterns)
+```
+
+**What Re-labeling Does:**
+1. Analyzes each email address with pattern detectors (keyboard walks, sequential, gibberish, etc.)
+2. Assigns label based on **address pattern**, ignoring message content
+3. Outputs CSV with: `email`, `label`, `original_label`, `reason`, `confidence`, `changed`
+
+**Pattern Analysis Heuristics:**
+- ✅ Legitimate: `john.doe`, `first_last`, simple names
+- ⚠️ Suspicious: Very short (<3 chars), high entropy gibberish
+- 🚫 Fraud: Keyboard walks (qwerty, asdf), sequential (abc123), pure random
+
+**Always use pattern-labeled data for training!** This ensures models learn actual fraud patterns, not message content.
+
 ## Training Architecture
 
 ### Incremental Training
@@ -48,47 +82,79 @@ Training 2-gram Models
 ✅ 2-gram training complete!
 ```
 
-## Automated Training (Cron-based)
+## Automated Training (Currently Disabled)
 
-### How It Works
+### ⚠️ Status: Disabled Due to Data Quality Issues
 
-The automated training worker runs every 6 hours via Cloudflare cron:
+**Automated online training is currently disabled** (as of 2025-01-06) to prevent model degradation.
 
-```yaml
-# wrangler.toml
-triggers = { crons = ["0 */6 * * *"] }
-```
+### The Problem: Circular Reasoning
 
-**Process**:
-1. Loads last 7 days of training data from KV (`training_data_YYYY-MM-DD`)
-2. Loads existing production models
-3. Trains incrementally on new data
-4. Validates against test dataset
-5. Auto-deploys to canary if validation passes
-6. Monitors metrics and auto-promotes if successful
+The online training pipeline had a critical flaw where it used the model's own predictions to label training data:
 
-### Training Configuration
-
-Stored in `CONFIG` KV namespace as `training_config`:
-
-```json
-{
-  "orders": [2],
-  "adaptationRate": 0.3,
-  "minSamplesPerClass": 100
+```typescript
+// Labels fraud based on the model's OWN risk_score
+if (sample.risk_score >= 0.7 && (sample.decision === 'block')) {
+    fraudSamples.push(sample.email_local_part);  // Labeled as fraud
 }
 ```
 
-**Parameters**:
-- `orders`: N-gram orders to train (1, 2, or 3)
-- `adaptationRate`: Skip samples within 0.3 std dev (prevents retraining on familiar patterns)
-- `minSamplesPerClass`: Minimum samples required per class
+**This creates a feedback loop:**
+1. Model predicts high risk → Email blocked
+2. Blocked email labeled as "fraud"
+3. Model trains on this label
+4. False positives get reinforced
+5. Model quality degrades over time
 
-### Data Collection
+### Ground Truth Requirement
 
-Training data is collected from production traffic by the data extraction worker. Each request with `decision: "block"` or `decision: "allow"` is stored with its label for future training.
+**Proper training requires ground truth labels** - human-verified fraud vs legitimate classifications, not model predictions.
 
-**Note**: Currently, the data extraction worker needs to be deployed separately.
+### Current Approach
+
+Until a proper ground truth mechanism is implemented (e.g., user feedback, manual review), **only manual training with labeled CSV datasets is used**:
+
+```bash
+# Train with verified ground truth data
+npm run cli train:markov -- --orders "2,3" --upload --remote
+```
+
+### Previous Automated Approach (Disabled)
+
+The automated training worker previously ran every 6 hours via Cloudflare cron:
+
+```yaml
+# wrangler.jsonc (currently disabled in src/index.ts)
+triggers = { crons = ["0 */6 * * *"] }
+```
+
+**Previous Process** (now disabled):
+1. Loaded last 7 days of validation data from D1
+2. Labeled samples based on risk_score and decision
+3. Trained incrementally on new data
+4. Deployed updated models
+
+**Why Disabled**: No ground truth verification - relied entirely on model's own decisions.
+
+### Future Implementation
+
+To safely re-enable automated training, we need:
+
+**Option 1: User Feedback Loop**
+- API endpoint for false positive/negative reports
+- Human verification of edge cases
+- Ground truth labels from corrections
+
+**Option 2: Conservative Semi-Supervised**
+- Very high confidence threshold (0.95+) for auto-labeling
+- Multiple detectors must agree
+- Manual training weighted much higher
+- Quality metrics monitoring
+
+**Option 3: Hybrid Approach**
+- Manual training for model updates (quarterly)
+- Online training only for adaptive scoring adjustments
+- Separate tracking of online vs manual trained components
 
 ## Model Quality Metrics
 
@@ -149,15 +215,15 @@ Runs 49 comprehensive test cases against production API:
 npm run cli train:markov -- --orders "2" --upload --remote
 ```
 
-### Automated Training Not Working
+### Automated Training Not Running
 
-**Symptoms**: Models not updating, no new training data
+**Note**: Automated training is intentionally disabled (see "Automated Training (Currently Disabled)" section above).
 
-**Check**:
-1. Verify cron trigger is active: `wrangler deployments list`
-2. Check for training data: `npx wrangler kv key list --binding CONFIG --remote | grep training_data`
-3. View worker logs: `npx wrangler tail`
-4. Check last training metadata: `npx wrangler kv key get latest_training --binding CONFIG --remote`
+**If you need to update models**:
+```bash
+# Use manual training with labeled CSV data
+npm run cli train:markov -- --orders "2,3" --upload --remote
+```
 
 ### High False Positive Rate
 
@@ -185,10 +251,11 @@ npm run cli train:markov -- --orders "2" --upload --remote
 4. Adjust thresholds based on observed behavior
 
 ### Ongoing Maintenance
-1. Let automated training handle incremental updates
-2. Review training metrics monthly
-3. Retrain from scratch quarterly with full dataset
-4. Keep backup of previous models
+1. ~~Let automated training handle incremental updates~~ (Currently disabled - use manual training)
+2. Retrain models monthly with updated CSV datasets
+3. Review production metrics and false positive/negative reports
+4. Retrain from scratch quarterly with full dataset
+5. Keep backup of previous models
 
 ### Model Hygiene
 1. Clean up old versioned models (keep last 10)

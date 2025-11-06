@@ -38,7 +38,8 @@ export async function writeValidationMetricToD1(
           client_ip, user_agent, model_version,
           exclude_from_training, ip_reputation_score,
           experiment_id, variant, bucket,
-          country, asn, latency
+          country, asn, latency,
+          pattern_classification_version
         ) VALUES (
           ?1, ?2, ?3,
           ?4, ?5, ?6, ?7,
@@ -52,7 +53,8 @@ export async function writeValidationMetricToD1(
           ?24, ?25, ?26,
           ?27, ?28,
           ?29, ?30, ?31,
-          ?32, ?33, ?34
+          ?32, ?33, ?34,
+          ?35
         )
       `)
       .bind(
@@ -98,7 +100,9 @@ export async function writeValidationMetricToD1(
         metric.country || null,
         metric.asn ?? null,
         // Performance
-        metric.latency
+        metric.latency,
+        // Algorithm versioning (v2.1+)
+        metric.patternClassificationVersion || null
       )
       .run();
   } catch (error) {
