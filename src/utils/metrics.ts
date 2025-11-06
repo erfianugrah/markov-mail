@@ -1,9 +1,18 @@
 /**
  * Analytics Engine helpers
  * https://developers.cloudflare.com/analytics/analytics-engine/
+ *
+ * MIGRATION NOTE: Currently dual-writing to both Analytics Engine and D1
+ * After migration is complete, Analytics Engine code will be removed
  */
 
 import { logger } from '../logger';
+import {
+  writeValidationMetricToD1,
+  writeTrainingMetricToD1,
+  writeABTestMetricToD1,
+  writeAdminMetricToD1,
+} from '../database/metrics';
 
 export interface ValidationMetric {
   decision: 'allow' | 'warn' | 'block';
@@ -47,12 +56,17 @@ export interface ValidationMetric {
 }
 
 /**
- * Write validation metrics to Analytics Engine
+ * Write validation metrics to Analytics Engine and D1 (dual-write during migration)
  */
 export function writeValidationMetric(
   analytics: AnalyticsEngineDataset | undefined,
+  db: D1Database | undefined,
   metric: ValidationMetric
 ) {
+  // Write to D1 (new system)
+  writeValidationMetricToD1(db, metric);
+
+  // Write to Analytics Engine (legacy system - will be removed after migration)
   if (!analytics) {
     return;
   }
@@ -256,12 +270,17 @@ export interface TrainingMetric {
 }
 
 /**
- * Write training metrics to Analytics Engine
+ * Write training metrics to Analytics Engine and D1 (dual-write during migration)
  */
 export function writeTrainingMetric(
   analytics: AnalyticsEngineDataset | undefined,
+  db: D1Database | undefined,
   metric: TrainingMetric
 ): void {
+  // Write to D1 (new system)
+  writeTrainingMetricToD1(db, metric);
+
+  // Write to Analytics Engine (legacy system - will be removed after migration)
   if (!analytics) {
     return;
   }
@@ -332,12 +351,17 @@ export interface ABTestMetric {
 }
 
 /**
- * Write A/B test metrics to Analytics Engine
+ * Write A/B test metrics to Analytics Engine and D1 (dual-write during migration)
  */
 export function writeABTestMetric(
   analytics: AnalyticsEngineDataset | undefined,
+  db: D1Database | undefined,
   metric: ABTestMetric
 ): void {
+  // Write to D1 (new system)
+  writeABTestMetricToD1(db, metric);
+
+  // Write to Analytics Engine (legacy system - will be removed after migration)
   if (!analytics) {
     return;
   }
@@ -396,12 +420,17 @@ export interface AdminMetric {
 }
 
 /**
- * Write admin action metrics to Analytics Engine
+ * Write admin action metrics to Analytics Engine and D1 (dual-write during migration)
  */
 export function writeAdminMetric(
   analytics: AnalyticsEngineDataset | undefined,
+  db: D1Database | undefined,
   metric: AdminMetric
 ): void {
+  // Write to D1 (new system)
+  writeAdminMetricToD1(db, metric);
+
+  // Write to Analytics Engine (legacy system - will be removed after migration)
   if (!analytics) {
     return;
   }
