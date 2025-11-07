@@ -7,7 +7,7 @@
  * Based on: Bergholz et al. (2008) - "Improved Phishing Detection using Model-Based Features"
  */
 
-import { NGramMarkovChain, type NGramMarkovResult } from './ngram-markov';
+import { NGramMarkovChain, type NGramMarkovResult } from '../ngram-markov';
 
 export interface EnsembleWeights {
 	unigram: number; // 1-gram weight (default: 0.20)

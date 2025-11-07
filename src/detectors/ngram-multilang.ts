@@ -127,7 +127,7 @@ export const LANGUAGE_BIGRAMS: Record<Language, Set<string>> = {
 		'ra', 're', 'ri', 'ro', 'ru', 'sa', 'se', 'si', 'so', 'su',
 	]),
 
-	// Romanized patterns (Russian, Chinese, Japanese, Arabic transliterations)
+	// Romanized patterns (Russian, Chinese, Japanese, Arabic, Korean, Southeast Asian, South Asian)
 	romanized: new Set([
 		// Russian romanization patterns
 		'ov', 'ev', 'sky', 'ski', 'ovich', 'evich', 'enko', 'yev', 'nov',
@@ -145,9 +145,28 @@ export const LANGUAGE_BIGRAMS: Record<Language, Set<string>> = {
 		'ga', 'gi', 'gu', 'ge', 'go', 'za', 'ji', 'zu', 'ze', 'zo',
 		'da', 'de', 'do', 'ba', 'bi', 'bu', 'be', 'bo', 'pa', 'pi',
 		'pu', 'pe', 'po', 'kya', 'kyu', 'kyo', 'sha', 'shu', 'sho',
+		// Korean romanization (Revised Romanization of Korean)
+		'eo', 'ae', 'oe', 'ui', 'gw', 'kw', 'hw', 'ng', 'nk', 'nh',
+		'kim', 'park', 'lee', 'choi', 'jung', 'kang', 'shin', 'yoon',
 		// Arabic transliteration patterns
 		'al', 'el', 'il', 'ul', 'ah', 'eh', 'ih', 'uh', 'rahman', 'ullah',
 		'abd', 'abu', 'ibn', 'bin', 'bint', 'kh', 'gh', 'dh', 'th', 'sh',
+		// Indonesian/Malay patterns (for "anugrah", "budi", etc.)
+		'rah', 'grah', 'wan', 'wati', 'man', 'budi', 'putra', 'putri',
+		'adi', 'adi', 'sri', 'devi', 'anto', 'anti', 'yana', 'yani',
+		'ug', 'ugr', 'gra', 'nug', 'anu', 'rah', 'dra', 'tri', 'tya',
+		// Filipino/Tagalog patterns
+		'ng', 'mga', 'ang', 'pag', 'mag', 'nag', 'kay', 'bay', 'ling',
+		// Vietnamese patterns
+		'ng', 'nh', 'ng', 'ph', 'th', 'gh', 'gi', 'tr', 'qu', 'kh',
+		'uy', 'oa', 'oi', 'uyen', 'thuy', 'phu', 'huy', 'thi', 'van',
+		// Thai romanization
+		'porn', 'chai', 'wat', 'som', 'sri', 'bun', 'kit', 'porn',
+		// Hindi/Bengali romanization
+		'kumar', 'singh', 'raj', 'pra', 'deep', 'kri', 'shna', 'ram',
+		'esh', 'ish', 'dha', 'bha', 'pra', 'sha', 'cha', 'ndr', 'rya',
+		// Turkish patterns
+		'oglu', 'oğlu', 'ş', 'ç', 'ğ', 'ı', 'ö', 'ü',
 	]),
 
 	// Universal patterns (common across all languages)
@@ -240,6 +259,29 @@ export function detectLanguage(text: string): Language {
 
 	// Arabic transliteration patterns
 	if (/^(al|el|abd|abu|ibn|bin)/.test(lower) || /(ullah|rahman)$/.test(lower)) {
+		return 'romanized';
+	}
+
+	// Indonesian/Malay/Southeast Asian patterns
+	if (
+		/(anu|grah|budi|putra|putri|wati|wan|dra|tya|sri)/.test(lower) ||
+		/(rah|wan|man|nto|nti)$/.test(lower)
+	) {
+		return 'romanized';
+	}
+
+	// Korean patterns
+	if (/(eo|ae|oe|ui|gw|kw|hw)/.test(lower) || /(kim|park|lee|choi|jung|kang|shin|yoon)/.test(lower)) {
+		return 'romanized';
+	}
+
+	// Vietnamese patterns
+	if (/(ng|nh|ph|th|gh|qu|uy|oa|oi|uyen|thuy|phu|huy|thi|van)/.test(lower)) {
+		return 'romanized';
+	}
+
+	// Hindi/South Asian patterns
+	if (/(kumar|singh|raj|pra|deep|kri|esh|ish|dha|bha|sha|ndr|rya)/.test(lower)) {
 		return 'romanized';
 	}
 

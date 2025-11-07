@@ -136,26 +136,6 @@ triggers = { crons = ["0 */6 * * *"] }
 
 **Why Disabled**: No ground truth verification - relied entirely on model's own decisions.
 
-### Future Implementation
-
-To safely re-enable automated training, we need:
-
-**Option 1: User Feedback Loop**
-- API endpoint for false positive/negative reports
-- Human verification of edge cases
-- Ground truth labels from corrections
-
-**Option 2: Conservative Semi-Supervised**
-- Very high confidence threshold (0.95+) for auto-labeling
-- Multiple detectors must agree
-- Manual training weighted much higher
-- Quality metrics monitoring
-
-**Option 3: Hybrid Approach**
-- Manual training for model updates (quarterly)
-- Online training only for adaptive scoring adjustments
-- Separate tracking of online vs manual trained components
-
 ## Model Quality Metrics
 
 ### Current Production Models

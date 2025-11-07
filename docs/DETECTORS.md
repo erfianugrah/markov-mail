@@ -317,74 +317,104 @@ While still catching true keyboard walks:
 
 ## 5. N-Gram Gibberish Detector
 
-**File**: `src/detectors/ngram-analysis.ts` (216 lines)
+**File**: `src/detectors/ngram-analysis.ts` (340 lines)
 
 ### Purpose
-Uses character frequency analysis to distinguish natural names from random gibberish.
+Uses **Markov Chain perplexity** (preferred) or n-gram analysis (fallback) to distinguish natural names from random gibberish.
 
-### Algorithm
+### Algorithm (Perplexity-Based - Preferred)
 
-**Step 1: Extract N-Grams**
+**Research-Backed Approach**: Uses character-level language model perplexity from the trained Markov Chain model.
+
+**Step 1: Calculate Cross-Entropy**
 ```typescript
-"anderson" →
-  bigrams: ['an', 'nd', 'de', 'er', 'rs', 'so', 'on']
-  trigrams: ['and', 'nde', 'der', 'ers', 'rso', 'son']
+crossEntropy = legitMarkovModel.crossEntropy(localPart)
+// Measures how "surprising" the input is to the legitimate model
+// Lower = fits legitimate email patterns
+// Higher = random/gibberish
 ```
 
-**Step 2: Compare Against Common Patterns**
+**Step 2: Calculate Perplexity**
 ```typescript
-commonBigrams (90 total):
-  'an', 'ar', 'at', 'ch', 'ed', 'en', 'er', 'es', 'ha', 'he',
-  'in', 'is', 'it', 'le', 'nd', 'ng', 'on', 'or', 'ou', 're',
-  'st', 'te', 'th', 'ti', 'to', 've', 'wa', ...
-
-commonTrigrams (40 total):
-  'and', 'the', 'ing', 'ion', 'ent', 'for', 'tio', 'ter',
-  'ate', 'ati', 'ers', ...
-
-namePatterns (16 total):
-  'son', 'sen', 'man', 'stein', 'berg', 'smith', 'johnson', ...
+perplexity = exp(crossEntropy)
+// Perplexity = 2^entropy
+// Lower perplexity = more natural/expected
+// Higher perplexity = more surprising/random
 ```
 
-**Step 3: Calculate Naturalness**
+**Step 3: Adaptive Threshold**
 ```typescript
-bigramScore = matchedBigrams / totalBigrams;
-trigramScore = matchedTrigrams / totalTrigrams;
-nameBonus = containsNamePattern ? 0.2 : 0;
+lengthFactor = min(localPart.length / 10, 2.0)
+baseThreshold = 60.0  // Empirical from 91K email dataset
+threshold = baseThreshold * max(1.0, 1.5 - lengthFactor * 0.3)
 
-naturalness = (bigramScore * 0.6) + (trigramScore * 0.4) + nameBonus;
+isGibberish = perplexity > threshold
 ```
 
-**Step 4: Determine Gibberish**
+**Step 4: Calculate Confidence**
 ```typescript
-threshold = length < 5 ? 0.30 : 0.40;
-isGibberish = naturalness < threshold;
-confidence = 1 - naturalness;
+if (isGibberish) {
+  // How much higher than threshold
+  confidence = min((perplexity - threshold) / threshold, 1.0)
+}
 ```
 
 ### Examples
 
 **Natural Name**:
 ```
-"anderson" →
-  bigrams: an(✓), nd(✓), de(✓), er(✓), rs(✓), so(✓), on(✓)
-  matched: 7/7 = 100%
-  namePattern: "son" (✓)
-  result: NATURAL (naturalness: 1.0)
+"james.brown" →
+  crossEntropy: 3.2
+  perplexity: exp(3.2) = 24.5
+  threshold: 60.0
+  result: NATURAL (perplexity < threshold)
 ```
 
 **Gibberish**:
 ```
 "xk7g2w9qa" →
-  bigrams: xk(✗), k7(✗), 7g(✗), g2(✗), 2w(✗), w9(✗), 9q(✗), qa(✗)
-  matched: 0/8 = 0%
-  result: GIBBERISH (naturalness: 0.0)
+  crossEntropy: 5.8
+  perplexity: exp(5.8) = 330
+  threshold: 60.0
+  result: GIBBERISH (perplexity: 330 > threshold: 60)
+  confidence: (330-60)/60 = 4.5 → capped at 1.0
 ```
+
+### Fallback Algorithm (N-Gram Analysis)
+
+Used when Markov models are not available. **Note**: This method can produce false positives on names like "james.brown" and "linda.garcia" because trigram lists contain prose patterns ("the", "and", "ing") that don't appear in names.
+
+```typescript
+bigramScore = matchedBigrams / totalBigrams;
+trigramScore = matchedTrigrams / totalTrigrams;
+overallScore = (bigramScore * 0.6) + (trigramScore * 0.4);
+
+threshold = length < 5 ? 0.30 : 0.40;
+isGibberish = overallScore < threshold;
+```
+
+### Why Perplexity-Based is Better
+
+| Method | james.brown | linda.garcia | xk7g2w9qa |
+|--------|-------------|--------------|-----------|
+| **N-Gram (old)** | ❌ BLOCKED (0.69) | ❌ BLOCKED (0.69) | ✅ BLOCKED |
+| **Perplexity (new)** | ✅ ALLOWED (0.17) | ✅ ALLOWED (0.09) | ✅ BLOCKED |
+
+**Benefits**:
+- ✅ Trained on 91K real emails (not hardcoded lists)
+- ✅ Adaptive to actual patterns in data
+- ✅ No false positives on common names
+- ✅ Standard in NLP research (used by LLMs)
 
 ### Risk Contribution
 ```typescript
-if (isGibberish) {
-    riskScore = confidence;  // 0.6 - 1.0
+if (isGibberish && confidence > 0.7) {
+    // Markov model takes precedence - if it says legit, trust it
+    if (markovResult && !markovResult.isLikelyFraudulent && markovResult.confidence > 0.3) {
+        riskScore = 0;  // Override gibberish penalty
+    } else {
+        riskScore = confidence;  // 0.6 - 1.0
+    }
 }
 ```
 

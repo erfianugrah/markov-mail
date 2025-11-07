@@ -771,16 +771,16 @@ export default {
 
 ---
 
-## Next Steps
+## Additional Resources
 
 After setup, explore these resources:
 
 1. **[Architecture Guide](./ARCHITECTURE.md)** - System design deep dive
 2. **[API Documentation](./API.md)** - Complete API reference
-3. **[Phase 6A Summary](./PHASE_6A_SUMMARY.md)** - New detection algorithms
-4. **[Implementation Plan](../IMPLEMENTATION_PLAN.md)** - Roadmap and phases
+3. **[Detectors Guide](./DETECTORS.md)** - Fraud detection algorithms
+4. **[Project Structure](./PROJECT_STRUCTURE.md)** - Directory layout
 
-### Quick Wins
+### Using in Production
 
 1. **Test with real data**:
    - Use actual signup emails from your system
@@ -788,9 +788,9 @@ After setup, explore these resources:
    - Tune thresholds based on results
 
 2. **Monitor Analytics**:
-   - Set up daily queries for blocked/warned emails
-   - Track false positive/negative rates
-   - Identify patterns in attacks
+   - Query D1 database for blocked/warned emails
+   - Track detection patterns
+   - Identify attack trends
 
 3. **Integrate with your app**:
    - Add validation to signup flow

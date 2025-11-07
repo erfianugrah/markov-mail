@@ -17,14 +17,18 @@ import { detectSequentialPattern, getSequentialPatternFamily } from './sequentia
 import { detectDatedPattern, getDatedPatternFamily } from './dated';
 import { normalizeEmail } from './plus-addressing';
 import { analyzeNGramNaturalness } from './ngram-analysis';
+import { detectKeyboardWalk } from './keyboard-walk';
+import { detectKeyboardMashing } from './keyboard-mashing';
 
 export type PatternType =
-  | 'sequential'       // user1, user2, user3
-  | 'dated'           // firstname.lastname.2024
-  | 'plus-addressing' // user+1, user+2
-  | 'formatted'       // firstname.lastname, first.last
-  | 'random'          // xk9m2qw7r4p3
-  | 'simple'          // john, test, admin
+  | 'sequential'        // user1, user2, user3
+  | 'dated'            // firstname.lastname.2024
+  | 'plus-addressing'  // user+1, user+2
+  | 'keyboard-walk'    // qwerty, asdfgh (consecutive keys)
+  | 'keyboard-mashing' // ioanerst, asdfasdf (region clustering)
+  | 'formatted'        // firstname.lastname, first.last
+  | 'random'           // xk9m2qw7r4p3
+  | 'simple'           // john, test, admin
   | 'unknown';
 
 export interface PatternFamilyResult {
@@ -52,14 +56,36 @@ export async function extractPatternFamily(email: string): Promise<PatternFamily
   // Run all detectors
   const sequentialResult = detectSequentialPattern(email);
   const datedResult = detectDatedPattern(email);
+  const keyboardWalkResult = detectKeyboardWalk(email);
+  const keyboardMashingResult = detectKeyboardMashing(email);
 
   // Determine primary pattern type
   let patternType: PatternType = 'unknown';
   let familyString = '';
   let confidence = 0.0;
 
-  // Priority 1: Dated patterns (highest confidence when detected)
-  if (datedResult.hasDatedPattern && datedResult.confidence >= 0.6) {
+  // Priority 1: Keyboard walks (highest confidence - very specific pattern)
+  if (keyboardWalkResult.hasKeyboardWalk && keyboardWalkResult.confidence >= 0.5) {
+    patternType = 'keyboard-walk';
+    confidence = keyboardWalkResult.confidence;
+
+    const walkTypeToken = keyboardWalkResult.walkType === 'horizontal' ? 'HROW' :
+                          keyboardWalkResult.walkType === 'vertical' ? 'VCOL' :
+                          keyboardWalkResult.walkType === 'diagonal' ? 'DIAG' :
+                          keyboardWalkResult.walkType === 'numeric' ? 'NUM' : 'WALK';
+    const keyboardToken = keyboardWalkResult.metadata?.keyboard?.toUpperCase() || 'KEYBOARD';
+    familyString = `${keyboardToken}.${walkTypeToken}@${domain}`;
+  }
+  // Priority 2: Keyboard mashing (region clustering - new research-based detector)
+  else if (keyboardMashingResult.isMashing && keyboardMashingResult.confidence >= 0.5) {
+    patternType = 'keyboard-mashing';
+    confidence = keyboardMashingResult.confidence;
+
+    const regionToken = keyboardMashingResult.metadata?.dominantRegion.replace(' ', '_').toUpperCase() || 'MASHING';
+    familyString = `${regionToken}.MASH@${domain}`;
+  }
+  // Priority 3: Dated patterns (high confidence when detected)
+  else if (datedResult.hasDatedPattern && datedResult.confidence >= 0.6) {
     patternType = 'dated';
     confidence = datedResult.confidence;
 
@@ -72,7 +98,7 @@ export async function extractPatternFamily(email: string): Promise<PatternFamily
     const baseStructure = analyzeStructure(datedResult.basePattern);
     familyString = `${baseStructure}.${dateToken}@${domain}`;
   }
-  // Priority 2: Sequential patterns
+  // Priority 4: Sequential patterns
   else if (sequentialResult.isSequential && sequentialResult.confidence >= 0.5) {
     patternType = 'sequential';
     confidence = sequentialResult.confidence;
@@ -80,7 +106,7 @@ export async function extractPatternFamily(email: string): Promise<PatternFamily
     const baseStructure = analyzeStructure(sequentialResult.basePattern);
     familyString = `${baseStructure}.NUM@${domain}`;
   }
-  // Priority 3: Plus-addressing
+  // Priority 5: Plus-addressing
   else if (normalized.hasPlus) {
     patternType = 'plus-addressing';
     confidence = normalized.metadata?.suspiciousTag ? 0.7 : 0.5;
@@ -88,7 +114,7 @@ export async function extractPatternFamily(email: string): Promise<PatternFamily
     const baseStructure = analyzeStructure(normalized.normalized.split('@')[0]);
     familyString = `${baseStructure}+TAG@${domain}`;
   }
-  // Priority 4: Analyze structure
+  // Priority 6: Analyze structure
   else {
     const structure = analyzeStructure(localPart);
 

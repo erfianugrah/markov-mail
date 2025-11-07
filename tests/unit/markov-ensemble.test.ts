@@ -8,7 +8,7 @@ import {
 	MarkovEnsembleDetector,
 	DEFAULT_ENSEMBLE_WEIGHTS,
 	type EnsembleModels,
-} from '../../src/detectors/markov-ensemble';
+} from '../../src/detectors/_deprecated/markov-ensemble';
 
 // Helper to create simple test models
 function createTestModels(): EnsembleModels {
