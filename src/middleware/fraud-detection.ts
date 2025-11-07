@@ -14,19 +14,28 @@
  */
 export const PATTERN_CLASSIFICATION_VERSION = '2.1';
 
+// Local type for Markov result in middleware (combines results from legit and fraud models)
+interface MarkovResult {
+  isLikelyFraudulent: boolean;
+  crossEntropyLegit: number;
+  crossEntropyFraud: number;
+  confidence: number;
+  differenceRatio: number;
+}
+
 import { Context, Next } from 'hono';
 import { generateFingerprint } from '../fingerprint';
-import { validateEmail } from '../validators/email';
+import { validateEmail, calculateEntropy } from '../validators/email';
 import { validateDomain, getDomainReputationScore } from '../validators/domain';
 import {
   extractPatternFamily,
   normalizeEmail,
   detectKeyboardWalk,
+  detectKeyboardMashing,
   detectGibberish,
-  analyzeTLDRisk,
-  type MarkovResult
+  analyzeTLDRisk
 } from '../detectors';
-import { NGramMarkovChain } from '../detectors/ngram-markov';
+import { NGramMarkovChain, type NGramMarkovResult } from '../detectors/ngram-markov';
 import { loadDisposableDomains } from '../services/disposable-domain-updater';
 import { loadTLDRiskProfiles } from '../services/tld-risk-updater';
 import { writeValidationMetric } from '../utils/metrics';
@@ -204,10 +213,19 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     }
   }
 
+  // Load Markov models EARLY (before pattern detection)
+  // This allows gibberish detector to use perplexity-based detection
+  if (emailValidation.valid && config.features.enableMarkovChainDetection) {
+    logger.info({ event: 'markov_loading', email: email.substring(0, 3) + '***' }, 'Loading Markov models');
+    const modelsLoaded = await loadMarkovModels(c.env);
+    logger.info({ event: 'markov_load_result', modelsLoaded, hasLegit: !!markovLegitModel, hasFraud: !!markovFraudModel }, 'Models load result');
+  }
+
   // Pattern analysis
   let patternFamilyResult;
   let normalizedEmailResult;
   let keyboardWalkResult;
+  let keyboardMashingResult: import('../detectors').KeyboardMashingResult | undefined;
   let gibberishResult;
 
   if (emailValidation.valid && config.features.enablePatternCheck) {
@@ -223,11 +241,17 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     patternFamilyResult = await extractPatternFamily(emailForPatternDetection);
     logger.info({ event: 'pattern_family_done', family: patternFamilyResult?.family }, 'Pattern family extracted');
 
-    // Keyboard walk detection
+    // Keyboard walk detection (sequential keys: qwerty, asdfgh)
     keyboardWalkResult = detectKeyboardWalk(emailForPatternDetection);
 
-    // N-Gram gibberish detection
-    gibberishResult = detectGibberish(emailForPatternDetection);
+    // Keyboard mashing detection (region clustering: random letters from limited keyboard regions)
+    keyboardMashingResult = detectKeyboardMashing(emailForPatternDetection);
+
+    // N-Gram gibberish detection (now uses Markov perplexity if models are loaded)
+    gibberishResult = detectGibberish(emailForPatternDetection, {
+      legitMarkovModel: markovLegitModel || undefined,
+      fraudMarkovModel: markovFraudModel || undefined,
+    });
     logger.info({ event: 'pattern_detection_done' }, 'Pattern detection complete');
   }
 
@@ -236,8 +260,6 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 
   if (emailValidation.valid && config.features.enableMarkovChainDetection) {
     logger.info({ event: 'markov_starting', email: email.substring(0, 3) + '***' }, 'Starting Markov detection');
-    const modelsLoaded = await loadMarkovModels(c.env);
-    logger.info({ event: 'markov_load_result', modelsLoaded, hasLegit: !!markovLegitModel, hasFraud: !!markovFraudModel }, 'Models load result');
 
     if (markovLegitModel && markovFraudModel) {
       try {
@@ -320,6 +342,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 
     blockReason = determineBlockReason({
       riskScore,
+      email,
       markovResult,
       keyboardWalkResult,
       patternFamilyResult,
@@ -395,31 +418,55 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     // IMPORTANT: Only apply these when Markov model agrees OR when patterns are deterministic (keyboard, sequential, plus-addressing)
     const patternOverrides = [
       { condition: keyboardWalkResult?.hasKeyboardWalk, score: 0.9 },
+      { condition: keyboardMashingResult?.isMashing && keyboardMashingResult?.confidence >= 0.7, score: 0.85 },
       { condition: patternFamilyResult?.patternType === 'sequential', score: 0.8 },
       // Plus-addressing abuse (deterministic pattern)
       { condition: normalizedEmailResult?.hasPlus, score: 0.6 },
       // Dated patterns now use confidence from age-aware algorithm (0.2 for birth years, 0.9 for fraud)
       { condition: patternFamilyResult?.patternType === 'dated', score: patternFamilyResult?.confidence || 0.7 },
-      // Gibberish detection: Trust Markov when it has learned patterns from multilingual data
-      // Only apply gibberish penalty when:
-      // 1. Markov is confident it's fraud (agrees with gibberish), OR
-      // 2. Markov hasn't run, OR
-      // 3. Pattern is unfamiliar to legit model (high cross-entropy > 3.0) AND Markov leans fraud
+      // Gibberish detection: Markov-first approach (trained model takes precedence)
+      // Only apply gibberish penalty when Markov AGREES or is unavailable
       {
-        condition: gibberishResult?.isGibberish &&
-                   gibberishResult?.confidence > 0.7 &&
-                   (
-                     // Markov confidently detects fraud (>0.3 confidence)
-                     (markovResult?.isLikelyFraudulent && markovResult.confidence > 0.3) ||
-                     // OR Markov didn't run
-                     !markovResult ||
-                     // OR pattern is unfamiliar to legit model but familiar to fraud model
-                     (markovResult &&
-                      markovResult.crossEntropyLegit > 3.0 &&
-                      markovResult.crossEntropyFraud < 2.5 &&
-                      markovResult.isLikelyFraudulent)
-                   ),
-        score: 0.75
+        condition: gibberishResult?.isGibberish && gibberishResult?.confidence > 0.7,
+        score: (() => {
+          // CRITICAL: Markov model is trained on 91K real emails - it's the ground truth
+          // If Markov says legit with confidence, trust it over heuristic detectors
+
+          if (markovResult) {
+            // Markov is confident this is legit → OVERRIDE gibberish
+            if (!markovResult.isLikelyFraudulent && markovResult.confidence > 0.3) {
+              return 0; // Don't apply gibberish penalty
+            }
+
+            // Markov is confident this is fraud → AMPLIFY signal
+            if (markovResult.isLikelyFraudulent && markovResult.confidence > 0.5) {
+              return 0.9; // High fraud score
+            }
+
+            // Markov has moderate confidence in fraud → use it
+            if (markovResult.isLikelyFraudulent && markovResult.confidence > 0.2) {
+              return markovResult.confidence;
+            }
+          }
+
+          // No Markov model OR Markov is uncertain → use other signals
+          // Collect supporting evidence
+          const supportingSignals = [
+            keyboardWalkResult?.hasKeyboardWalk,
+            keyboardMashingResult?.isMashing && keyboardMashingResult?.confidence >= 0.7,
+            patternFamilyResult?.patternType === 'sequential',
+            patternFamilyResult?.patternType === 'dated',
+            domainReputationScore > 0.7
+          ].filter(Boolean).length;
+
+          // Multiple supporting signals → likely fraud
+          if (supportingSignals >= 2) {
+            return 0.8;
+          }
+
+          // Gibberish alone with high confidence → moderate penalty
+          return 0.6;
+        })()
       }
     ];
 
@@ -466,6 +513,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
    */
   function determineBlockReason(params: {
     riskScore: number; // ADDED: Need actual risk to determine appropriate message
+    email: string; // ADDED: For signal aggregation
     markovResult: MarkovResult | null | undefined;
     keyboardWalkResult: any;
     patternFamilyResult: any;
@@ -474,7 +522,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     tldRiskScore: number;
     config: any;
   }): string {
-    const { riskScore, markovResult, keyboardWalkResult, patternFamilyResult, gibberishResult, domainReputationScore, tldRiskScore, config } = params;
+    const { riskScore, email, markovResult, keyboardWalkResult, patternFamilyResult, gibberishResult, domainReputationScore, tldRiskScore, config } = params;
 
     // TIER 1: HIGH CONFIDENCE DETECTIONS (any risk level)
     // These are definitive fraud signals that override risk-based messaging
@@ -484,12 +532,33 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
         reason: 'markov_chain_fraud'
       },
       {
-        condition: gibberishResult?.isGibberish && gibberishResult?.confidence > 0.7,
+        // Report gibberish only when Markov AGREES (Markov-first approach)
+        // This prevents false "gibberish_pattern" messages for legitimate names
+        condition: gibberishResult?.isGibberish &&
+                   gibberishResult?.confidence > 0.7 &&
+                   (
+                     // Markov agrees it's fraud
+                     (markovResult?.isLikelyFraudulent && markovResult.confidence > 0.2) ||
+                     // OR no Markov model available
+                     !markovResult ||
+                     // OR multiple supporting signals (keyboard walk, keyboard mashing, sequential, etc.)
+                     [
+                       keyboardWalkResult?.hasKeyboardWalk,
+                       keyboardMashingResult?.isMashing && keyboardMashingResult?.confidence >= 0.7,
+                       patternFamilyResult?.patternType === 'sequential',
+                       patternFamilyResult?.patternType === 'dated',
+                       domainReputationScore > 0.7
+                     ].filter(Boolean).length >= 2
+                   ),
         reason: 'gibberish_pattern'
       },
       {
         condition: keyboardWalkResult?.hasKeyboardWalk,
         reason: 'keyboard_walk'
+      },
+      {
+        condition: keyboardMashingResult?.isMashing && keyboardMashingResult?.confidence >= 0.7,
+        reason: 'keyboard_mashing'
       },
       {
         condition: patternFamilyResult?.patternType === 'sequential',
@@ -609,6 +678,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     isFreeProvider: domainValidation?.isFreeProvider,
     hasPlusAddressing: normalizedEmailResult?.hasPlus,
     hasKeyboardWalk: keyboardWalkResult?.hasKeyboardWalk,
+    hasKeyboardMashing: keyboardMashingResult?.isMashing,
     isGibberish: gibberishResult?.isGibberish,
     tldRiskScore: tldRiskScore,
     domainReputationScore: domainReputationScore,
@@ -641,6 +711,9 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
         hasPlusAddressing: normalizedEmailResult?.hasPlus || false,
         hasKeyboardWalk: keyboardWalkResult?.hasKeyboardWalk || false,
         keyboardWalkType: keyboardWalkResult?.walkType,
+        hasKeyboardMashing: keyboardMashingResult?.isMashing || false,
+        keyboardMashingConfidence: keyboardMashingResult ? Math.round(keyboardMashingResult.confidence * 100) / 100 : undefined,
+        keyboardMashingRegion: keyboardMashingResult?.metadata?.dominantRegion,
         isGibberish: gibberishResult?.isGibberish || false,
         gibberishConfidence: gibberishResult ? Math.round(gibberishResult.confidence * 100) / 100 : undefined,
         tldRiskScore: Math.round(tldRiskScore * 100) / 100,

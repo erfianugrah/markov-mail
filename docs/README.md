@@ -30,15 +30,15 @@
 
 **Production**: ✅ **Live at https://your-worker.workers.dev**
 
-**Version**: 1.4.0 (2025-11-02)
+**Version**: 2.1.1 (2025-01-07)
 
 **Active Detectors**: **8/8** ✅
-- Sequential, Dated, Plus-Addressing, Keyboard Walk, N-Gram (multilang), TLD Risk, Benford's Law, Markov Chain
+- Markov Chain (N-grams), Keyboard Walk, Keyboard Mashing, Pattern Classification, N-Gram Analysis, TLD Risk, Plus-Addressing, Benford's Law
 
-**Accuracy**: **98-100%** (estimated, after all improvements)
+**Training Data**: 91,966 labeled emails (50.2K legit + 41.8K fraud)
 
 **Performance**:
-- Latency: <50ms average
+- Latency: ~35ms average
 - Throughput: 14,000+ emails/second
 - Uptime: 99.9%
 
@@ -101,34 +101,30 @@ docs/
 ### Pattern Detectors (8 Active)
 
 ✅ **All detectors operational**:
-- **Sequential patterns** (user1, user2, user3)
-- **Dated patterns** (john.doe.2025, oct2024)
-- **Keyboard walks** (qwerty, asdfgh, 123456)
-- **N-Gram analysis** (multi-language, 7 languages)
-- **Plus-addressing** (user+1, user+spam)
-- **TLD risk scoring** (154 TLDs)
-- **Benford's Law** (batch statistical analysis)
-- **Markov Chain** (character transitions, trained on 182K+ emails)
-
-**New Features** (Priority 2):
-- Pattern whitelisting (8 default patterns)
-- Multi-language N-gram support (English, Spanish, French, German, Italian, Portuguese, Romanized)
-- Optimized risk weights for max-based scoring
+- **Markov Chain (N-grams)** - PRIMARY: Trained on 91K emails with 2-gram & 3-gram models
+- **Keyboard Walk** - Sequential keyboard keys across 8 layouts (QWERTY, Dvorak, Colemak, etc.)
+- **Keyboard Mashing** - Region clustering detection (NEW in v2.1.1)
+- **Pattern Classification** - Detects sequential, dated, and pattern families
+- **N-Gram Analysis** - Gibberish detection with multi-language support
+- **TLD Risk Scoring** - 143 TLDs categorized by fraud risk
+- **Plus-Addressing** - Email normalization and plus-tag detection
+- **Benford's Law** - Statistical batch anomaly detection
 
 See [Detectors Guide](DETECTORS.md) for complete technical details
 
-### Risk Scoring (Updated)
+### Risk Scoring Strategy
 
-**Current Weights** (optimized for max-based scoring):
-- Markov Chain: **35%** (highest, most reliable)
-- Pattern Detection: **30%**
-- Domain Reputation: **15%**
-- TLD Risk: **15%** (expanded database)
-- Entropy: **5%** (baseline)
+**Markov-First Approach**:
+1. **PRIMARY**: Markov model confidence (trained on 91K emails)
+2. **OVERRIDES**: Deterministic pattern detections
+   - Keyboard walk: 0.9
+   - Keyboard mashing: 0.85
+   - Sequential: 0.8
+   - Plus-addressing: 0.6
+3. **DOMAIN SIGNALS**: Disposable (0.95), Reputation (+0.2), TLD (+0.1)
+4. **SUPPORTING**: Gibberish detection applied when Markov agrees
 
-**Scoring Strategy**:
-- Domain signals (domain + TLD): Additive
-- Local part signals (entropy + pattern + markov): Max (prevents double-counting)
+**Key Principle**: Trained models take precedence over heuristic detectors.
 
 ---
 
@@ -227,14 +223,14 @@ See [Analytics Documentation](ANALYTICS.md)
 
 ## 📅 Version History
 
-**Current Version**: 1.4.0 (2025-11-02)
+**Current Version**: 2.1.1 (2025-01-07)
 
 **Major Updates**:
-- **1.4.0** (2025-11-02): Quick Wins + Priority 2 improvements - +15-25% accuracy, multi-language support, whitelist system, optimized risk weights
-- **1.3.1** (2025-11-02): Documentation consolidation and cleanup
-- **1.3.0** (2025-11-01): Markov Chain integration complete
-- **1.2.0** (2025-11-01): Testing documentation update
-- **1.1.0** (2025-11-01): Analytics dashboard launch
+- **2.1.1** (2025-01-07): Keyboard mashing detector, 8 keyboard layouts, detector architecture cleanup
+- **2.1.0** (2025-11-06): Pattern-based training (91K emails), Markov-educated gibberish detection
+- **2.0.5** (2025-11-05): Trigram models, birth year protection, false positive reduction
+- **2.0.4** (2025-11-05): Architecture mismatch fixes, detector hierarchy
+- **1.4.0** (2025-11-02): Multi-language support, whitelist system
 - **1.0.0** (2025-10-31): Initial production release
 
 ---
@@ -255,4 +251,4 @@ See [Analytics Documentation](ANALYTICS.md)
 ---
 
 **Production URL**: https://your-worker.workers.dev
-**Last Updated**: 2025-11-02
+**Last Updated**: 2025-01-07

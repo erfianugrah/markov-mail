@@ -1119,17 +1119,6 @@ See `src/utils/metrics.ts` for predefined GraphQL queries for common dashboards.
 - IP addresses are hashed in logs
 - No PII is stored long-term
 
-## Future Enhancements
-
-- Disposable email domain detection
-- MX record validation
-- Rate limiting per fingerprint
-- Keyboard walk pattern detection
-- Sequential number detection
-- Domain reputation scoring
-- Machine learning risk model
-- Real-time dashboard
-
 ## Support
 
 For issues, feature requests, or contributions:

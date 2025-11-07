@@ -15,11 +15,9 @@ import {
 	detectKeyboardWalk,
 	detectGibberish,
 	analyzeTLDRisk,
-	isHighRiskTLD,
-	type MarkovResult
+	isHighRiskTLD
 } from './detectors/index';
 import { NGramMarkovChain } from './detectors/ngram-markov';
-import { MarkovEnsembleDetector, type EnsembleResult } from './detectors/markov-ensemble';
 import { getConfig } from './config';
 import adminRoutes from './routes/admin';
 import { scheduled as trainingWorkerScheduled } from './workers/training-worker';
@@ -62,10 +60,6 @@ type ContextVariables = {
 let markovLegitModel: NGramMarkovChain | null = null;
 let markovFraudModel: NGramMarkovChain | null = null;
 let markovModelsLoaded = false;
-
-// Global Ensemble Markov model cache
-let ensembleDetector: MarkovEnsembleDetector | null = null;
-let ensembleModelsLoaded = false;
 
 /**
  * Load Markov Chain models from KV storage
@@ -119,68 +113,8 @@ async function loadMarkovModels(env: Env): Promise<boolean> {
 	return false;
 }
 
-/**
- * Load Ensemble Markov models from KV storage
- * Loads 6 models: 1-gram, 2-gram, 3-gram × legit/fraud
- */
-async function loadEnsembleModels(env: Env): Promise<boolean> {
-	if (ensembleModelsLoaded) return true;
-
-	try {
-		if (!env.MARKOV_MODEL) {
-			logger.warn({
-				event: 'ensemble_namespace_missing',
-				namespace: 'MARKOV_MODEL',
-			}, 'MARKOV_MODEL namespace not configured for ensemble');
-			return false;
-		}
-
-		// Load ensemble using the static method
-		ensembleDetector = await MarkovEnsembleDetector.loadFromKV(env.MARKOV_MODEL);
-		ensembleModelsLoaded = true;
-		logger.info({
-			event: 'ensemble_models_loaded',
-			model_types: ['1-gram', '2-gram', '3-gram'],
-			namespace: 'MARKOV_MODEL',
-		}, 'Ensemble Markov models loaded successfully');
-		return true;
-	} catch (error) {
-		logger.error({
-			event: 'ensemble_load_failed',
-			error: error instanceof Error ? {
-				message: error.message,
-				stack: error.stack,
-			} : String(error),
-		}, 'Failed to load ensemble models');
-		return false;
-	}
-}
-
-/**
- * Convert EnsembleResult to MarkovResult format for backward compatibility
- */
-function ensembleToMarkovResult(ensemble: EnsembleResult): MarkovResult {
-	// Use bigram model's cross-entropies as representative values
-	const isLikelyFraudulent = ensemble.prediction === 'fraud';
-
-	// For cross-entropy values, we use the individual model results
-	// If fraud is predicted, fraud entropy should be lower than legit
-	const crossEntropyLegit = ensemble.models.bigram.crossEntropy;
-	const crossEntropyFraud = ensemble.models.bigram.crossEntropy;
-
-	// Calculate difference ratio (similar to original)
-	const minEntropy = Math.min(crossEntropyLegit, crossEntropyFraud);
-	const maxEntropy = Math.max(crossEntropyLegit, crossEntropyFraud);
-	const differenceRatio = minEntropy / (maxEntropy + 0.001);
-
-	return {
-		isLikelyFraudulent,
-		crossEntropyLegit,
-		crossEntropyFraud,
-		confidence: ensemble.confidence,
-		differenceRatio,
-	};
-}
+// Ensemble Markov detector removed - was never fully implemented and not used in production
+// The N-gram Markov model (ngram-markov.ts) is sufficient for fraud detection
 
 const app = new Hono<{ Bindings: Env; Variables: ContextVariables }>();
 

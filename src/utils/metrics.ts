@@ -31,6 +31,7 @@ export interface ValidationMetric {
   isFreeProvider?: boolean;
   hasPlusAddressing?: boolean;
   hasKeyboardWalk?: boolean;
+  hasKeyboardMashing?: boolean;
   isGibberish?: boolean;
   tldRiskScore?: number;
   domainReputationScore?: number;

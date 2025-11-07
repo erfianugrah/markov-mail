@@ -179,3 +179,9 @@ markov_*.json
 training*.log
 dataset*
 public/dashboard/
+
+# Analysis archives (temporary data from tuning sessions)
+analysis-archive/
+d1-validations.json
+false-*.json
+label-corrections.json

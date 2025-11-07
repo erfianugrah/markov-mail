@@ -108,9 +108,10 @@ export interface FraudDetectionConfig {
  */
 export const DEFAULT_CONFIG: FraudDetectionConfig = {
 	// Conservative defaults - balance security with false positives
+	// Updated 2025-11-07: Tuned based on D1 analysis to reduce false positives
 	riskThresholds: {
-		block: 0.6, // Block high-risk emails
-		warn: 0.3, // Flag medium-risk for review
+		block: 0.65, // Block high-risk emails (increased from 0.6)
+		warn: 0.35, // Flag medium-risk for review (increased from 0.3)
 	},
 
 	// Base risk scores for specific conditions
@@ -121,10 +122,11 @@ export const DEFAULT_CONFIG: FraudDetectionConfig = {
 	},
 
 	// Detection confidence thresholds
+	// Updated 2025-11-07: Increased to reduce false positives on legitimate unusual names
 	confidenceThresholds: {
-		markovFraud: 0.7, // Markov must be 70%+ confident to flag fraud
-		markovRisk: 0.6, // Markov risk contribution threshold
-		patternRisk: 0.5, // Pattern detection risk threshold
+		markovFraud: 0.75, // Markov must be 75%+ confident to flag fraud (increased from 0.7)
+		markovRisk: 0.65, // Markov risk contribution threshold (increased from 0.6)
+		patternRisk: 0.55, // Pattern detection risk threshold (increased from 0.5)
 	},
 
 	// Enable all detection features by default
@@ -173,12 +175,13 @@ export const DEFAULT_CONFIG: FraudDetectionConfig = {
 	},
 
 	// Pattern confidence thresholds
+	// Updated 2025-11-07: Tuned to reduce false positives on legitimate patterns
 	patternThresholds: {
 		sequential: 0.8, // High confidence for sequential
-		dated: 0.7, // Medium-high for dated patterns
-		plusAddressing: 0.6, // Medium confidence
-		keyboardWalk: 0.8, // High confidence for keyboard walks
-		gibberish: 0.9, // Very high confidence for gibberish
+		dated: 0.75, // Medium-high for dated patterns (increased from 0.7)
+		plusAddressing: 0.7, // Medium confidence (increased from 0.6 - Gmail power users)
+		keyboardWalk: 0.85, // High confidence for keyboard walks (increased from 0.8)
+		gibberish: 0.85, // High confidence for gibberish (decreased from 0.9 - more sensitive)
 	},
 
 	// Rate limiting disabled by default (requires Durable Objects)

@@ -226,24 +226,84 @@ export function containsNamePatterns(localPart: string): boolean {
 /**
  * Comprehensive gibberish detection
  *
- * Combines n-gram analysis with other heuristics
+ * Uses Markov Chain perplexity (preferred) or falls back to n-gram analysis.
+ *
+ * Perplexity-based detection:
+ * - Perplexity = exp(cross_entropy) from legitimate model
+ * - Lower perplexity = natural pattern (fits legitimate email model)
+ * - Higher perplexity = random/gibberish (doesn't fit model)
+ *
+ * This approach is research-backed and eliminates hardcoded n-gram lists
+ * that don't work well for names (e.g., "james", "linda" have no prose trigrams).
  */
-export function detectGibberish(email: string): {
+export function detectGibberish(
+  email: string,
+  options?: {
+    legitMarkovModel?: any; // NGramMarkovChain type
+    fraudMarkovModel?: any; // NGramMarkovChain type
+  }
+): {
   isGibberish: boolean;
   confidence: number;
   reason: string;
   ngramAnalysis: NGramAnalysisResult;
+  perplexity?: number;
+  crossEntropy?: number;
 } {
   const [localPart] = email.split('@');
 
-  // N-gram analysis
+  // PREFERRED: Markov perplexity-based detection
+  if (options?.legitMarkovModel) {
+    try {
+      const crossEntropy = options.legitMarkovModel.crossEntropy(localPart);
+      const perplexity = Math.exp(crossEntropy);
+
+      // Adaptive threshold based on string length
+      // Longer strings: stricter (can have lower perplexity)
+      // Shorter strings: more lenient (naturally higher perplexity)
+      const lengthFactor = Math.min(localPart.length / 10, 2.0);
+      const baseThreshold = 60.0; // Empirical threshold
+      const threshold = baseThreshold * Math.max(1.0, 1.5 - lengthFactor * 0.3);
+
+      const isGibberish = perplexity > threshold;
+
+      // Confidence scales with distance from threshold
+      let confidence = 0;
+      if (isGibberish) {
+        // How much higher than threshold (0-1 scale)
+        const excess = (perplexity - threshold) / threshold;
+        confidence = Math.min(excess, 1.0);
+      } else {
+        // How much lower than threshold (inverted for non-gibberish)
+        const margin = (threshold - perplexity) / threshold;
+        confidence = Math.min(margin * 0.5, 0.3); // Lower confidence for "not gibberish"
+      }
+
+      // Still calculate n-gram analysis for observability/signals
+      const ngramAnalysis = analyzeNGramNaturalness(localPart);
+
+      return {
+        isGibberish,
+        confidence,
+        reason: isGibberish
+          ? 'high_perplexity_vs_legitimate_model'
+          : 'low_perplexity_natural_pattern',
+        ngramAnalysis,
+        perplexity,
+        crossEntropy,
+      };
+    } catch (error) {
+      // Fall through to n-gram analysis if Markov fails
+      console.error('Markov perplexity calculation failed:', error);
+    }
+  }
+
+  // FALLBACK: N-gram analysis (legacy method)
   const ngramAnalysis = analyzeNGramNaturalness(localPart);
 
   // Additional checks
   const hasNamePatterns = containsNamePatterns(localPart);
   const hasRepeatingChars = /(.)\1{2,}/.test(localPart); // 3+ same char
-  const allLowercase = localPart === localPart.toLowerCase();
-  const hasNumbers = /\d/.test(localPart);
 
   // Decision logic
   let isGibberish = false;

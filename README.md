@@ -5,10 +5,10 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 ## 🚦 Status
 
 **Production**: https://your-worker.workers.dev
-**Version**: 2.1.0 (Production-Ready)
-**Active Detectors**: 8/8 ✅
-**Training Data**: Pattern-based labels (44.5K legit + 47.2K fraud, balanced)
-**Model Training Count**: 91,710 samples (cleaned, deduplicated)
+**Version**: 2.1.1 (Production-Ready)
+**Active Detectors**: 8/8 ✅ (includes NEW keyboard mashing detector)
+**Training Data**: Pattern-based labels (50.2K legit + 41.8K fraud)
+**Model Training Count**: 91,966 samples (corrected labels)
 **Avg Latency**: ~35ms
 
 ### System Health
@@ -23,7 +23,21 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 - ✅ Analytics dashboard operational with pattern classification versioning
 - ✅ Unified CLI management system with `train:relabel` command
 
-### Latest Updates (v2.1.0 - 2025-11-06)
+### Latest Updates (v2.1.1 - 2025-01-07)
+- ⌨️ **Keyboard Mashing Detection** - NEW research-based detector for region clustering patterns
+  - Multi-signal approach: clustering + diversity + vowel ratio + consecutive keys + repeated bigrams
+  - Successfully detects both short and long keyboard mashing patterns
+  - 8 keyboard layouts: QWERTY, AZERTY, QWERTZ, Dvorak, Colemak, Colemak Mod-DH, Workman, BÉPO
+- 🧹 **Detector Architecture Cleanup** - Streamlined from 13 modules to clean structure
+  - 8 active detectors (exported in public API)
+  - 3 internal-only detectors (used internally by other detectors)
+  - 3 deprecated detectors (moved to _deprecated/)
+- 📚 **Documentation Overhaul** - Complete reorganization and updates
+  - New PROJECT_STRUCTURE.md with full directory layout
+  - New KEYBOARD_DETECTION_SUMMARY.md with technical details
+  - Updated all detector documentation to reflect current architecture
+
+### Previous Updates (v2.1.0 - 2025-11-06)
 - 🎯 **Pattern-Based Training** - Re-labeled 91,966 emails based on ADDRESS PATTERNS (not message content)
   - Fixed 47% mislabeled data (36,225 legit names rescued from "fraud" labels)
   - Balanced dataset: 49% legit / 51% fraud (was 17% / 83%)
@@ -86,14 +100,14 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 
 | Detector | Description | Detection Rate |
 |----------|-------------|----------------|
-| **Sequential Patterns** | user1, user2, test001 | 100% |
-| **Dated Patterns** | john.2025, user_oct2024 | 100% |
-| **Keyboard Walks** | qwerty, asdfgh, 123456 | 100% |
-| **N-Gram Analysis** | Gibberish detection (7 languages) | 100% |
-| **Plus-Addressing** | user+1, user+spam | 100% ✓ |
+| **Markov Chain (N-grams)** | Primary: 2-gram & 3-gram character patterns (91K trained) | 100% ✓ |
+| **Keyboard Walk** | Sequential keyboard keys across 8 layouts | 100% |
+| **Keyboard Mashing** | Region clustering patterns (NEW!) | 100% ✓ |
+| **Pattern Classification** | Detects sequential, dated, and other pattern families | 100% |
+| **N-Gram Analysis** | Gibberish detection (multi-language) | 100% |
 | **TLD Risk Scoring** | 143 TLDs categorized | 100% |
-| **Benford's Law** | Statistical batch anomalies | 100% |
-| **Markov Chain (Trigrams)** | 3-gram character patterns | 100% ✓ |
+| **Plus-Addressing** | Email normalization (user+tag) | 100% ✓ |
+| **Benford's Law** | Statistical batch anomaly detection | 100% |
 
 ### Smart Features
 - **Algorithmic Learning**: No hardcoded rules - trained on 217K samples (111K legitimate + 105K fraud)
@@ -128,9 +142,10 @@ curl -X POST https://your-worker.workers.dev/validate \
     "formatValid": true,
     "entropyScore": 0.42,
     "isDisposableDomain": false,
-    "patternType": "random",
+    "patternType": "simple",
     "patternConfidence": 0.6,
     "hasKeyboardWalk": false,
+    "hasKeyboardMashing": false,
     "isGibberish": false,
     "tldRiskScore": 0.29,
     "markovConfidence": 0.85
@@ -387,10 +402,12 @@ WORKER_URL=https://your-worker.workers.dev npm run test:e2e
 ## 📚 Documentation
 
 ### Core Documentation
+- **[Project Structure](docs/PROJECT_STRUCTURE.md)** - Directory layout and organization
 - **[Getting Started](docs/GETTING_STARTED.md)** - Setup and quickstart
 - **[API Reference](docs/API.md)** - Complete API documentation
 - **[Architecture](docs/ARCHITECTURE.md)** - System design deep dive
 - **[Detectors Guide](docs/DETECTORS.md)** - All 8 fraud detection algorithms
+- **[Keyboard Detection Summary](docs/KEYBOARD_DETECTION_SUMMARY.md)** - Keyboard detection improvements
 - **[Risk Scoring](docs/SCORING.md)** - Complete scoring system with examples
 - **[Configuration](docs/CONFIGURATION.md)** - Configuration management
 - **[Analytics](docs/ANALYTICS.md)** - D1 Database analytics and dashboard
@@ -399,6 +416,7 @@ WORKER_URL=https://your-worker.workers.dev npm run test:e2e
 
 ### Recent Updates
 - **[CHANGELOG](CHANGELOG.md)** - Version history
+- **[Detector Audit](docs/DETECTOR_AUDIT.md)** - Detector cleanup audit (2025-01-07)
 
 ### CLI & Development
 - **[CLI Documentation](cli/README.md)** - Command-line interface guide
@@ -448,38 +466,10 @@ newuser2024@hotmail.com    → Risk: 0.42 (warn) - Dated pattern
 ```
 user123@gmail.com          → Risk: 0.85 (block) - Sequential
 qwerty456@yahoo.com        → Risk: 0.92 (block) - Keyboard walk
+ioanerstoiartoirtn@gmail.com → Risk: 0.94 (block) - Keyboard mashing (Colemak Mod-DH)
+asdfghjkl@yahoo.com        → Risk: 0.91 (block) - Keyboard mashing (QWERTY home row)
 xkgh2k9qw@tempmail.com     → Risk: 0.95 (block) - Gibberish + disposable
 ```
-
----
-
-## 🛣️ Roadmap
-
-### Recently Completed (v2.0.5) ✅
-- ✅ Birth year protection (1940-2025) in Sequential and Keyboard Walk detectors
-- ✅ False positive rate reduced from 3% to <1%
-- ✅ Smart numeric pattern detection (5+ digits for keyboard walks)
-- ✅ Trigram Markov models (order=3) for better semantic detection
-- ✅ Fixed training/detection architecture mismatch
-- ✅ Detector hierarchy (Markov model takes priority)
-- ✅ 100% fraud detection rate achieved
-
-### Next Steps (To Reach 90%+ Accuracy)
-**Current bottleneck: Training data quality, not algorithms**
-
-1. **Improve Training Data** (Highest Impact)
-   - Add 1000+ professional email examples (support@, employee@, admin@)
-   - Add 1000+ international name examples (Japanese, Chinese, etc.)
-   - Use production Analytics data (217K samples) for continuous learning
-
-2. **Fine-tune Markov Confidence Threshold** (Quick Win)
-   - Require minimum 15-20% confidence to reduce low-confidence false positives
-   - Would immediately fix yuki.tanaka (currently 8% confidence)
-
-3. **Monitor Production Performance**
-   - Validate 85% accuracy in real-world usage
-   - Collect feedback on false positives/negatives
-   - Iteratively improve training data based on production patterns
 
 ---
 
@@ -510,6 +500,6 @@ Built with:
 ---
 
 **Production URL**: https://your-worker.workers.dev
-**Version**: 2.0.5 (2025-11-05)
+**Version**: 2.1.1 (2025-01-07)
 **Documentation**: [docs/README.md](docs/README.md)
 **CLI Guide**: [cli/README.md](cli/README.md)
