@@ -5,16 +5,16 @@ import { query } from '@/lib/api'
 import { Play, FileText, Download } from 'lucide-react'
 
 const DEFAULT_QUERY = `SELECT
-  blob1 as decision,
-  blob7 as pattern_type,
-  blob5 as domain,
-  double1 as risk_score,
-  double2 as entropy_score,
-  double3 as bot_score,
+  decision,
+  pattern_type,
+  domain,
+  risk_score,
+  entropy_score,
+  bot_score,
   timestamp
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
-  AND double1 > 0.5
+FROM validations
+WHERE timestamp >= datetime('now', '-24 hours')
+  AND risk_score > 0.5
 ORDER BY timestamp DESC
 LIMIT 100`
 

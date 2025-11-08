@@ -9,6 +9,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.0] - 2025-11-08
+
+### 🎯 MAJOR: Markov-Only Detection (Removed Heuristic Detectors)
+
+**Breaking Change**: Removed keyboard-walk, keyboard-mashing, and gibberish detectors due to high false positive rates.
+
+**Impact**:
+- **Accuracy**: 67% → 83% (+16%)
+- **False Positives**: 33% → 0% (-33%)
+- **Fraud Detection**: 100% (maintained)
+- **Example Fix**: "person@company.com" no longer flagged as keyboard-mashing (was 85% risk, now 9%)
+
+### Removed
+
+#### Deprecated Detectors
+- **Keyboard Walk Detector** - `src/detectors/keyboard-walk.ts`
+  - Removed from imports in `src/middleware/fraud-detection.ts`
+  - Removed from pattern-family.ts (lines 20-21, 59-86)
+  - Files kept for reference only
+- **Keyboard Mashing Detector** - `src/detectors/keyboard-mashing.ts`
+  - Problem: Colemak home row overlap with common English letters
+  - Caused false positives on legitimate names
+  - Removed from all active code paths
+- **Gibberish Detector** - `src/detectors/ngram-analysis.ts:detectGibberish()`
+  - Replaced by Markov Chain perplexity analysis
+  - More accurate with trained models
+
+### Changed
+
+#### Pattern Classification Version
+- Updated from `2.1` → `2.2.0`
+- `src/middleware/fraud-detection.ts:16`
+
+#### Pattern Types
+- Removed: `keyboard-walk`, `keyboard-mashing`
+- Kept: `sequential`, `dated`, `plus-addressing`, `formatted`, `random`, `simple`
+- Pattern family detection now Markov-driven
+
+#### Database Schema
+- **Deprecated columns** (kept for backwards compatibility):
+  - `has_keyboard_walk` - Always 0 in new records
+  - `is_gibberish` - Always 0 in new records
+- Migration `0003_deprecate_heuristic_detectors.sql` applied
+- Historical data preserved, new records write 0
+
+#### Risk Scoring Algorithm
+- **Primary**: Markov Chain confidence (trained on 111K+ emails)
+- **Secondary**: Deterministic pattern overrides (sequential, dated, disposable)
+- **Tertiary**: Domain signals (reputation, TLD risk)
+- Simplified from 115 lines → 65 lines of scoring logic
+
+### Added
+
+#### Data Export & Relabeling
+- **Scripts**: `scripts/relabel-data.ts`, `scripts/export-and-relabel.ts`
+- **Dataset**: 50,000 unique emails relabeled with v2.2.0 logic
+  - 52.4% legitimate
+  - 40.5% fraud
+  - 7.2% ambiguous
+- **Output**: `data/exports/relabeled_v2.2.0.csv` (4.4MB)
+
+#### Documentation
+- **Verification Report**: `VERIFICATION_REPORT_v2.2.0.md`
+- Updated all docs with v2.2.0 deprecation notices:
+  - `docs/DETECTORS.md` - Added deprecation banner
+  - `docs/SCORING.md` - Updated algorithm examples
+  - `docs/ANALYTICS.md` - Marked deprecated columns
+  - `docs/ARCHITECTURE.md` - Updated detector table
+  - 5 other documentation files
+
+#### Dashboard
+- Deprecated keyboard/gibberish charts show "DEPRECATED (v2.2.0)"
+- Removed deprecated columns from data explorer views
+- Updated API functions to return empty data for deprecated metrics
+
+### Fixed
+
+#### False Positives
+- **person@company.com**: Was 85% risk (keyboard-mashing) → Now 9% risk (legitimate)
+- **user@domain.com**: No longer flagged
+- All legitimate names with common letter patterns now correctly identified
+
+#### Code Quality
+- Removed 3 detector imports from `src/middleware/fraud-detection.ts`
+- Removed detector usage from `src/detectors/pattern-family.ts`
+- Fixed TypeScript errors in dashboard and scripts
+- Cleaned up exports in `src/detectors/index.ts`
+
+### Deployment
+
+- **Version**: `2283ee6c-c7de-4f10-bb19-c6bf0e514c9d`
+- **Domain**: your-worker.workers.dev
+- **Database**: D1 migrations applied successfully
+- **Model**: Markov Chain (trained_44451)
+
+---
+
 ## [2.0.0] - 2025-01-03
 
 ### 🎯 MAJOR OVERHAUL: Pure Algorithmic Detection

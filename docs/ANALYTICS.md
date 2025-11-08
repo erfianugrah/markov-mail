@@ -1,225 +1,274 @@
 # Analytics Dashboard & Queries
 
-Real-time analytics powered by Cloudflare Workers Analytics Engine.
+Real-time analytics powered by Cloudflare D1 Database.
 
 ## Overview
 
-The fraud detection worker tracks all validations and stores structured metrics in Analytics Engine. This enables powerful insights into:
+The fraud detection worker tracks all validations and stores structured metrics in a D1 SQLite database. This enables powerful insights into:
 - Decision patterns (allow/warn/block)
 - Block reasons and trends
 - Geographic distribution
 - Performance metrics
 - Risk score distributions
 - Fingerprint activity
+- Training pipeline metrics
+- A/B test experiments
+
+## Database Backend
+
+The fraud detection worker uses **Cloudflare D1** (SQLite) for analytics storage:
+- **Named columns** for clarity and ease of querying
+- **Full SQL support** (JOINs, subqueries, CTEs)
+- **Mutable data** (can DELETE test data and old records)
+- **Strong typing** (INTEGER 0/1, proper datetime columns)
+- **17 indexes** for query performance
+- **Multiple tables** (validations, training_metrics, ab_test_metrics, admin_metrics)
 
 ## Quick Start
 
 ### Using the Web Dashboard
 
-1. **Deploy your worker** with analytics enabled
-2. **Access the dashboard** at `https://your-worker.dev/analytics.html`
+1. **Deploy your worker** with D1 database configured
+2. **Access the dashboard** at `https://your-worker.dev/dashboard/`
 3. **Enter your Admin API key** (from `ADMIN_API_KEY` secret)
-4. **Select a query** or view the default summary
+4. **View real-time analytics** with interactive charts
 
 ### Using the API
 
 ```bash
 # Get default summary (last 24 hours)
-curl https://your-worker.dev/admin/analytics \
+curl https://your-worker.dev/admin/analytics?type=summary \
   -H "X-API-Key: your-admin-api-key"
 
 # Get data for last 7 days
-curl https://your-worker.dev/admin/analytics?hours=168 \
+curl https://your-worker.dev/admin/analytics?type=summary&hours=168 \
   -H "X-API-Key: your-admin-api-key"
 
 # Get list of pre-built queries
 curl https://your-worker.dev/admin/analytics/queries \
   -H "X-API-Key: your-admin-api-key"
 
-# Run custom SQL query
-curl "https://your-worker.dev/admin/analytics?query=$(urlencode 'SELECT...')" \
-  -H "X-API-Key: your-admin-api-key"
+# Run custom SQL query (use POST to avoid Cloudflare WAF)
+curl -X POST https://your-worker.dev/admin/analytics \
+  -H "X-API-Key: your-admin-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"SELECT decision, COUNT(*) FROM validations WHERE timestamp >= datetime('\''now'\'', '\''-24 hours'\'') GROUP BY decision","hours":24}'
 ```
 
-## Column Mapping
+## Database Schema
 
-Analytics Engine stores data in generic columns. Here's what each column represents:
+### Tables
 
-| Column | Type | Description | Example Values |
-|--------|------|-------------|----------------|
-| `blob1` | string | Decision | `allow`, `warn`, `block` |
-| `blob2` | string | Block Reason | `sequential_pattern`, `gibberish_detected`, `none` |
-| `blob3` | string | Country | `US`, `GB`, `unknown` |
-| `blob4` | string | Risk Bucket | `0.0-0.2`, `0.2-0.4`, `0.4-0.6`, `0.6-0.8`, `0.8-1.0` |
-| `double1` | number | Risk Score | `0.0` to `1.0` |
-| `double2` | number | Entropy Score | `0.0` to `1.0` |
-| `double3` | number | Bot Score | `0` to `99` (lower = more bot-like) |
-| `double4` | number | ASN | `13335` (Cloudflare), `15169` (Google), etc. |
-| `double5` | number | Latency (ms) | `0.5` to `50.0` |
-| `index1` | string | Fingerprint Hash | First 32 chars of SHA-256 hash |
+The D1 database contains 4 tables:
 
-**Use column aliases in your queries for readability:**
+1. **validations** - Email validation events (primary metrics)
+2. **training_metrics** - Model training pipeline events
+3. **ab_test_metrics** - A/B experiment tracking
+4. **admin_metrics** - Configuration changes and admin actions
 
-```sql
-SELECT
-  blob1 as decision,
-  blob2 as block_reason,
-  double1 as risk_score
-FROM ANALYTICS
-```
+### Validations Table
+
+Primary table storing all email validation events.
+
+| Column | Type | Description | Example |
+|--------|------|-------------|---------|
+| `id` | INTEGER | Auto-increment primary key | 1, 2, 3... |
+| `timestamp` | DATETIME | Event timestamp (UTC) | 2025-11-06 10:30:45 |
+| `decision` | TEXT | Validation decision | allow, warn, block |
+| `risk_score` | REAL | Overall risk score (0-1) | 0.85 |
+| `block_reason` | TEXT | Why blocked (if applicable) | sequential_pattern |
+| `email_local_part` | TEXT | Email username | test123 |
+| `domain` | TEXT | Email domain | example.com |
+| `tld` | TEXT | Top-level domain | com |
+| `fingerprint_hash` | TEXT | Device fingerprint (SHA-256) | d3f639f8... |
+| `pattern_type` | TEXT | Detected pattern | sequential, dated |
+| `pattern_family` | TEXT | Pattern family | SHORT.NUM@domain.com |
+| `is_disposable` | INTEGER | Is disposable email? (0/1) | 0, 1 |
+| `is_free_provider` | INTEGER | Is free provider? (0/1) | 0, 1 |
+| `has_plus_addressing` | INTEGER | Has + addressing? (0/1) | 0, 1 |
+| `has_keyboard_walk` | INTEGER | Keyboard walk detected (0/1) - Always 0 | 0 |
+| `is_gibberish` | INTEGER | Gibberish detected (0/1) - Always 0 | 0 |
+| `entropy_score` | REAL | Text entropy (0-1) | 0.42 |
+| `bot_score` | REAL | Bot detection score | 0-99 |
+| `tld_risk_score` | REAL | TLD risk score | 0.29 |
+| `domain_reputation_score` | REAL | Domain reputation | 0-1 |
+| `pattern_confidence` | REAL | Pattern detection confidence | 0.85 |
+| `markov_detected` | INTEGER | Markov chain detected? (0/1) | 0, 1 |
+| `markov_confidence` | REAL | Markov confidence | 0.9 |
+| `markov_cross_entropy_legit` | REAL | Cross-entropy (legit model) | 3.71 |
+| `markov_cross_entropy_fraud` | REAL | Cross-entropy (fraud model) | 1.60 |
+| `client_ip` | TEXT | Client IP address | 192.168.1.1 |
+| `user_agent` | TEXT | User agent string | Mozilla/5.0... |
+| `model_version` | TEXT | ML model version | trained_111525 |
+| `exclude_from_training` | INTEGER | Exclude from training? (0/1) | 0, 1 |
+| `ip_reputation_score` | REAL | IP reputation score | 0-100 |
+| `experiment_id` | TEXT | A/B experiment ID | exp_001 |
+| `variant` | TEXT | A/B variant | control, treatment |
+| `bucket` | INTEGER | A/B test bucket (0-99) | 42 |
+| `country` | TEXT | Country code (ISO 3166-1) | US, GB, NL |
+| `asn` | INTEGER | Autonomous System Number | 13335 |
+| `latency` | REAL | Processing latency (ms) | 1.5 |
+
+**Indexes:**
+- `idx_validations_timestamp` - Fast time-range queries
+- `idx_validations_decision` - Group by decision
+- `idx_validations_fingerprint` - Fingerprint lookups
+- `idx_validations_risk_score` - Risk score filters
+- `idx_validations_country` - Geographic queries
+- `idx_validations_domain` - Domain analysis
+- `idx_validations_experiment` - A/B test queries
+- `idx_validations_block_reason` - Block reason analysis
 
 ## Pre-built Queries
 
 ### 1. Decision Summary
 
-Overview of allow/warn/block decisions.
+Overview of allow/warn/block decisions with risk scores and latency.
 
 ```sql
 SELECT
-  blob1 as decision,
-  COUNT() as count,
-  AVG(double1) as avg_risk_score,
-  AVG(double5) as avg_latency_ms
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
-GROUP BY decision
-ORDER BY count DESC
+  decision,
+  block_reason,
+  CASE
+    WHEN risk_score < 0.2 THEN 'very_low'
+    WHEN risk_score < 0.4 THEN 'low'
+    WHEN risk_score < 0.6 THEN 'medium'
+    WHEN risk_score < 0.8 THEN 'high'
+    ELSE 'very_high'
+  END as risk_bucket,
+  COUNT(*) as count,
+  AVG(risk_score) as avg_risk_score,
+  AVG(entropy_score) as avg_entropy_score,
+  AVG(bot_score) as avg_bot_score,
+  AVG(latency) as avg_latency_ms,
+  strftime('%Y-%m-%d %H:00:00', timestamp) as hour
+FROM validations
+WHERE timestamp >= datetime('now', '-24 hours')
+GROUP BY decision, block_reason, risk_bucket, hour
+ORDER BY hour DESC, count DESC
 ```
 
-**Use Case:** High-level health check. Are we blocking too many emails? Are latencies acceptable?
-
-**Expected Output:**
-```
-decision | count | avg_risk_score | avg_latency_ms
----------|-------|----------------|---------------
-allow    | 8450  | 0.182          | 1.23
-warn     | 1250  | 0.485          | 1.45
-block    | 300   | 0.782          | 1.67
+**API Usage:**
+```bash
+curl https://your-worker.dev/admin/analytics?type=summary&hours=24 \
+  -H "X-API-Key: your-key"
 ```
 
 ---
 
-### 2. Top Block Reasons
+### 2. Block Reasons
 
 Most common reasons for blocking emails.
 
 ```sql
 SELECT
-  blob2 as block_reason,
-  COUNT() as count,
-  AVG(double1) as avg_risk_score
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
-  AND blob1 = 'block'
-  AND blob2 != 'none'
+  block_reason,
+  COUNT(*) as count,
+  AVG(risk_score) as avg_risk_score,
+  AVG(markov_confidence) as avg_markov_confidence
+FROM validations
+WHERE timestamp >= datetime('now', '-24 hours')
+  AND decision = 'block'
+  AND block_reason IS NOT NULL
 GROUP BY block_reason
 ORDER BY count DESC
-LIMIT 10
 ```
 
-**Use Case:** Identify attack patterns. Are we seeing sequential patterns? Disposable domains?
-
-**Expected Output:**
-```
-block_reason          | count | avg_risk_score
-----------------------|-------|---------------
-sequential_pattern    | 125   | 0.85
-gibberish_detected    | 87    | 0.92
-disposable_domain     | 65    | 0.95
-plus_addressing_abuse | 23    | 0.78
+**API Usage:**
+```bash
+curl https://your-worker.dev/admin/analytics?type=blockReasons&hours=24 \
+  -H "X-API-Key: your-key"
 ```
 
 ---
 
 ### 3. Risk Score Distribution
 
-Distribution of emails by risk bucket.
+Distribution of emails by risk level.
 
 ```sql
 SELECT
-  blob4 as risk_bucket,
-  COUNT() as count,
-  AVG(double1) as avg_risk_score
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
-GROUP BY risk_bucket
-ORDER BY risk_bucket
+  CASE
+    WHEN risk_score < 0.2 THEN 'very_low (0.0-0.2)'
+    WHEN risk_score < 0.4 THEN 'low (0.2-0.4)'
+    WHEN risk_score < 0.6 THEN 'medium (0.4-0.6)'
+    WHEN risk_score < 0.8 THEN 'high (0.6-0.8)'
+    ELSE 'very_high (0.8-1.0)'
+  END as risk_bucket,
+  decision,
+  COUNT(*) as count,
+  AVG(risk_score) as avg_risk_score
+FROM validations
+WHERE timestamp >= datetime('now', '-24 hours')
+GROUP BY risk_bucket, decision
+ORDER BY risk_bucket, decision
 ```
 
-**Use Case:** Understand risk distribution. Are most emails low-risk? Do we need to adjust thresholds?
-
-**Expected Output:**
-```
-risk_bucket | count | avg_risk_score
-------------|-------|---------------
-0.0-0.2     | 6780  | 0.12
-0.2-0.4     | 1820  | 0.31
-0.4-0.6     | 890   | 0.52
-0.6-0.8     | 410   | 0.71
-0.8-1.0     | 100   | 0.89
+**API Usage:**
+```bash
+curl https://your-worker.dev/admin/analytics?type=riskDistribution&hours=24 \
+  -H "X-API-Key: your-key"
 ```
 
 ---
 
-### 4. Country Breakdown
+### 4. Top Countries
 
 Validations by country and decision.
 
 ```sql
 SELECT
-  blob3 as country,
-  blob1 as decision,
-  COUNT() as count,
-  AVG(double1) as avg_risk_score
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
+  country,
+  decision,
+  COUNT(*) as count,
+  AVG(risk_score) as avg_risk_score,
+  AVG(latency) as avg_latency_ms
+FROM validations
+WHERE timestamp >= datetime('now', '-24 hours')
+  AND country IS NOT NULL
 GROUP BY country, decision
 ORDER BY count DESC
 LIMIT 20
 ```
 
-**Use Case:** Geographic analysis. Which countries have higher fraud rates?
-
-**Expected Output:**
-```
-country | decision | count | avg_risk_score
---------|----------|-------|---------------
-US      | allow    | 3200  | 0.15
-GB      | allow    | 1450  | 0.18
-US      | warn     | 450   | 0.47
-CN      | block    | 320   | 0.82
+**API Usage:**
+```bash
+curl https://your-worker.dev/admin/analytics?type=topCountries&hours=24 \
+  -H "X-API-Key: your-key"
 ```
 
 ---
 
 ### 5. High Risk Emails
 
-Recent high-risk validations (risk score > 0.6).
+Recent high-risk validations for investigation.
 
 ```sql
 SELECT
-  blob1 as decision,
-  blob2 as block_reason,
-  blob3 as country,
-  double1 as risk_score,
-  double2 as entropy_score,
-  timestamp
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
-  AND double1 > 0.6
+  timestamp,
+  email_local_part,
+  domain,
+  decision,
+  risk_score,
+  block_reason,
+  pattern_type,
+  pattern_family,
+  is_disposable,
+  markov_detected,
+  markov_confidence,
+  country,
+  fingerprint_hash
+FROM validations
+WHERE timestamp >= datetime('now', '-24 hours')
+  AND risk_score > 0.6
 ORDER BY timestamp DESC
 LIMIT 100
 ```
 
-**Use Case:** Investigate recent fraud attempts. Review blocked emails.
-
-**Expected Output:**
-```
-decision | block_reason       | country | risk_score | entropy_score | timestamp
----------|-------------------|---------|------------|---------------|-------------------
-block    | sequential_pattern | US      | 0.85       | 0.42          | 2025-11-01 14:23:45
-warn     | plus_addressing   | GB      | 0.68       | 0.35          | 2025-11-01 14:22:10
-block    | gibberish_detected| CN      | 0.92       | 0.88          | 2025-11-01 14:20:33
+**API Usage:**
+```bash
+curl https://your-worker.dev/admin/analytics?type=highRisk&hours=24 \
+  -H "X-API-Key: your-key"
 ```
 
 ---
@@ -230,26 +279,21 @@ Latency statistics by decision type.
 
 ```sql
 SELECT
-  blob1 as decision,
-  COUNT() as count,
-  AVG(double5) as avg_latency_ms,
-  quantile(0.5)(double5) as p50_latency_ms,
-  quantile(0.95)(double5) as p95_latency_ms,
-  quantile(0.99)(double5) as p99_latency_ms
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
+  decision,
+  COUNT(*) as count,
+  AVG(latency) as avg_latency_ms,
+  MIN(latency) as min_latency_ms,
+  MAX(latency) as max_latency_ms
+FROM validations
+WHERE timestamp >= datetime('now', '-24 hours')
 GROUP BY decision
+ORDER BY avg_latency_ms DESC
 ```
 
-**Use Case:** Monitor performance. Are validations fast? Any degradation?
-
-**Expected Output:**
-```
-decision | count | avg | p50  | p95  | p99
----------|-------|-----|------|------|-----
-allow    | 8450  | 1.2 | 1.1  | 2.3  | 4.5
-warn     | 1250  | 1.5 | 1.3  | 2.8  | 5.2
-block    | 300   | 1.7 | 1.5  | 3.1  | 5.8
+**API Usage:**
+```bash
+curl https://your-worker.dev/admin/analytics?type=performance&hours=24 \
+  -H "X-API-Key: your-key"
 ```
 
 ---
@@ -260,27 +304,21 @@ Validations over time by decision.
 
 ```sql
 SELECT
-  toStartOfHour(timestamp) as hour,
-  blob1 as decision,
-  COUNT() as count,
-  AVG(double1) as avg_risk_score
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
+  strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
+  decision,
+  COUNT(*) as count,
+  AVG(risk_score) as avg_risk_score,
+  AVG(latency) as avg_latency_ms
+FROM validations
+WHERE timestamp >= datetime('now', '-24 hours')
 GROUP BY hour, decision
 ORDER BY hour DESC
 ```
 
-**Use Case:** Identify traffic patterns. When are attacks most common?
-
-**Expected Output:**
-```
-hour                | decision | count | avg_risk_score
---------------------|----------|-------|---------------
-2025-11-01 14:00:00 | allow    | 352   | 0.18
-2025-11-01 14:00:00 | warn     | 52    | 0.48
-2025-11-01 14:00:00 | block    | 12    | 0.81
-2025-11-01 13:00:00 | allow    | 348   | 0.19
-...
+**API Usage:**
+```bash
+curl https://your-worker.dev/admin/analytics?type=timeline&hours=24 \
+  -H "X-API-Key: your-key"
 ```
 
 ---
@@ -291,52 +329,52 @@ Most active fingerprints (potential automation).
 
 ```sql
 SELECT
-  index1 as fingerprint,
-  COUNT() as validation_count,
-  AVG(double1) as avg_risk_score,
-  blob3 as country
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
-GROUP BY fingerprint, country
-HAVING validation_count > 10
-ORDER BY validation_count DESC
+  fingerprint_hash,
+  COUNT(*) as count,
+  AVG(risk_score) as avg_risk_score,
+  AVG(bot_score) as avg_bot_score,
+  MAX(country) as country,
+  MAX(asn) as asn
+FROM validations
+WHERE timestamp >= datetime('now', '-24 hours')
+GROUP BY fingerprint_hash
+HAVING count > 5
+ORDER BY count DESC
 LIMIT 20
 ```
 
-**Use Case:** Detect automated attacks. Identify high-volume fingerprints.
-
-**Expected Output:**
-```
-fingerprint                      | validation_count | avg_risk_score | country
----------------------------------|------------------|----------------|--------
-3d1852ab4f...                    | 125              | 0.85           | CN
-7a3b91cd2e...                    | 87               | 0.72           | US
-f4e82dc9a1...                    | 65               | 0.45           | GB
+**API Usage:**
+```bash
+curl https://your-worker.dev/admin/analytics?type=fingerprints&hours=24 \
+  -H "X-API-Key: your-key"
 ```
 
 ---
 
 ## Custom Queries
 
-You can run any SQL query supported by Analytics Engine. The query is sent directly to the Analytics Engine SQL API.
+You can run custom SQL queries with security validation.
 
 ### Query Syntax
 
-Analytics Engine supports a SQL-like syntax with these features:
+D1 uses SQLite syntax with full SQL support:
 
 **Supported:**
 - `SELECT`, `FROM`, `WHERE`, `GROUP BY`, `ORDER BY`, `HAVING`, `LIMIT`
 - Aggregations: `COUNT()`, `SUM()`, `AVG()`, `MIN()`, `MAX()`
-- Percentiles: `quantile(0.5)()`, `quantile(0.95)()`
-- Time functions: `toStartOfHour()`, `toStartOfDay()`, `NOW()`, `INTERVAL`
-- Operators: `=`, `!=`, `>`, `<`, `>=`, `<=`, `AND`, `OR`
-- String matching: `LIKE`, `IN`
-
-**Not Supported:**
-- `JOIN` (single table only)
+- String functions: `LIKE`, `UPPER()`, `LOWER()`, `LENGTH()`, `SUBSTR()`
+- Date functions: `datetime()`, `strftime()`, `date()`, `time()`
+- Math functions: `ROUND()`, `ABS()`, `CAST()`
+- Window functions: `ROW_NUMBER()`, `RANK()`, `LAG()`, `LEAD()`
+- CTEs (Common Table Expressions): `WITH cte AS (...)`
 - Subqueries
-- `UPDATE`, `DELETE`, `INSERT`
-- Window functions
+- JOINs (if querying multiple tables)
+
+**Security Restrictions:**
+- Only `SELECT` statements allowed (no INSERT/UPDATE/DELETE/DROP)
+- Must query from allowed tables: validations, training_metrics, ab_test_metrics, admin_metrics
+- No multi-statement queries (no semicolons)
+- No SQL comments (`--` or `/*`)
 
 ### Example Custom Queries
 
@@ -344,13 +382,15 @@ Analytics Engine supports a SQL-like syntax with these features:
 
 ```sql
 SELECT
-  blob1 as decision,
-  blob2 as block_reason,
-  double1 as risk_score,
+  email_local_part,
+  domain,
+  decision,
+  risk_score,
+  asn,
   timestamp
-FROM ANALYTICS
-WHERE double4 = 13335  -- Cloudflare ASN
-  AND timestamp >= NOW() - INTERVAL '24' HOUR
+FROM validations
+WHERE asn = 13335  -- Cloudflare
+  AND timestamp >= datetime('now', '-24 hours')
 ORDER BY timestamp DESC
 LIMIT 100
 ```
@@ -359,30 +399,36 @@ LIMIT 100
 
 ```sql
 SELECT
-  index1 as fingerprint,
-  blob3 as country,
-  COUNT() as count,
-  AVG(double3) as avg_bot_score,
-  AVG(double1) as avg_risk_score
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
-  AND double3 < 30  -- Bot score < 30
-GROUP BY fingerprint, country
+  fingerprint_hash,
+  country,
+  COUNT(*) as count,
+  AVG(bot_score) as avg_bot_score,
+  AVG(risk_score) as avg_risk_score
+FROM validations
+WHERE timestamp >= datetime('now', '-24 hours')
+  AND bot_score < 30  -- Bot score < 30
+GROUP BY fingerprint_hash, country
+HAVING count > 5
 ORDER BY count DESC
 LIMIT 20
 ```
 
-#### High entropy emails
+#### High entropy emails (potential gibberish)
+
+> **Note**: `is_gibberish` field is always 0. Use `entropy_score` and Markov detection for gibberish detection.
 
 ```sql
 SELECT
-  blob1 as decision,
-  blob2 as block_reason,
-  double2 as entropy_score,
-  double1 as risk_score
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
-  AND double2 > 0.7  -- High entropy
+  email_local_part,
+  domain,
+  decision,
+  entropy_score,
+  risk_score,
+  markov_detected,
+  markov_confidence
+FROM validations
+WHERE timestamp >= datetime('now', '-24 hours')
+  AND entropy_score > 0.7
 ORDER BY entropy_score DESC
 LIMIT 50
 ```
@@ -391,14 +437,107 @@ LIMIT 50
 
 ```sql
 SELECT
-  toStartOfHour(timestamp) as hour,
-  COUNT() as total_validations,
-  SUM(CASE WHEN blob1 = 'block' THEN 1 ELSE 0 END) as blocks,
-  (blocks * 100.0 / total_validations) as block_rate_percent
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '7' DAY
+  strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
+  COUNT(*) as total_validations,
+  SUM(CASE WHEN decision = 'block' THEN 1 ELSE 0 END) as blocks,
+  ROUND(100.0 * blocks / total_validations, 2) as block_rate_percent
+FROM validations
+WHERE timestamp >= datetime('now', '-7 days')
 GROUP BY hour
 ORDER BY hour DESC
+```
+
+#### Pattern family analysis
+
+```sql
+SELECT
+  pattern_family,
+  pattern_type,
+  decision,
+  COUNT(*) as count,
+  AVG(risk_score) as avg_risk_score,
+  AVG(pattern_confidence) as avg_confidence
+FROM validations
+WHERE timestamp >= datetime('now', '-24 hours')
+  AND pattern_family IS NOT NULL
+GROUP BY pattern_family, pattern_type, decision
+ORDER BY count DESC
+LIMIT 50
+```
+
+#### Markov chain detection effectiveness
+
+```sql
+SELECT
+  markov_detected,
+  decision,
+  COUNT(*) as count,
+  AVG(markov_confidence) as avg_confidence,
+  AVG(markov_cross_entropy_legit) as avg_entropy_legit,
+  AVG(markov_cross_entropy_fraud) as avg_entropy_fraud,
+  AVG(risk_score) as avg_risk_score
+FROM validations
+WHERE timestamp >= datetime('now', '-24 hours')
+  AND markov_detected = 1
+GROUP BY markov_detected, decision
+ORDER BY count DESC
+```
+
+---
+
+## Data Management
+
+### Delete Old Data
+
+D1 is mutable, so you can delete old data to optimize database size:
+
+```bash
+# Delete data older than 90 days
+curl -X POST https://your-worker.dev/admin/analytics/truncate?hours=2160 \
+  -H "X-API-Key: your-key"
+```
+
+This executes:
+```sql
+DELETE FROM validations
+WHERE timestamp < datetime('now', '-90 days')
+```
+
+### Delete Test Data
+
+Remove test emails and validation data:
+
+```bash
+curl -X DELETE https://your-worker.dev/admin/analytics/test-data \
+  -H "X-API-Key: your-key"
+```
+
+This executes:
+```sql
+DELETE FROM validations
+WHERE email_local_part LIKE 'user%'
+   OR email_local_part LIKE 'test%'
+   OR domain IN ('example.com', 'test.com')
+   OR (pattern_type IS NULL AND risk_score < 0.6)
+```
+
+### Export Data
+
+Use custom queries to export specific data:
+
+```bash
+# Export last 7 days to JSON
+curl -G https://your-worker.dev/admin/analytics \
+  --data-urlencode "query=SELECT * FROM validations WHERE timestamp >= datetime('now', '-7 days')" \
+  -H "X-API-Key: your-key" > export.json
+```
+
+Or use wrangler D1 directly:
+
+```bash
+npx wrangler d1 execute ANALYTICS --remote \
+  --command="SELECT * FROM validations WHERE timestamp >= datetime('now', '-7 days')" \
+  --output=export.json
 ```
 
 ---
@@ -407,11 +546,11 @@ ORDER BY hour DESC
 
 ### Grafana
 
-Use the Cloudflare Analytics Engine data source plugin:
+Use the [Cloudflare D1 data source plugin](https://grafana.com/grafana/plugins/) for Grafana:
 
-1. Install the [Cloudflare plugin for Grafana](https://grafana.com/grafana/plugins/cloudflare-app/)
+1. Install the Cloudflare plugin
 2. Configure with your Cloudflare API token
-3. Select the `ANALYTICS` dataset
+3. Select the `ANALYTICS` D1 database
 4. Use the SQL queries from this document
 
 ### Prometheus
@@ -420,7 +559,7 @@ Export metrics using a custom script:
 
 ```javascript
 // Fetch analytics via API
-const response = await fetch('https://your-worker.dev/admin/analytics', {
+const response = await fetch('https://your-worker.dev/admin/analytics?type=summary', {
   headers: { 'X-API-Key': process.env.ADMIN_API_KEY }
 });
 const data = await response.json();
@@ -429,7 +568,7 @@ const data = await response.json();
 console.log(`# HELP fraud_validations_total Total email validations`);
 console.log(`# TYPE fraud_validations_total counter`);
 data.data.forEach(row => {
-  console.log(`fraud_validations_total{decision="${row.decision}"} ${row.count}`);
+  console.log(`fraud_validations_total{decision="${row.decision}",block_reason="${row.block_reason}"} ${row.count}`);
 });
 ```
 
@@ -440,11 +579,12 @@ Use the `/admin/analytics` API endpoint to build custom dashboards:
 ```html
 <script>
 async function loadAnalytics() {
-  const response = await fetch('/admin/analytics?hours=24', {
-    headers: { 'X-API-Key': 'your-key' }
+  const response = await fetch('/admin/analytics?type=summary&hours=24', {
+    headers: { 'X-API-Key': localStorage.getItem('apiKey') }
   });
   const data = await response.json();
   // Render charts, tables, etc.
+  renderCharts(data.data);
 }
 </script>
 ```
@@ -458,19 +598,19 @@ async function loadAnalytics() {
 - **Real-time monitoring**: Last 1-6 hours
 - **Daily reports**: Last 24 hours
 - **Weekly trends**: Last 7 days (168 hours)
-- **Avoid very long ranges**: Analytics Engine has retention limits
+- **Monthly analysis**: Last 30 days (720 hours)
 
 ### 2. Optimize Queries
 
-- **Use WHERE filters** to reduce data scanned
-- **Limit results** with `LIMIT` clause
-- **Aggregate when possible** instead of fetching raw rows
-- **Cache results** for frequently-run queries
+- **Use indexes**: Queries on timestamp, decision, fingerprint_hash, country, domain are fast
+- **Limit results**: Always use `LIMIT` for large result sets
+- **Aggregate when possible**: Use `GROUP BY` instead of fetching raw rows
+- **Use time filters**: Always filter by timestamp for performance
 
 ### 3. Monitor Key Metrics
 
 Essential metrics to track:
-- **Block rate**: `blocks / total_validations`
+- **Block rate**: `blocks / total_validations` (should be 1-10%)
 - **Average risk score**: Trending up = more attacks
 - **P95 latency**: Should stay under 5ms
 - **Top block reasons**: Identify attack patterns
@@ -483,19 +623,31 @@ Create alerts for:
 - P95 latency > 10ms (performance degradation)
 - Specific fingerprint > 100 validations/hour (bot)
 - Blocks from unexpected countries
+- Sudden spike in specific block reason
+
+### 5. Regular Maintenance
+
+- **Archive old data**: Delete records older than 90 days
+- **Clean test data**: Remove test emails regularly
+- **Monitor database size**: D1 has storage limits
+- **Review indexes**: Add indexes for frequently queried columns
 
 ---
 
 ## Troubleshooting
 
-### "Analytics Engine not configured"
+### "D1 database not configured"
 
-**Solution:** Ensure `analytics_engine_datasets` is configured in `wrangler.jsonc`:
+**Solution:** Ensure D1 binding is configured in `wrangler.jsonc`:
 
 ```jsonc
 {
-  "analytics_engine_datasets": [
-    { "binding": "ANALYTICS" }
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ANALYTICS",
+      "database_id": "your-database-id"
+    }
   ]
 }
 ```
@@ -503,25 +655,34 @@ Create alerts for:
 ### No data showing up
 
 **Possible causes:**
-1. Analytics Engine has a delay (1-2 minutes)
+1. D1 database not created
 2. No validations have occurred yet
 3. Time range is too narrow
-4. ANALYTICS binding is missing
+4. Database binding is missing
 
-**Solution:** Wait a few minutes after validations, then query again.
+**Solution:** Check D1 database exists and has data:
 
-### Query timeout
+```bash
+npx wrangler d1 execute ANALYTICS --remote \
+  --command="SELECT COUNT(*) FROM validations"
+```
+
+### Query timeout or slow
 
 **Solution:**
 - Reduce time range
 - Add more specific WHERE filters
+- Use indexed columns (timestamp, decision, country, domain, fingerprint_hash)
 - Limit result size with `LIMIT`
 
-### Invalid SQL syntax
+### "Invalid SQL query" error
 
-**Error:** `Syntax error near...`
-
-**Solution:** Check that you're using supported SQL syntax (no JOINs, no subqueries). Reference the [Analytics Engine SQL documentation](https://developers.cloudflare.com/analytics/analytics-engine/sql-api/).
+**Solution:** Check that your query:
+- Starts with `SELECT`
+- Queries from allowed tables (validations, training_metrics, ab_test_metrics, admin_metrics)
+- Has no semicolons (no multi-statement)
+- Has no SQL comments (`--` or `/*`)
+- Doesn't use dangerous keywords (DROP, DELETE, UPDATE, INSERT)
 
 ---
 
@@ -529,10 +690,11 @@ Create alerts for:
 
 ### GET /admin/analytics
 
-Query Analytics Engine with custom SQL.
+Query D1 database with analytics data.
 
 **Query Parameters:**
-- `query` (optional): URL-encoded SQL query
+- `type` (optional): Predefined query type (summary, blockReasons, etc.)
+- `query` (optional): Custom SQL query (validated for security)
 - `hours` (optional): Number of hours to look back (default: 24)
 
 **Headers:**
@@ -542,14 +704,10 @@ Query Analytics Engine with custom SQL.
 ```json
 {
   "success": true,
+  "mode": "predefined" | "custom",
   "query": "SELECT...",
   "hours": 24,
-  "data": [...],
-  "columnMapping": {
-    "blob1": "decision (allow/warn/block)",
-    "blob2": "block_reason",
-    ...
-  }
+  "data": [...]
 }
 ```
 
@@ -570,8 +728,63 @@ Get list of pre-built queries.
       "sql": "SELECT..."
     },
     ...
+  }
+}
+```
+
+### GET /admin/analytics/info
+
+Get D1 database information and data management options.
+
+**Headers:**
+- `X-API-Key`: Your Admin API key (required)
+
+**Response:**
+```json
+{
+  "database": "ANALYTICS (D1)",
+  "dataRetention": {
+    "description": "D1 database stores data indefinitely",
+    "manualDeletion": "DELETE FROM validations WHERE...",
+    "backups": "D1 supports point-in-time recovery"
   },
-  "usage": "Use the SQL from any query with GET /admin/analytics?query=..."
+  "dataManagement": {...},
+  "bestPractices": [...]
+}
+```
+
+### POST /admin/analytics/truncate
+
+Delete old data from D1 database.
+
+**Query Parameters:**
+- `hours` (optional): Delete data older than N hours (default: 2160 = 90 days)
+
+**Headers:**
+- `X-API-Key`: Your Admin API key (required)
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Deleted data older than 2160 hours",
+  "deletedRows": 1234
+}
+```
+
+### DELETE /admin/analytics/test-data
+
+Delete test data from validations table.
+
+**Headers:**
+- `X-API-Key`: Your Admin API key (required)
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Deleted test data",
+  "deletedRows": 42
 }
 ```
 
@@ -582,9 +795,11 @@ Get list of pre-built queries.
 - [Configuration Guide](CONFIGURATION.md) - Configure analytics settings
 - [API Reference](API.md) - All API endpoints
 - [Getting Started](GETTING_STARTED.md) - Initial setup
+- [Training Pipeline](TRAINING.md) - Model training with D1 data
 
 ---
 
-**Last Updated:** 2025-11-01
-**Dashboard Location:** `/analytics.html`
-**API Endpoints:** `/admin/analytics`, `/admin/analytics/queries`
+**Last Updated:** 2025-11-06
+**Database:** Cloudflare D1 (SQLite)
+**Dashboard Location:** `/dashboard/`
+**API Endpoints:** `/admin/analytics`, `/admin/analytics/queries`, `/admin/analytics/info`

@@ -53,8 +53,9 @@ Expected response:
   "decision": "allow",
   "signals": {
     "patternType": "random",
-    "isGibberish": false,
-    "isDisposableDomain": false
+    "isDisposableDomain": false,
+    "markovDetected": false,
+    "markovConfidence": 0.12
   }
 }
 ```

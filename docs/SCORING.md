@@ -54,18 +54,19 @@ riskScore = Math.max(markovRisk, patternRisk, entropyRisk) + domainRisk;
 - Entropy and pattern detection overlap with Markov
 - Manual tuning required
 
-**New Approach (v2.0+)** - Pure algorithmic:
+**Current Approach** - Markov-only:
 ```typescript
 // Primary: Use Markov confidence directly
-riskScore = markovResult.confidence; // 0.78 stays 0.78!
+riskScore = markovResult?.isLikelyFraudulent ? markovResult.confidence : 0;
 
-// Secondary: Pattern-specific overrides
-if (keyboardWalk) riskScore = Math.max(riskScore, 0.9);
+// Secondary: Deterministic pattern overrides only
 if (sequential) riskScore = Math.max(riskScore, 0.8);
-if (dated) riskScore = Math.max(riskScore, 0.7);
+if (dated) riskScore = Math.max(riskScore, patternConfidence);
+if (hasPlus) riskScore = Math.max(riskScore, 0.6);
 
 // Tertiary: Domain signals (additive)
-riskScore += domainReputationScore * 0.2 + tldRiskScore * 0.1;
+const domainRisk = domainReputationScore * 0.2 + tldRiskScore * 0.3;
+riskScore = Math.min(riskScore + domainRisk, 1.0);
 ```
 
 **Benefits**:
@@ -92,33 +93,32 @@ These cause immediate blocking regardless of algorithmic scoring:
 **Step 1: Primary Detection (Markov Chain)**
 
 ```typescript
+// v2.2.0 - Markov-only approach
 function calculateAlgorithmicRiskScore({
   markovResult,
-  keyboardWalkResult,
   patternFamilyResult,
+  normalizedEmailResult,
   domainReputationScore,
   tldRiskScore
 }) {
-  // Primary: Markov Chain cross-entropy
+  // Primary: Markov Chain cross-entropy (trained on 111K+ emails)
   let score = markovResult?.isLikelyFraudulent
     ? markovResult.confidence
     : 0;
 
-  // Secondary: Pattern overrides (deterministic)
-  const overrides = [
-    { condition: keyboardWalkResult?.hasKeyboardWalk, score: 0.9 },
-    { condition: patternFamilyResult?.patternType === 'sequential', score: 0.8 },
-    { condition: patternFamilyResult?.patternType === 'dated', score: 0.7 }
-  ];
-
-  for (const override of overrides) {
-    if (override.condition) {
-      score = Math.max(score, override.score);
-    }
+  // Secondary: Deterministic pattern overrides only
+  if (patternFamilyResult?.patternType === 'sequential') {
+    score = Math.max(score, 0.8);
+  }
+  if (patternFamilyResult?.patternType === 'dated') {
+    score = Math.max(score, patternFamilyResult.confidence || 0.7);
+  }
+  if (normalizedEmailResult?.hasPlus) {
+    score = Math.max(score, 0.6);
   }
 
   // Tertiary: Domain signals (independent, additive)
-  const domainRisk = domainReputationScore * 0.2 + tldRiskScore * 0.1;
+  const domainRisk = domainReputationScore * 0.2 + tldRiskScore * 0.3;
 
   return Math.min(score + domainRisk, 1.0);
 }
@@ -130,15 +130,17 @@ function calculateAlgorithmicRiskScore({
 - Returns confidence 0-1
 - **Example**: "olyjaxobuna" → H_fraud: 4.31, H_legit: 7.08 → Confidence: 0.78
 
-**Step 2: Pattern Overrides**
+**Step 2: Pattern Overrides (v2.2.0 - Simplified)**
 
-Deterministic rules for patterns Markov might miss:
+Deterministic rules for patterns when Markov is unavailable:
 
 | Pattern | Override Score | Example |
 |---------|---------------|---------|
-| Keyboard Walk | 0.9 | qwerty, asdfgh, 12345 |
 | Sequential | 0.8 | user1, user2, test001 |
-| Dated | 0.7 | john.2024, user_oct2024 |
+| Dated | 0.2-0.9 (dynamic) | john.2024, user_oct2024 |
+| Plus-addressing | 0.6 | user+test, user+1 |
+
+**Note**: Keyboard walk and gibberish patterns are now handled by Markov Chain detection automatically.
 
 **Step 3: Domain Signals**
 
@@ -166,27 +168,34 @@ Risk scores are converted to decisions using thresholds:
 Priority-ordered detection logic:
 
 ```typescript
+// v2.2.0 - Simplified block reason logic
 function determineBlockReason({
+  riskScore,
   markovResult,
-  keyboardWalkResult,
   patternFamilyResult,
   domainReputationScore,
-  tldRiskScore
+  tldRiskScore,
+  config
 }) {
-  const reasons = [
-    {
-      condition: markovResult?.isLikelyFraudulent &&
-                 markovResult.confidence > 0.7,
-      reason: 'markov_chain_fraud'
-    },
-    { condition: keyboardWalkResult?.hasKeyboardWalk, reason: 'keyboard_walk' },
-    { condition: patternFamilyResult?.patternType === 'sequential', reason: 'sequential_pattern' },
-    { condition: patternFamilyResult?.patternType === 'dated', reason: 'dated_pattern' },
-    { condition: domainReputationScore > 0.5, reason: 'domain_reputation' },
-    { condition: tldRiskScore > 0.5, reason: 'high_risk_tld' }
-  ];
+  // High-confidence detections (first match wins)
+  if (markovResult?.isLikelyFraudulent &&
+      markovResult.confidence > config.confidenceThresholds.markovFraud) {
+    return 'markov_chain_fraud';
+  }
 
-  return reasons.find(r => r.condition)?.reason || 'suspicious_pattern';
+  if (patternFamilyResult?.patternType === 'sequential') {
+    return 'sequential_pattern';
+  }
+
+  // Risk-based messaging
+  if (riskScore >= config.riskThresholds.block) {
+    if (tldRiskScore > 0.5) return 'high_risk_tld';
+    if (domainReputationScore > 0.5) return 'domain_reputation';
+    if (patternFamilyResult?.patternType === 'dated') return 'dated_pattern';
+    return 'high_risk_multiple_signals';
+  }
+
+  return 'low_risk';
 }
 ```
 
@@ -194,7 +203,7 @@ function determineBlockReason({
 
 ## Examples
 
-### Example 1: Clear Gibberish
+### Example 1: Markov Fraud Detection
 
 **Email**: `randomuser@provider.com`
 
@@ -205,7 +214,6 @@ function determineBlockReason({
     "markovConfidence": 0.78,
     "markovCrossEntropyLegit": 7.08,
     "markovCrossEntropyFraud": 4.31,
-    "hasKeyboardWalk": false,
     "patternType": "random",
     "domainReputationScore": 0,
     "tldRiskScore": 0.29
@@ -214,8 +222,7 @@ function determineBlockReason({
 ```
 
 **Calculation**:
-1. Markov: 0.78 (fraud detected)
-2. Keyboard walk: No
+1. Markov: 0.78 (fraud detected via trained model)
 3. Sequential: No
 4. Dated: No
 5. Domain risk: 0 * 0.2 + 0.29 * 0.1 = 0.029
@@ -236,7 +243,6 @@ function determineBlockReason({
     "markovConfidence": 1.0,
     "markovCrossEntropyLegit": 4.56,
     "markovCrossEntropyFraud": 6.89,
-    "hasKeyboardWalk": false,
     "patternType": "random",
     "domainReputationScore": 0,
     "tldRiskScore": 0.29
@@ -245,28 +251,29 @@ function determineBlockReason({
 ```
 
 **Calculation**:
-1. Markov: 0 (legit detected, confidence high for legit model)
-2. Keyboard walk: No
-3. Sequential: No
-4. Dated: No
-5. Domain risk: 0 * 0.2 + 0.29 * 0.1 = 0.029
-6. **Final: 0 + 0.029 = 0.03**
+1. Markov: 0 (legit detected, Markov confident it's legitimate)
+2. Sequential: No
+3. Dated: No
+4. Domain risk: 0 * 0.2 + 0.29 * 0.3 = 0.087
+5. **Final: 0 + 0.087 = 0.09**
 
 **Decision**: `allow`
 
 ---
 
-### Example 3: Keyboard Walk
+### Example 3: Keyboard Walk (Detected by Markov)
 
 **Email**: `qwerty123@mail.com`
+
+> **Note (v2.2.0)**: Keyboard walks are now detected automatically by Markov Chain (trained on keyboard patterns).
 
 ```json
 {
   "signals": {
     "markovDetected": true,
-    "markovConfidence": 0.55,
-    "hasKeyboardWalk": true,
-    "keyboardWalkType": "qwerty",
+    "markovConfidence": 0.82,
+    "markovCrossEntropyLegit": 6.15,
+    "markovCrossEntropyFraud": 3.21,
     "patternType": "random",
     "domainReputationScore": 0,
     "tldRiskScore": 0.29
@@ -275,14 +282,13 @@ function determineBlockReason({
 ```
 
 **Calculation**:
-1. Markov: 0.55 (moderate confidence)
-2. Keyboard walk: **YES → override to 0.9**
-3. Sequential: No
-4. Dated: No
-5. Domain risk: 0.029
-6. **Final: max(0.55, 0.9) + 0.029 = 0.93**
+1. Markov: 0.82 (high confidence fraud - trained model recognizes "qwerty")
+2. Sequential: No
+3. Dated: No
+4. Domain risk: 0 * 0.2 + 0.29 * 0.3 = 0.087
+5. **Final: 0.82 + 0.087 = 0.91**
 
-**Decision**: `block` (reason: `keyboard_walk`)
+**Decision**: `block` (reason: `markov_chain_fraud`)
 
 ---
 
@@ -295,7 +301,6 @@ function determineBlockReason({
   "signals": {
     "markovDetected": true,
     "markovConfidence": 0.25,
-    "hasKeyboardWalk": false,
     "patternType": "sequential",
     "domainReputationScore": 0,
     "tldRiskScore": 0.29
@@ -305,11 +310,10 @@ function determineBlockReason({
 
 **Calculation**:
 1. Markov: 0.25 (low confidence)
-2. Keyboard walk: No
-3. Sequential: **YES → override to 0.8**
-4. Dated: No
-5. Domain risk: 0.029
-6. **Final: max(0.25, 0.8) + 0.029 = 0.83**
+2. Sequential: **YES → override to 0.8**
+3. Dated: No
+4. Domain risk: 0 * 0.2 + 0.29 * 0.3 = 0.087
+5. **Final: max(0.25, 0.8) + 0.087 = 0.89**
 
 **Decision**: `block` (reason: `sequential_pattern`)
 

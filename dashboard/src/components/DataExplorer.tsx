@@ -10,167 +10,140 @@ const VIEWS = {
     name: 'Recent Validations',
     sql: `SELECT
       timestamp,
-      blob14 as email_local_part,
-      blob5 as domain,
-      blob6 as tld,
-      blob1 as decision,
-      double1 as risk_score,
-      blob7 as pattern_type,
-      blob8 as pattern_family,
-      blob9 as is_disposable,
-      blob10 as is_free_provider,
-      blob13 as is_gibberish,
-      blob19 as markov_detected,
-      double9 as markov_confidence,
-      blob3 as country,
-      double5 as latency
-    FROM ANALYTICS ORDER BY timestamp DESC LIMIT {limit}`
+      email_local_part,
+      domain,
+      tld,
+      decision,
+      risk_score,
+      pattern_type,
+      pattern_family,
+      is_disposable,
+      is_free_provider,
+      markov_detected,
+      markov_confidence,
+      country,
+      latency
+    FROM validations ORDER BY timestamp DESC LIMIT {limit}`
   },
   'high-risk': {
     name: 'High Risk (>0.6)',
     sql: `SELECT
       timestamp,
-      blob14 as email_local_part,
-      blob5 as domain,
-      blob1 as decision,
-      double1 as risk_score,
-      blob2 as block_reason,
-      blob7 as pattern_type,
-      blob8 as pattern_family,
-      blob9 as is_disposable,
-      blob13 as is_gibberish,
-      blob12 as has_keyboard_walk,
-      blob19 as markov_detected,
-      double9 as markov_confidence,
-      double3 as bot_score,
-      blob3 as country
-    FROM ANALYTICS WHERE double1 > 0.6 ORDER BY double1 DESC, timestamp DESC LIMIT {limit}`
+      email_local_part,
+      domain,
+      decision,
+      risk_score,
+      block_reason,
+      pattern_type,
+      pattern_family,
+      is_disposable,
+      markov_detected,
+      markov_confidence,
+      bot_score,
+      country
+    FROM validations WHERE risk_score > 0.6 ORDER BY risk_score DESC, timestamp DESC LIMIT {limit}`
   },
   blocked: {
     name: 'Blocked Emails',
     sql: `SELECT
       timestamp,
-      blob14 as email_local_part,
-      blob5 as domain,
-      double1 as risk_score,
-      blob2 as block_reason,
-      blob7 as pattern_type,
-      blob8 as pattern_family,
-      blob9 as is_disposable,
-      blob13 as is_gibberish,
-      blob12 as has_keyboard_walk,
-      blob19 as markov_detected,
-      double9 as markov_confidence,
-      double3 as bot_score,
-      blob3 as country,
-      blob15 as client_ip
-    FROM ANALYTICS WHERE blob1 = 'block' ORDER BY timestamp DESC LIMIT {limit}`
+      email_local_part,
+      domain,
+      risk_score,
+      block_reason,
+      pattern_type,
+      pattern_family,
+      is_disposable,
+      markov_detected,
+      markov_confidence,
+      bot_score,
+      country,
+      client_ip
+    FROM validations WHERE decision = 'block' ORDER BY timestamp DESC LIMIT {limit}`
   },
   patterns: {
     name: 'Pattern Detections',
     sql: `SELECT
       timestamp,
-      blob14 as email_local_part,
-      blob5 as domain,
-      blob1 as decision,
-      double1 as risk_score,
-      blob7 as pattern_type,
-      blob8 as pattern_family,
-      double8 as pattern_confidence,
-      blob12 as has_keyboard_walk,
-      blob13 as is_gibberish,
-      blob9 as is_disposable,
-      blob19 as markov_detected
-    FROM ANALYTICS WHERE blob7 != 'none' ORDER BY timestamp DESC LIMIT {limit}`
+      email_local_part,
+      domain,
+      decision,
+      risk_score,
+      pattern_type,
+      pattern_family,
+      pattern_confidence,
+      is_disposable,
+      markov_detected
+    FROM validations WHERE pattern_type IS NOT NULL AND pattern_type != 'none' ORDER BY timestamp DESC LIMIT {limit}`
   },
   disposable: {
     name: 'Disposable Domains',
     sql: `SELECT
       timestamp,
-      blob14 as email_local_part,
-      blob5 as domain,
-      blob1 as decision,
-      double1 as risk_score,
-      blob7 as pattern_type,
-      blob10 as is_free_provider,
-      double7 as domain_reputation_score,
-      blob3 as country,
-      blob15 as client_ip
-    FROM ANALYTICS WHERE blob9 = 'disposable' ORDER BY timestamp DESC LIMIT {limit}`
+      email_local_part,
+      domain,
+      decision,
+      risk_score,
+      pattern_type,
+      is_free_provider,
+      domain_reputation_score,
+      country,
+      client_ip
+    FROM validations WHERE is_disposable = 1 ORDER BY timestamp DESC LIMIT {limit}`
   },
   markov: {
     name: 'Markov Detections',
     sql: `SELECT
       timestamp,
-      blob14 as email_local_part,
-      blob5 as domain,
-      blob1 as decision,
-      double1 as risk_score,
-      blob19 as markov_detected,
-      double9 as markov_confidence,
-      double10 as markov_cross_entropy_legit,
-      double11 as markov_cross_entropy_fraud,
-      blob7 as pattern_type,
-      blob13 as is_gibberish,
-      blob3 as country
-    FROM ANALYTICS WHERE blob19 = 'yes' ORDER BY timestamp DESC LIMIT {limit}`
-  },
-  gibberish: {
-    name: 'Gibberish Patterns',
-    sql: `SELECT
-      timestamp,
-      blob14 as email_local_part,
-      blob5 as domain,
-      blob1 as decision,
-      double1 as risk_score,
-      blob13 as is_gibberish,
-      double2 as entropy_score,
-      blob7 as pattern_type,
-      blob19 as markov_detected,
-      double9 as markov_confidence,
-      blob3 as country
-    FROM ANALYTICS WHERE blob13 = 'yes' ORDER BY timestamp DESC LIMIT {limit}`
+      email_local_part,
+      domain,
+      decision,
+      risk_score,
+      markov_detected,
+      markov_confidence,
+      markov_cross_entropy_legit,
+      markov_cross_entropy_fraud,
+      pattern_type,
+      country
+    FROM validations WHERE markov_detected = 1 ORDER BY timestamp DESC LIMIT {limit}`
   },
   comprehensive: {
     name: 'Comprehensive View (All Columns)',
     sql: `SELECT
       timestamp,
-      blob1 as decision,
-      blob2 as block_reason,
-      blob3 as country,
-      blob4 as risk_bucket,
-      blob5 as domain,
-      blob6 as tld,
-      blob7 as pattern_type,
-      blob8 as pattern_family,
-      blob9 as is_disposable,
-      blob10 as is_free_provider,
-      blob11 as has_plus_addressing,
-      blob12 as has_keyboard_walk,
-      blob13 as is_gibberish,
-      blob14 as email_local_part,
-      blob15 as client_ip,
-      blob16 as user_agent,
-      blob17 as variant,
-      blob18 as exclude_from_training,
-      blob19 as markov_detected,
-      blob20 as experiment_id,
-      double1 as risk_score,
-      double2 as entropy_score,
-      double3 as bot_score,
-      double4 as asn,
-      double5 as latency,
-      double6 as tld_risk_score,
-      double7 as domain_reputation_score,
-      double8 as pattern_confidence,
-      double9 as markov_confidence,
-      double10 as markov_cross_entropy_legit,
-      double11 as markov_cross_entropy_fraud,
-      double12 as ip_reputation_score,
-      double13 as bucket,
-      index1 as fingerprint_hash,
-      _sample_interval
-    FROM ANALYTICS ORDER BY timestamp DESC LIMIT {limit}`
+      decision,
+      block_reason,
+      country,
+      CASE WHEN risk_score < 0.2 THEN 'very_low' WHEN risk_score < 0.4 THEN 'low' WHEN risk_score < 0.6 THEN 'medium' WHEN risk_score < 0.8 THEN 'high' ELSE 'very_high' END as risk_bucket,
+      domain,
+      tld,
+      pattern_type,
+      pattern_family,
+      is_disposable,
+      is_free_provider,
+      has_plus_addressing,
+      email_local_part,
+      client_ip,
+      user_agent,
+      variant,
+      exclude_from_training,
+      markov_detected,
+      experiment_id,
+      risk_score,
+      entropy_score,
+      bot_score,
+      asn,
+      latency,
+      tld_risk_score,
+      domain_reputation_score,
+      pattern_confidence,
+      markov_confidence,
+      markov_cross_entropy_legit,
+      markov_cross_entropy_fraud,
+      ip_reputation_score,
+      bucket,
+      fingerprint_hash
+    FROM validations ORDER BY timestamp DESC LIMIT {limit}`
   }
 }
 
@@ -200,9 +173,9 @@ export function DataExplorer() {
       if (view !== 'comprehensive') {
         // Check if query already has WHERE clause
         if (sql.includes('WHERE')) {
-          sql = sql.replace('WHERE', `WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR AND`)
+          sql = sql.replace('WHERE', `WHERE timestamp >= datetime('now', '-${hours} hours') AND`)
         } else {
-          sql = sql.replace('FROM ANALYTICS', `FROM ANALYTICS WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR`)
+          sql = sql.replace('FROM validations', `FROM validations WHERE timestamp >= datetime('now', '-${hours} hours')`)
         }
       }
 
@@ -556,7 +529,7 @@ export function DataExplorer() {
                         }
 
                         // Color coding for boolean flags
-                        if (key === 'is_disposable' || key === 'is_gibberish' || key === 'markov_detected' || key === 'has_keyboard_walk' || key === 'is_free_provider') {
+                        if (key === 'is_disposable' || key === 'markov_detected' || key === 'is_free_provider') {
                           if (val === 'yes' || val === 'disposable' || val === 'true') {
                             return (
                               <td key={j} className="px-4 py-2 whitespace-nowrap">

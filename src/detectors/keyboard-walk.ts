@@ -7,13 +7,18 @@
  * - AZERTY (French/Belgian)
  * - QWERTZ (German/Swiss/Austrian/Central European)
  * - Dvorak (Alternative ergonomic layout)
- * - Colemak (Modern ergonomic layout)
+ * - Colemak (Modern ergonomic layout - standard)
+ * - Colemak Mod-DH (Modern ergonomic layout - DH variant)
+ * - Workman (Ergonomic - optimized for English)
+ * - BÉPO (French ergonomic - optimized for French)
  * - Number pad patterns (calculator/phone layouts)
  *
  * Examples:
  * - qwerty, asdfgh, zxcvbn (QWERTY rows)
  * - azerty, qsdfgh (AZERTY rows)
  * - qwertz, asdfgh (QWERTZ rows)
+ * - arstgmneio (Colemak Mod-DH home row)
+ * - ashtgyneoi (Workman home row)
  * - 123456, 789456 (number patterns)
  *
  * These patterns are common in:
@@ -185,7 +190,7 @@ const DVORAK_LAYOUT: KeyboardLayout = {
   ]
 };
 
-// Colemak keyboard layout (Modern ergonomic)
+// Colemak keyboard layout (Modern ergonomic - standard)
 const COLEMAK_LAYOUT: KeyboardLayout = {
   name: 'colemak',
   rows: [
@@ -214,6 +219,95 @@ const COLEMAK_LAYOUT: KeyboardLayout = {
   ]
 };
 
+// Colemak Mod-DH keyboard layout (Modern ergonomic - DH variant)
+const COLEMAK_MOD_DH_LAYOUT: KeyboardLayout = {
+  name: 'colemak',
+  rows: [
+    '1234567890',
+    'qwfpbjluy',      // b moved from bottom to top row
+    'arstgmneio',     // g and m on home row (swapped with d and h)
+    'zxcdvkh'         // d, v, k, h on bottom row
+  ],
+  cols: [
+    'qaz',
+    'wsx',
+    'fdc',
+    'ptv',
+    'bgk',
+    'jmh',
+    'ln',
+    'ue',
+    'yi',
+    'o'
+  ],
+  diagonals: [
+    'qwarst',
+    'arstqw',
+    'fpgm',
+    'gmfp',
+    'bcdvk',
+    'kvdcb'
+  ]
+};
+
+// Workman keyboard layout (Ergonomic - optimized for English)
+const WORKMAN_LAYOUT: KeyboardLayout = {
+  name: 'workman',
+  rows: [
+    '1234567890',
+    'qdrwbjfup',
+    'ashtgyneoi',
+    'zxmcvkl'
+  ],
+  cols: [
+    'qaz',
+    'dsx',
+    'rhm',
+    'wtc',
+    'bvk',
+    'jgl',
+    'fn',
+    'ue',
+    'po',
+    'i'
+  ],
+  diagonals: [
+    'qdash',
+    'ashtqd',
+    'rwgy',
+    'gyrw'
+  ]
+};
+
+// BÉPO keyboard layout (French ergonomic - optimized for French)
+const BEPO_LAYOUT: KeyboardLayout = {
+  name: 'bepo',
+  rows: [
+    '1234567890',
+    'bepoucvdl',
+    'auietsnrmq',
+    'zxwyhgkf'
+  ],
+  cols: [
+    'baz',
+    'eux',
+    'piw',
+    'oty',
+    'uvh',
+    'ckg',
+    'vf',
+    'dn',
+    'lr',
+    'mq'
+  ],
+  diagonals: [
+    'beau',
+    'auie',
+    'epoiet',
+    'ietep'
+  ]
+};
+
 // Number pad layouts (calculator/phone)
 const NUMPAD_PATTERNS = [
   '789',
@@ -238,7 +332,10 @@ const ALL_LAYOUTS: KeyboardLayout[] = [
   AZERTY_LAYOUT,
   QWERTZ_LAYOUT,
   DVORAK_LAYOUT,
-  COLEMAK_LAYOUT
+  COLEMAK_LAYOUT,
+  COLEMAK_MOD_DH_LAYOUT,
+  WORKMAN_LAYOUT,
+  BEPO_LAYOUT
 ];
 
 // Legacy exports for backward compatibility

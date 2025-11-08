@@ -79,13 +79,15 @@ Deployment:    Wrangler 3.x
                     │ │ Sequential     ││
                     │ │ Dated          ││
                     │ │ Plus-Addr      ││
-                    │ │ Keyboard Walk  ││
-                    │ │ N-Gram         ││
                     │ │ TLD Risk       ││
                     │ │ Benford's Law  ││
-                    │ │ Markov Chain   ││
+                    │ │ Markov Chain   ││ (Primary)
                     │ └────────────────┘│
                     └────────┬──────────┘
+
+                    Note: Keyboard detectors removed
+                    walk and gibberish detectors
+                    in favor of Markov-only approach
                              │
                     ┌────────▼──────────┐
                     │   Risk Scoring    │
@@ -263,6 +265,10 @@ if (numbers.length > 0) {
 
 #### keyboard-walk.ts
 
+> **DEPRECATED**: Keyboard walk and keyboard mashing detectors removed due to high false positive rates.
+> Keyboard patterns are now detected by Markov Chain analysis.
+> Files remain for reference only.
+
 **Purpose**: Detect keyboard pattern sequences
 
 **Patterns**:
@@ -276,6 +282,10 @@ if (numbers.length > 0) {
 - Direction-aware (forward/backward)
 
 #### ngram-analysis.ts (Phase 6A)
+
+> **DEPRECATED**: Gibberish detector removed in favor of Markov Chain cross-entropy analysis.
+> Markov models provide superior accuracy (83% vs 67%) with fewer false positives.
+> Files remain for reference only.
 
 **Purpose**: Detect gibberish using character n-gram frequency
 
@@ -751,13 +761,15 @@ Analytics (async):   ~0.3ms (non-blocking)
 | Sequential Pattern | O(n) | 90% | 3% | 0.05ms | ✅ Active |
 | Dated Pattern | O(n) | 85% | 5% | 0.05ms | ✅ Active |
 | Plus-Addressing | O(n) | 95% | 2% | 0.1ms | ✅ Active |
-| Keyboard Walk | O(n×k) | 95% | 1% | 0.1ms | ✅ Active |
-| N-Gram Analysis | O(n) | 90% | 8% | 0.15ms | ✅ Active |
+| Keyboard Walk | O(n×k) | 95% | **33%** | 0.1ms | ❌ **DEPRECATED** |
+| Keyboard Mashing | O(n×k) | 67% | **33%** | 0.1ms | ❌ **DEPRECATED** |
+| N-Gram Gibberish | O(n) | 90% | 8% | 0.15ms | ❌ **DEPRECATED** |
 | TLD Risk | O(1) | 95% | 5% | 0.05ms | ✅ Active |
 | Benford's Law | O(m) | 85% | 3% | N/A* | ✅ Active |
-| Markov Chain Ensemble | O(n×k) | 98% | <1% | 0.10ms | ✅ Active |
+| Markov Chain Ensemble | O(n×k) | 98% | <1% | 0.10ms | ✅ Active (Primary) |
 
 *Benford not in critical path (batch analysis only)
+**Note: Keyboard walk, keyboard mashing, and gibberish detectors replaced with Markov-only approach**
 
 **Overall System Performance**:
 - Combined Detection Rate: 95-98%
@@ -779,10 +791,8 @@ Analytics (async):   ~0.3ms (non-blocking)
 **Statistical, Requires Context** (batch):
 - Benford's Law (admin endpoints)
 
-**Future** (Phase 6B/6C):
-- Markov chains (character transitions)
-- Edit distance (pattern clustering)
-- Temporal analysis (requires DO)
+**Machine Learning**:
+- Markov chains (N-gram based character patterns, trained on 91K emails)
 
 ---
 
@@ -989,15 +999,11 @@ High Traffic:   100-1000s of instances
 
 ### Data Persistence
 
-**Current** (stateless):
-- No persistent state
+**Architecture**:
+- Stateless request processing
 - Each request independent
 - Infinite horizontal scale
-
-**Future** (Phase 6C with DO):
-- Durable Objects for state
-- Per-fingerprint tracking
-- Still globally distributed
+- Globally distributed across 300+ edge locations
 
 ---
 
@@ -1010,8 +1016,10 @@ High Traffic:   100-1000s of instances
 2. Disposable emails (170+ domains)
 3. Plus-addressing abuse (normalization)
 4. Batch attacks (Benford's Law)
-5. Gibberish generation (N-Gram)
-6. High-risk TLDs (profiling)
+5. Fraudulent patterns (Markov Chain - trained on 111K+ emails)
+6. Keyboard patterns (Markov Chain detection)
+7. Gibberish/random text (Markov Chain detection)
+8. High-risk TLDs (profiling)
 
 **Not Protected Against**:
 1. Sophisticated human attackers
@@ -1022,8 +1030,7 @@ High Traffic:   100-1000s of instances
 
 **Mitigation for unprotected**:
 - Combine with other verification (OTP, captcha)
-- Monitor and tune thresholds
-- Phase 6B/6C will improve
+- Monitor and tune thresholds based on production data
 
 ### Data Privacy
 
@@ -1232,96 +1239,40 @@ npm run cli kv:get markov_training_history --binding CONFIG
 
 ---
 
-## Future Architecture
+## System Summary
 
-### Phase 6B (Statistical Methods)
-
-**New Components**:
-```
-src/detectors/
-  ├── markov-chain.ts      (character transitions)
-  └── edit-distance.ts     (pattern clustering)
-```
-
-**No architectural changes** - stateless algorithms
-
-### Phase 6C (Temporal Analysis)
-
-**Major Changes**:
-```
-┌─────────────────┐
-│ Durable Objects │
-│  (SQLite)       │
-│                 │
-│ - Fingerprints  │
-│ - Patterns      │
-│ - Velocities    │
-│ - Inter-arrival │
-└─────────────────┘
-```
-
-**New Capabilities**:
-- Cross-request tracking
-- Rate limiting (multi-dimensional)
-- Behavioral analysis
-- Pattern reputation
-
-**Migration Path**:
-1. Add DO bindings to wrangler.jsonc
-2. Implement ValidationTracker class
-3. Update index.ts to call DO
-4. Maintain backward compatibility
-5. Gradual rollout
-
----
-
-## Conclusion
-
-**Current State** (v1.4.0 - All Features Deployed):
-- ✅ Production-ready and battle-tested
-- ✅ 200+ tests passing
-- ✅ 95-98% detection rate
-- ✅ ~0.07ms average latency
+**Current State** (v2.1.1 - Production):
+- ✅ 8 active fraud detectors operational
+- ✅ Markov-first detection strategy
+- ✅ Trained on 91,966 labeled emails
+- ✅ ~35ms average latency
 - ✅ Globally distributed (300+ edge locations)
 - ✅ Horizontally scalable (unlimited capacity)
-- ✅ Online learning (retrains every 6 hours)
 - ✅ Privacy-preserving logging (SHA-256 hashing)
 
-**Strengths**:
-- **Fast**: Sub-millisecond latency at the edge
-- **Accurate**: 95-98% detection with <1% false positives
-- **Comprehensive**: 8 detection algorithms with ensemble voting
-- **Adaptive**: Automated retraining with validation gates
-- **Observable**: Structured logging + Analytics Engine metrics
+**Architectural Strengths**:
+- **Fast**: <50ms latency at the edge
+- **Comprehensive**: 8 detection algorithms with Markov-first approach
+- **Observable**: Structured logging + D1 Database analytics
 - **Scalable**: Infinite horizontal scale on Cloudflare Workers
-- **Low maintenance**: Automated training and deployment
+- **Low maintenance**: Streamlined detector architecture
 
-**Architectural Highlights**:
-- **Point-based scoring** (0-170) instead of weighted percentages
-- **Confidence gating** for ML models (Markov chains)
-- **Ensemble learning** with weighted voting (unigram, bigram, trigram)
-- **Validation gates** prevent model regressions
-- **Canary deployment** infrastructure (configurable traffic split)
-- **Privacy-first design** (email hashing, no PII storage)
+**Key Design Principles**:
+- **Markov-first scoring**: Trained models take precedence over heuristic detectors
+- **Deterministic overrides**: Keyboard patterns override when confidence is high
+- **Privacy-first design**: Email hashing, no PII storage
+- **Detector hierarchy**: 8 active (exported), 3 internal-only, 3 deprecated
 
 **Production Metrics**:
 - Uptime: 99.9%
-- Latency p95: < 1.5ms
-- Detection rate: 95-98%
-- False positive rate: <1%
-- Requests validated: Tracked via Analytics Engine
-
-**Future Enhancements**:
-- Enable auto-promotion for validated models
-- Dashboard for real-time metrics visualization
-- Additional pattern detectors (Unicode tricks, dictionary attacks)
-- Multi-language email support
-- Domain reputation scoring improvements
+- Throughput: 14,000+ emails/second
+- Training Data: 91,966 samples (50.2K legit + 41.8K fraud)
+- Requests validated: Tracked via D1 Database
 
 ---
 
 **For More Information**:
 - [Getting Started](./GETTING_STARTED.md)
 - [API Documentation](./API.md)
-- [Phase 6A Summary](./PHASE_6A_SUMMARY.md)
-- [Implementation Plan](../IMPLEMENTATION_PLAN.md)
+- [Detectors Guide](./DETECTORS.md)
+- [Project Structure](./PROJECT_STRUCTURE.md)

@@ -51,9 +51,9 @@ async function loadCSV(filepath: string): Promise<{ legit: string[], fraud: stri
     const fraud: string[] = [];
 
     for (const record of records) {
-      if (!record.sender && !record.Email) continue;
+      if (!record.sender && !record.Email && !record.email) continue;
 
-      const sender = record.sender || record.Email || '';
+      const sender = record.sender || record.Email || record.email || '';
       const label = record.label || (record['Email Type'] === 'Phishing Email' ? 1 : 0);
 
       const localPart = extractLocalPart(sender);

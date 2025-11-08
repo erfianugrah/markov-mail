@@ -10,8 +10,8 @@ declare global {
 		// Secrets (set via wrangler secret put)
 		ADMIN_API_KEY?: string;
 		ORIGIN_URL?: string;
-		CLOUDFLARE_ACCOUNT_ID?: string;  // For Analytics Engine API access
-		CLOUDFLARE_API_TOKEN?: string;   // For Analytics Engine API access
+		CLOUDFLARE_ACCOUNT_ID?: string;  // For Cloudflare API access
+		CLOUDFLARE_API_TOKEN?: string;   // For Cloudflare API access
 
 		// KV Namespaces (defined in wrangler.jsonc)
 		MARKOV_MODEL?: KVNamespace;  // Separate namespace for model storage

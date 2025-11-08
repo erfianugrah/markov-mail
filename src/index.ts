@@ -12,14 +12,11 @@ import { loadTLDRiskProfiles } from './services/tld-risk-updater';
 import {
 	extractPatternFamily,
 	normalizeEmail,
-	detectKeyboardWalk,
-	detectGibberish,
 	analyzeTLDRisk,
-	isHighRiskTLD,
-	type MarkovResult
+	isHighRiskTLD
 } from './detectors/index';
+// DEPRECATED (v2.2.0): detectKeyboardWalk, detectGibberish removed
 import { NGramMarkovChain } from './detectors/ngram-markov';
-import { MarkovEnsembleDetector, type EnsembleResult } from './detectors/markov-ensemble';
 import { getConfig } from './config';
 import adminRoutes from './routes/admin';
 import { scheduled as trainingWorkerScheduled } from './workers/training-worker';
@@ -55,17 +52,13 @@ type ContextVariables = {
  * - TLD risk profiling (40+ TLD categories) - Phase 6A
  * - Markov Chain detection (Phase 7) - Dynamic character transition models
  * - Structured logging with Pino
- * - Metrics collection with Analytics Engine
+ * - Metrics collection with D1 database
  */
 
 // Global Markov Chain model cache (loaded once per worker instance)
 let markovLegitModel: NGramMarkovChain | null = null;
 let markovFraudModel: NGramMarkovChain | null = null;
 let markovModelsLoaded = false;
-
-// Global Ensemble Markov model cache
-let ensembleDetector: MarkovEnsembleDetector | null = null;
-let ensembleModelsLoaded = false;
 
 /**
  * Load Markov Chain models from KV storage
@@ -119,68 +112,8 @@ async function loadMarkovModels(env: Env): Promise<boolean> {
 	return false;
 }
 
-/**
- * Load Ensemble Markov models from KV storage
- * Loads 6 models: 1-gram, 2-gram, 3-gram × legit/fraud
- */
-async function loadEnsembleModels(env: Env): Promise<boolean> {
-	if (ensembleModelsLoaded) return true;
-
-	try {
-		if (!env.MARKOV_MODEL) {
-			logger.warn({
-				event: 'ensemble_namespace_missing',
-				namespace: 'MARKOV_MODEL',
-			}, 'MARKOV_MODEL namespace not configured for ensemble');
-			return false;
-		}
-
-		// Load ensemble using the static method
-		ensembleDetector = await MarkovEnsembleDetector.loadFromKV(env.MARKOV_MODEL);
-		ensembleModelsLoaded = true;
-		logger.info({
-			event: 'ensemble_models_loaded',
-			model_types: ['1-gram', '2-gram', '3-gram'],
-			namespace: 'MARKOV_MODEL',
-		}, 'Ensemble Markov models loaded successfully');
-		return true;
-	} catch (error) {
-		logger.error({
-			event: 'ensemble_load_failed',
-			error: error instanceof Error ? {
-				message: error.message,
-				stack: error.stack,
-			} : String(error),
-		}, 'Failed to load ensemble models');
-		return false;
-	}
-}
-
-/**
- * Convert EnsembleResult to MarkovResult format for backward compatibility
- */
-function ensembleToMarkovResult(ensemble: EnsembleResult): MarkovResult {
-	// Use bigram model's cross-entropies as representative values
-	const isLikelyFraudulent = ensemble.prediction === 'fraud';
-
-	// For cross-entropy values, we use the individual model results
-	// If fraud is predicted, fraud entropy should be lower than legit
-	const crossEntropyLegit = ensemble.models.bigram.crossEntropy;
-	const crossEntropyFraud = ensemble.models.bigram.crossEntropy;
-
-	// Calculate difference ratio (similar to original)
-	const minEntropy = Math.min(crossEntropyLegit, crossEntropyFraud);
-	const maxEntropy = Math.max(crossEntropyLegit, crossEntropyFraud);
-	const differenceRatio = minEntropy / (maxEntropy + 0.001);
-
-	return {
-		isLikelyFraudulent,
-		crossEntropyLegit,
-		crossEntropyFraud,
-		confidence: ensemble.confidence,
-		differenceRatio,
-	};
-}
+// Ensemble Markov detector removed - was never fully implemented and not used in production
+// The N-gram Markov model (ngram-markov.ts) is sufficient for fraud detection
 
 const app = new Hono<{ Bindings: Env; Variables: ContextVariables }>();
 
@@ -513,13 +446,18 @@ export default {
 		}
 
 		// Task 2: Train N-gram ensemble models
-		logger.info({
-			event: 'training_started',
-			trigger_type: 'scheduled',
-		}, 'Starting automated N-gram model training');
+		// DISABLED: Online training uses circular reasoning (model predictions as labels)
+		// This can degrade model quality by reinforcing false positives.
+		// Use manual training with labeled CSV data instead: npm run cli train:markov
+		// See: /tmp/training-analysis.md for full analysis
 
-		// Use direct Analytics Engine training (no KV extraction step needed)
-		ctx.waitUntil(retrainLegacyModels(env));
+		// logger.info({
+		// 	event: 'training_started',
+		// 	trigger_type: 'scheduled',
+		// }, 'Starting automated N-gram model training');
+
+		// Use direct D1 database training (no KV extraction step needed)
+		// ctx.waitUntil(retrainLegacyModels(env));
 
 		// Optional: Use KV-based training worker (requires manual extraction step)
 		// if (env.MARKOV_MODEL) {

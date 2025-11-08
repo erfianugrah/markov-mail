@@ -13,8 +13,54 @@ import { logger } from '../logger';
 import { updateDisposableDomains, getDisposableDomainMetadata, clearDomainCache } from '../services/disposable-domain-updater';
 import { updateTLDRiskProfiles, getTLDRiskMetadata, clearTLDCache, getTLDRiskProfile, updateSingleTLDProfile } from '../services/tld-risk-updater';
 import { getAllTLDProfiles, getTLDStats } from '../detectors/tld-risk';
+import { D1Queries, executeD1Query } from '../database/queries';
 
 const admin = new Hono<{ Bindings: Env }>();
+
+/**
+ * Validate D1 SQL query for security
+ * Only allows safe SELECT queries on the validations table
+ */
+function validateD1Query(sql: string): { valid: boolean; error?: string } {
+	const trimmed = sql.trim().toUpperCase();
+
+	// Must start with SELECT
+	if (!trimmed.startsWith('SELECT')) {
+		return { valid: false, error: 'Query must start with SELECT' };
+	}
+
+	// No semicolons (prevent multi-statement)
+	if (sql.includes(';')) {
+		return { valid: false, error: 'Multiple statements not allowed (no semicolons)' };
+	}
+
+	// No SQL comments
+	if (sql.includes('--') || sql.includes('/*')) {
+		return { valid: false, error: 'SQL comments not allowed' };
+	}
+
+	// Dangerous keywords not allowed
+	const dangerous = ['DROP', 'DELETE', 'UPDATE', 'INSERT', 'ALTER', 'CREATE', 'TRUNCATE', 'EXEC', 'EXECUTE'];
+	for (const keyword of dangerous) {
+		if (trimmed.includes(keyword)) {
+			return { valid: false, error: `Keyword '${keyword}' not allowed` };
+		}
+	}
+
+	// Must query from one of the allowed tables
+	const allowedTables = ['VALIDATIONS', 'TRAINING_METRICS', 'AB_TEST_METRICS', 'ADMIN_METRICS'];
+	const hasValidTable = allowedTables.some(table =>
+		trimmed.includes(`FROM ${table}`) ||
+		trimmed.includes(`FROM\n${table}`) ||
+		trimmed.includes(`FROM\t${table}`)
+	);
+
+	if (!hasValidTable) {
+		return { valid: false, error: 'Query must be FROM one of: validations, training_metrics, ab_test_metrics, admin_metrics' };
+	}
+
+	return { valid: true };
+}
 
 // Apply API key authentication to all admin routes
 admin.use('/*', requireApiKey);
@@ -260,116 +306,165 @@ admin.get('/health', (c) => {
 
 /**
  * GET /admin/analytics
- * Query Analytics Engine with labeled results
+ * Query D1 database with analytics data
  * Query params:
- *   - query: SQL query to run (optional, defaults to summary)
+ *   - type: Pre-built query type (summary, blockReasons, etc.) - recommended
+ *   - query: Custom SQL query (validated for security) - DEPRECATED: Use POST instead
  *   - hours: Number of hours to look back (default: 24)
  *
- * Requires environment variables:
- *   - CLOUDFLARE_ACCOUNT_ID: Your Cloudflare account ID
- *   - CLOUDFLARE_API_TOKEN: API token with Account Analytics Read permission
+ * SECURITY: Custom SQL queries are validated to only allow safe SELECT queries
+ * Migration Note: Now uses D1 instead of Analytics Engine
+ * CLOUDFLARE WAF: GET requests with SQL queries may be blocked. Use POST for custom queries.
  */
 admin.get('/analytics', async (c) => {
 	try {
-		// Check for required configuration
-		const accountId = c.env.CLOUDFLARE_ACCOUNT_ID;
-		const apiToken = c.env.CLOUDFLARE_API_TOKEN;
-
-		if (!accountId || !apiToken) {
+		// Check for D1 binding
+		if (!c.env.DB) {
 			return c.json(
 				{
-					error: 'Analytics Engine not configured',
-					message: 'CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN secrets must be set',
-					setup: 'Run: wrangler secret put CLOUDFLARE_ACCOUNT_ID and wrangler secret put CLOUDFLARE_API_TOKEN',
+					error: 'D1 database not configured',
+					message: 'DB binding is missing. Check wrangler.jsonc configuration.',
 				},
 				503
 			);
 		}
 
 		const hours = parseInt(c.req.query('hours') || '24', 10);
+		const queryType = c.req.query('type');
 		const customQuery = c.req.query('query');
 
-		// Get dataset name from Analytics Engine binding
-		const dataset = 'ANALYTICS'; // Default dataset name
+		let query: string;
+		let mode: 'predefined' | 'custom' = 'predefined';
 
-		// Default query: Summary of decisions over time
-		const defaultQuery = `
-			SELECT
-				blob1 as decision,
-				blob2 as block_reason,
-				blob4 as risk_bucket,
-				SUM(_sample_interval) as count,
-				SUM(_sample_interval * double1) / SUM(_sample_interval) as avg_risk_score,
-				SUM(_sample_interval * double2) / SUM(_sample_interval) as avg_entropy_score,
-				SUM(_sample_interval * double3) / SUM(_sample_interval) as avg_bot_score,
-				SUM(_sample_interval * double5) / SUM(_sample_interval) as avg_latency_ms,
-				toStartOfHour(timestamp) as hour
-			FROM ${dataset}
-			WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR
-			GROUP BY decision, block_reason, risk_bucket, hour
-			ORDER BY hour DESC, count DESC
-		`;
+		// Option 1: Use predefined query type
+		if (queryType) {
+			const allowedQueries: Record<string, (hours: number) => string> = {
+				summary: D1Queries.summary,
+				blockReasons: D1Queries.blockReasons,
+				riskDistribution: D1Queries.riskDistribution,
+				topCountries: D1Queries.topCountries,
+				highRisk: D1Queries.highRiskEmails,
+				performance: D1Queries.performanceMetrics,
+				timeline: D1Queries.hourlyTimeline,
+				fingerprints: D1Queries.topFingerprints,
+				disposableDomains: D1Queries.disposableDomains,
+				patternFamilies: D1Queries.patternFamilies,
+				markovStats: D1Queries.markovStats,
+			};
 
-		const query = customQuery || defaultQuery;
+			if (!allowedQueries[queryType]) {
+				return c.json(
+					{
+						error: 'Invalid query type',
+						message: `Query type '${queryType}' is not allowed. Use /admin/analytics/queries to see available types.`,
+						available: Object.keys(allowedQueries),
+					},
+					400
+				);
+			}
 
-		// Execute query via Cloudflare SQL API
-		const apiUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/analytics_engine/sql`;
+			query = allowedQueries[queryType](hours);
+		}
+		// Option 2: Use custom SQL query (with security validation)
+		else if (customQuery) {
+			mode = 'custom';
 
-		const response = await fetch(apiUrl, {
-			method: 'POST',
-			headers: {
-				'Authorization': `Bearer ${apiToken}`,
-				'Content-Type': 'text/plain',
-			},
-			body: query,
-		});
+			// SECURITY: Validate custom SQL to prevent injection
+			const validation = validateD1Query(customQuery);
+			if (!validation.valid) {
+				return c.json(
+					{
+						error: 'Invalid SQL query',
+						message: validation.error,
+						hint: 'Only SELECT queries on the validations table are allowed',
+					},
+					400
+				);
+			}
 
-		if (!response.ok) {
-			const errorText = await response.text();
-			throw new Error(`Cloudflare API error: ${response.status} - ${errorText}`);
+			query = customQuery;
+		}
+		// Default: use summary query
+		else {
+			query = D1Queries.summary(hours);
 		}
 
-		const data = await response.json() as { data?: unknown };
+		// Execute query on D1
+		const data = await executeD1Query(c.env.DB, query);
 
 		return c.json({
 			success: true,
+			mode,
 			query,
 			hours,
-			data: data.data || data,
-			columnMapping: {
-				blob1: 'decision (allow/warn/block)',
-				blob2: 'block_reason',
-				blob3: 'country',
-				blob4: 'risk_bucket',
-				blob5: 'domain',
-				blob6: 'tld',
-				blob7: 'pattern_type',
-				blob8: 'pattern_family',
-				blob9: 'is_disposable',
-				blob10: 'is_free_provider',
-				blob11: 'has_plus_addressing',
-				blob12: 'has_keyboard_walk',
-				blob13: 'is_gibberish',
-				blob14: 'email_local_part',
-				blob15: 'client_ip',                        // Phase 8: NEW
-				blob16: 'user_agent',                       // Phase 8: NEW
-				blob17: 'model_version',                    // Phase 8: NEW (A/B testing)
-				blob18: 'exclude_from_training',            // Phase 8: NEW (security)
-				blob19: 'markov_detected',                  // Phase 7: MOVED from blob15
-				double1: 'risk_score',
-				double2: 'entropy_score',
-				double3: 'bot_score',
-				double4: 'asn',
-				double5: 'latency_ms',
-				double6: 'tld_risk_score',
-				double7: 'domain_reputation_score',
-				double8: 'pattern_confidence',
-				double9: 'markov_confidence',               // Phase 7
-				double10: 'markov_cross_entropy_legit',     // Phase 7
-				double11: 'markov_cross_entropy_fraud',     // Phase 7
-				double12: 'ip_reputation_score',            // Phase 8: NEW
-				index1: 'fingerprint_hash',
+			data,
+		});
+	} catch (error) {
+		return c.json(
+			{
+				error: 'Analytics query failed',
+				message: error instanceof Error ? error.message : 'Unknown error',
 			},
+			500
+		);
+	}
+});
+
+/**
+ * POST /admin/analytics
+ * Query D1 database with custom SQL (bypasses Cloudflare WAF)
+ * Body: { query: string, hours?: number }
+ *
+ * Use this instead of GET with query param to avoid Cloudflare WAF blocking SQL queries
+ */
+admin.post('/analytics', async (c) => {
+	try {
+		if (!c.env.DB) {
+			return c.json(
+				{
+					error: 'D1 database not configured',
+					message: 'DB binding is missing. Check wrangler.jsonc configuration.',
+				},
+				503
+			);
+		}
+
+		const body = await c.req.json<{ query: string; hours?: number }>();
+		const query = body.query;
+		const hours = body.hours || 24;
+
+		if (!query) {
+			return c.json(
+				{
+					error: 'Missing query',
+					message: 'Provide SQL query in request body: { query: "SELECT ..." }',
+				},
+				400
+			);
+		}
+
+		// SECURITY: Validate custom SQL to prevent injection
+		const validation = validateD1Query(query);
+		if (!validation.valid) {
+			return c.json(
+				{
+					error: 'Invalid SQL query',
+					message: validation.error,
+					hint: 'Only SELECT queries on the validations table are allowed',
+				},
+				400
+			);
+		}
+
+		// Execute query on D1
+		const data = await executeD1Query(c.env.DB, query);
+
+		return c.json({
+			success: true,
+			mode: 'custom',
+			query,
+			hours,
+			data,
 		});
 	} catch (error) {
 		return c.json(
@@ -384,25 +479,27 @@ admin.get('/analytics', async (c) => {
 
 /**
  * GET /admin/analytics/info
- * Get Analytics Engine dataset information and data management options
+ * Get D1 database information and data management options
+ * Migration Note: Updated from Analytics Engine to D1
  */
 admin.get('/analytics/info', (c) => {
 	return c.json({
-		dataset: 'ANALYTICS',
+		database: 'ANALYTICS (D1)',
 		dataRetention: {
-			description: 'Analytics Engine stores data for 6 months by default',
-			automaticDeletion: 'Data older than 6 months is automatically deleted',
-			manualDeletion: 'Analytics Engine data is immutable - no manual deletion API available',
+			description: 'D1 database stores data indefinitely (no automatic deletion)',
+			manualDeletion: 'Delete data with SQL: DELETE FROM validations WHERE timestamp < datetime(\'now\', \'-N days\')',
+			backups: 'D1 supports point-in-time recovery and manual backups',
 		},
 		dataManagement: {
-			filterByTime: 'Use WHERE timestamp >= NOW() - INTERVAL \'X\' HOUR in queries to exclude old data',
-			excludeTestData: 'Use WHERE blob14 NOT LIKE \'test%\' to exclude test emails',
-			exportData: 'Use SQL queries to export specific data subsets',
+			filterByTime: 'Use WHERE timestamp >= datetime(\'now\', \'-N hours\') in queries to filter by time',
+			excludeTestData: 'Use WHERE email_local_part NOT LIKE \'test%\' to exclude test emails',
+			exportData: 'Use wrangler d1 execute or SQL queries to export data',
 		},
 		bestPractices: [
-			'Use time-based filtering to focus on relevant data',
+			'Use time-based filtering to improve query performance',
 			'Add identifying markers to test data for easy filtering',
-			'Export important data before 6-month retention expires',
+			'Regularly archive or delete old data to optimize database size',
+			'Use indexes for frequently queried columns',
 			'Use aggregate queries to reduce data volume in results',
 		],
 	});
@@ -410,197 +507,156 @@ admin.get('/analytics/info', (c) => {
 
 /**
  * POST /admin/analytics/truncate
- * Simulate data truncation by returning a query that excludes old data
- * Note: Analytics Engine data cannot be actually deleted
+ * Delete old data from D1 database
+ * Migration Note: Now actually deletes data (D1 supports DELETE)
  */
 admin.post('/analytics/truncate', async (c) => {
 	try {
 		const body = await c.req.json<{ olderThanHours?: number }>();
 		const hours = body.olderThanHours || 24;
 
-		// Return a query template that excludes old data
-		const filterQuery = `WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR`;
+		if (!c.env.DB) {
+			return c.json({ error: 'D1 database not configured' }, 503);
+		}
+
+		// Calculate cutoff timestamp
+		const cutoffQuery = `datetime('now', '-${hours} hours')`;
+
+		// Delete old data
+		const result = await c.env.DB.prepare(
+			`DELETE FROM validations WHERE timestamp < datetime('now', '-${hours} hours')`
+		).run();
 
 		return c.json({
 			success: true,
-			message: 'Generated filter query to exclude old data',
-			note: 'Analytics Engine data cannot be deleted. Use this filter in your queries.',
-			filterQuery,
-			example: `SELECT * FROM ANALYTICS ${filterQuery} ORDER BY timestamp DESC LIMIT 100`,
-			hoursToKeep: hours,
+			message: `Deleted data older than ${hours} hours`,
+			deletedRows: result.meta.changes,
+			hoursKept: hours,
+			cutoffTime: cutoffQuery,
 		});
 	} catch (error) {
 		return c.json(
 			{
-				error: 'Invalid request',
+				error: 'Delete failed',
 				message: error instanceof Error ? error.message : 'Unknown error',
 			},
-			400
+			500
 		);
 	}
 });
 
 /**
  * DELETE /admin/analytics/test-data
- * Return query to exclude test data patterns
+ * Delete test data from D1 database
+ * Migration Note: Now actually deletes data (D1 supports DELETE)
  */
-admin.delete('/analytics/test-data', (c) => {
-	const testPatterns = [
-		"blob14 NOT LIKE 'user%'",
-		"blob14 NOT LIKE 'test%'",
-		"blob5 NOT IN ('example.com', 'test.com')",
-		"blob7 != 'none' OR double1 >= 0.6", // Keep only pattern detections or high risk
-	];
+admin.delete('/analytics/test-data', async (c) => {
+	if (!c.env.DB) {
+		return c.json({ error: 'D1 database not configured' }, 503);
+	}
 
-	return c.json({
-		success: true,
-		message: 'Generated filters to exclude common test data patterns',
-		note: 'Analytics Engine data cannot be deleted. Apply these filters in queries.',
-		filters: testPatterns,
-		combinedFilter: testPatterns.join(' AND '),
-		example: `SELECT * FROM ANALYTICS WHERE ${testPatterns.join(' AND ')} ORDER BY timestamp DESC LIMIT 100`,
-	});
+	try {
+		// Delete common test data patterns
+		const result = await c.env.DB.prepare(`
+			DELETE FROM validations
+			WHERE email_local_part LIKE 'user%'
+			   OR email_local_part LIKE 'test%'
+			   OR domain IN ('example.com', 'test.com')
+			   OR (pattern_type IS NULL AND risk_score < 0.6)
+		`).run();
+
+		return c.json({
+			success: true,
+			message: 'Deleted common test data patterns',
+			deletedRows: result.meta.changes,
+			patterns: [
+				'email_local_part LIKE \'user%\'',
+				'email_local_part LIKE \'test%\'',
+				'domain IN (\'example.com\', \'test.com\')',
+				'Low risk with no pattern detection'
+			],
+		});
+	} catch (error) {
+		return c.json(
+			{
+				error: 'Delete failed',
+				message: error instanceof Error ? error.message : 'Unknown error',
+			},
+			500
+		);
+	}
 });
 
 /**
  * GET /admin/analytics/queries
- * Get a list of pre-built useful queries
+ * Get a list of pre-built useful D1 queries
+ * Migration Note: Now returns D1-compatible SQLite queries
  */
 admin.get('/analytics/queries', (c) => {
+	const hours = 24; // Default for examples
+
 	const queries = {
 		summary: {
 			name: 'Decision Summary',
 			description: 'Overview of allow/warn/block decisions',
-			sql: `
-SELECT
-  blob1 as decision,
-  SUM(_sample_interval) as count,
-  SUM(_sample_interval * double1) / SUM(_sample_interval) as avg_risk_score,
-  SUM(_sample_interval * double5) / SUM(_sample_interval) as avg_latency_ms
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
-GROUP BY decision
-ORDER BY count DESC
-			`.trim(),
+			sql: D1Queries.summary(hours).trim(),
 		},
 		blockReasons: {
 			name: 'Top Block Reasons',
 			description: 'Most common reasons for blocking emails',
-			sql: `
-SELECT
-  blob2 as block_reason,
-  SUM(_sample_interval) as count,
-  SUM(_sample_interval * double1) / SUM(_sample_interval) as avg_risk_score
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
-  AND blob1 = 'block'
-  AND blob2 != 'none'
-GROUP BY block_reason
-ORDER BY count DESC
-LIMIT 10
-			`.trim(),
+			sql: D1Queries.blockReasons(hours).trim(),
 		},
 		riskDistribution: {
 			name: 'Risk Score Distribution',
 			description: 'Distribution of emails by risk bucket',
-			sql: `
-SELECT
-  blob4 as risk_bucket,
-  SUM(_sample_interval) as count,
-  SUM(_sample_interval * double1) / SUM(_sample_interval) as avg_risk_score
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
-GROUP BY risk_bucket
-ORDER BY risk_bucket
-			`.trim(),
+			sql: D1Queries.riskDistribution(hours).trim(),
 		},
-		countryBreakdown: {
-			name: 'Country Breakdown',
+		topCountries: {
+			name: 'Top Countries',
 			description: 'Validations by country',
-			sql: `
-SELECT
-  blob3 as country,
-  blob1 as decision,
-  SUM(_sample_interval) as count,
-  SUM(_sample_interval * double1) / SUM(_sample_interval) as avg_risk_score
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
-GROUP BY country, decision
-ORDER BY count DESC
-LIMIT 20
-			`.trim(),
+			sql: D1Queries.topCountries(hours).trim(),
 		},
 		highRisk: {
 			name: 'High Risk Emails',
 			description: 'Emails with risk score > 0.6',
-			sql: `
-SELECT
-  blob1 as decision,
-  blob2 as block_reason,
-  blob3 as country,
-  double1 as risk_score,
-  double2 as entropy_score,
-  timestamp
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
-  AND double1 > 0.6
-ORDER BY timestamp DESC
-LIMIT 100
-			`.trim(),
+			sql: D1Queries.highRiskEmails(hours).trim(),
 		},
 		performance: {
 			name: 'Performance Metrics',
 			description: 'Latency statistics by decision',
-			sql: `
-SELECT
-  blob1 as decision,
-  SUM(_sample_interval) as count,
-  SUM(_sample_interval * double5) / SUM(_sample_interval) as avg_latency_ms,
-  quantileExactWeighted(0.5)(double5, _sample_interval) as p50_latency_ms,
-  quantileExactWeighted(0.95)(double5, _sample_interval) as p95_latency_ms,
-  quantileExactWeighted(0.99)(double5, _sample_interval) as p99_latency_ms
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
-GROUP BY decision
-			`.trim(),
+			sql: D1Queries.performanceMetrics(hours).trim(),
 		},
 		timeline: {
 			name: 'Hourly Timeline',
 			description: 'Validations over time by decision',
-			sql: `
-SELECT
-  toStartOfHour(timestamp) as hour,
-  blob1 as decision,
-  SUM(_sample_interval) as count,
-  SUM(_sample_interval * double1) / SUM(_sample_interval) as avg_risk_score
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
-GROUP BY hour, decision
-ORDER BY hour DESC
-			`.trim(),
+			sql: D1Queries.hourlyTimeline(hours).trim(),
 		},
 		fingerprints: {
 			name: 'Top Fingerprints',
 			description: 'Most active fingerprints (potential automation)',
-			sql: `
-SELECT
-  index1 as fingerprint,
-  SUM(_sample_interval) as validation_count,
-  SUM(_sample_interval * double1) / SUM(_sample_interval) as avg_risk_score,
-  blob3 as country
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '24' HOUR
-GROUP BY index1, blob3
-HAVING SUM(_sample_interval) > 10
-ORDER BY validation_count DESC
-LIMIT 20
-			`.trim(),
+			sql: D1Queries.topFingerprints(hours).trim(),
+		},
+		disposableDomains: {
+			name: 'Disposable Domains',
+			description: 'Most frequently used disposable domains',
+			sql: D1Queries.disposableDomains(hours).trim(),
+		},
+		patternFamilies: {
+			name: 'Pattern Families',
+			description: 'Analysis of detected pattern families',
+			sql: D1Queries.patternFamilies(hours).trim(),
+		},
+		markovStats: {
+			name: 'Markov Detection Stats',
+			description: 'Markov chain fraud detection statistics',
+			sql: D1Queries.markovStats(hours).trim(),
 		},
 	};
 
 	return c.json({
 		queries,
 		usage: 'Use the SQL from any query with GET /admin/analytics?query=<url_encoded_sql>',
+		note: 'Migrated to D1 - SQLite syntax with proper column names',
 	});
 });
 
@@ -609,12 +665,13 @@ LIMIT 20
  * Manually trigger Markov Chain model retraining
  *
  * This endpoint initiates the online learning training pipeline:
- * 1. Fetches high-confidence data from Analytics Engine (last 7 days)
+ * 1. Fetches high-confidence data from D1 database (last 7 days)
  * 2. Runs anomaly detection to check for data poisoning attacks
  * 3. Trains new models on fraud vs legitimate samples
  * 4. Validates new models against production
  * 5. Saves candidate model to KV with SHA-256 checksum
  *
+ * Migration Note: Now uses D1 instead of Analytics Engine
  * Returns the training result including success status, metrics, and any errors.
  */
 admin.post('/markov/train', async (c) => {
@@ -624,16 +681,12 @@ admin.post('/markov/train', async (c) => {
 			source: 'admin_api',
 		}, 'Manual training triggered via admin API');
 
-		// Check for required configuration
-		const accountId = c.env.CLOUDFLARE_ACCOUNT_ID;
-		const apiToken = c.env.CLOUDFLARE_API_TOKEN;
-
-		if (!accountId || !apiToken) {
+		// Check for D1 binding
+		if (!c.env.DB) {
 			return c.json(
 				{
-					error: 'Analytics Engine not configured',
-					message: 'CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN secrets must be set',
-					setup: 'Run: wrangler secret put CLOUDFLARE_ACCOUNT_ID and wrangler secret put CLOUDFLARE_API_TOKEN',
+					error: 'D1 database not configured',
+					message: 'DB binding is missing. Check wrangler.jsonc configuration.',
 				},
 				503
 			);

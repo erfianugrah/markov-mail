@@ -1,5 +1,15 @@
 /**
- * Analytics Engine Commands
+ * Analytics Commands
+ *
+ * MIGRATION NOTE: These commands still use Analytics Engine REST API.
+ * For D1 queries, use wrangler d1 commands instead:
+ *   npx wrangler d1 execute ANALYTICS --remote --command="<SQL>"
+ *
+ * Or query via the admin API:
+ *   curl https://your-worker.workers.dev/admin/analytics?hours=24 \
+ *     -H "X-API-Key: $ADMIN_API_KEY"
+ *
+ * TODO: Migrate CLI to use D1 REST API or update to use admin API
  */
 
 import { logger } from '../../utils/logger.ts';
@@ -122,8 +132,14 @@ export default async function analytics(args: string[]) {
   if (hasFlag(parsed, 'help', 'h')) {
     console.log(`
 ╔════════════════════════════════════════════════════════╗
-║               Analytics Engine                         ║
+║        DEPRECATED - Migrated to D1 Database            ║
 ╚════════════════════════════════════════════════════════╝
+
+⚠️  This CLI tool queries the old Analytics Engine.
+   Use the admin API or wrangler d1 commands instead:
+
+   npx wrangler d1 execute ANALYTICS --remote --command "SELECT..."
+   curl https://your-worker.workers.dev/admin/analytics?type=summary
 
 Query and analyze fraud detection analytics.
 

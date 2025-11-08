@@ -44,15 +44,6 @@
 		},
 	],
 	/**
-	 * Analytics Engine
-	 * https://developers.cloudflare.com/analytics/analytics-engine/
-	 */
-	"analytics_engine_datasets": [
-		{
-			"binding": "ANALYTICS"
-		}
-	],
-	/**
 	 * Cron Triggers
 	 * Every 6 hours:
 	 * 1. Update disposable domain list from external sources (GitHub)
@@ -71,7 +62,20 @@
 	"assets": {
 		"directory": "./public/",
 		"binding": "ASSETS"
-	}
+	},
+	/**
+	 * D1 Database - SQLite database with full SQL support
+	 * Stores all validation, training, A/B test, and admin metrics
+	 * https://developers.cloudflare.com/d1/
+	 */
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "ANALYTICS",
+			"database_id": "d0d5f809-dbae-47fd-af40-62941d4e5680",
+			"remote": true
+		}
+	]
 	/**
 	 * Smart Placement
 	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

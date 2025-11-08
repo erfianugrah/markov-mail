@@ -1,7 +1,7 @@
 /**
  * Online Learning for Markov Chain Models
  *
- * Trains models periodically using data from Analytics Engine.
+ * Trains models periodically using data from D1 database.
  * Implements A/B testing, validation gates, and security checks.
  *
  * Phase 8: Online Learning
@@ -277,56 +277,48 @@ export async function retrainMarkovModels(env: Env): Promise<TrainingResult> {
 // ============================================================================
 
 /**
- * Fetch high-confidence training data from Analytics Engine
+ * Fetch high-confidence training data from D1 database
  * Only uses samples with risk_score >= 0.7 or <= 0.2 for quality
+ * Migration Note: Now queries D1 instead of Analytics Engine
  */
 async function fetchTrainingData(env: Env): Promise<TrainingData[]> {
-	const accountId = env.CLOUDFLARE_ACCOUNT_ID;
-	const apiToken = env.CLOUDFLARE_API_TOKEN;
-
-	if (!accountId || !apiToken) {
-		throw new Error('Analytics Engine credentials not configured');
+	if (!env.DB) {
+		throw new Error('D1 database not configured');
 	}
 
 	// Query for training data from last 7 days
-	// NOTE: Analytics Engine SQL does NOT support ORDER BY timestamp
-	// It will fail with "unable to find type of column: timestamp" error
-	const dataset = 'ANALYTICS';
 	const days = 7;  // Extended to 7 days to get more training samples
 	const limit = 50000;  // Max samples to fetch
 
-	const query = `SELECT blob14 as email_local_part, blob1 as decision, double1 as risk_score FROM ${dataset} WHERE timestamp >= NOW() - INTERVAL '${days * 24}' HOUR AND blob14 IS NOT NULL LIMIT ${limit}`;
+	const query = `
+		SELECT
+			email_local_part,
+			decision,
+			risk_score
+		FROM validations
+		WHERE timestamp >= datetime('now', '-${days} days')
+			AND email_local_part IS NOT NULL
+			AND exclude_from_training = 0
+		ORDER BY timestamp DESC
+		LIMIT ${limit}
+	`;
 
 	logger.info({
 		event: 'fetching_training_data',
 		days,
 		limit,
-	}, 'Fetching training data from Analytics Engine');
+	}, 'Fetching training data from D1');
 
-	const response = await fetch(
-		`https://api.cloudflare.com/client/v4/accounts/${accountId}/analytics_engine/sql`,
-		{
-			method: 'POST',
-			headers: {
-				'Authorization': `Bearer ${apiToken}`,
-				'Content-Type': 'text/plain',
-			},
-			body: query,
-		}
-	);
-
-	if (!response.ok) {
-		const errorText = await response.text();
+	try {
+		const result = await env.DB.prepare(query).all<TrainingData>();
+		return result.results || [];
+	} catch (error) {
 		logger.error({
-			event: 'analytics_query_failed',
-			status: response.status,
-			error: errorText,
-		}, 'Analytics query failed');
-		throw new Error(`Analytics query failed: ${response.status} - ${errorText}`);
+			event: 'd1_query_failed',
+			error: error instanceof Error ? error.message : String(error),
+		}, 'D1 query failed');
+		throw new Error(`D1 query failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
 	}
-
-	const result = await response.json() as { data: TrainingData[] };
-	return result.data || [];
 }
 
 /**

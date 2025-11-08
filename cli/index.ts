@@ -10,6 +10,11 @@ import { join } from 'path';
 
 const COMMANDS = {
   // Training commands
+  'train:relabel': {
+    description: 'Re-label dataset based on pattern analysis (not content)',
+    file: 'commands/train/relabel.ts',
+    usage: 'train:relabel [--input <path>] [--output <path>] [--threshold <n>]'
+  },
   'train:markov': {
     description: 'Train Markov Chain models from CSV datasets',
     file: 'commands/train/markov.ts',
@@ -211,6 +216,7 @@ function showHelp() {
 Usage: npm run cli <command> [options]
 
 📦 TRAINING COMMANDS
+  train:relabel             Re-label dataset (pattern-based, not content)
   train:markov              Train Markov Chain models
   train:validate            Validate dataset quality
   training:extract          Extract training data from Analytics
