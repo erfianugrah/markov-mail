@@ -73,8 +73,9 @@ export async function writeValidationMetricToD1(
         metric.isDisposable ? 1 : 0,
         metric.isFreeProvider ? 1 : 0,
         metric.hasPlusAddressing ? 1 : 0,
-        metric.hasKeyboardWalk ? 1 : 0,
-        metric.isGibberish ? 1 : 0,
+        // DEPRECATED (2025-11-08): Always write 0 for deprecated detectors
+        0, // hasKeyboardWalk - deprecated
+        0, // isGibberish - deprecated
         // Scores
         metric.entropyScore ?? null,
         metric.botScore ?? null,

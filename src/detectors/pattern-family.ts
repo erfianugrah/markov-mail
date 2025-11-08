@@ -17,8 +17,9 @@ import { detectSequentialPattern, getSequentialPatternFamily } from './sequentia
 import { detectDatedPattern, getDatedPatternFamily } from './dated';
 import { normalizeEmail } from './plus-addressing';
 import { analyzeNGramNaturalness } from './ngram-analysis';
-import { detectKeyboardWalk } from './keyboard-walk';
-import { detectKeyboardMashing } from './keyboard-mashing';
+// DEPRECATED (v2.2.0): keyboard-walk and keyboard-mashing detectors removed
+// import { detectKeyboardWalk } from './keyboard-walk';
+// import { detectKeyboardMashing } from './keyboard-mashing';
 
 export type PatternType =
   | 'sequential'        // user1, user2, user3
@@ -56,36 +57,19 @@ export async function extractPatternFamily(email: string): Promise<PatternFamily
   // Run all detectors
   const sequentialResult = detectSequentialPattern(email);
   const datedResult = detectDatedPattern(email);
-  const keyboardWalkResult = detectKeyboardWalk(email);
-  const keyboardMashingResult = detectKeyboardMashing(email);
+  // DEPRECATED (v2.2.0): keyboard detectors removed - Markov detects these patterns
+  // const keyboardWalkResult = detectKeyboardWalk(email);
+  // const keyboardMashingResult = detectKeyboardMashing(email);
 
   // Determine primary pattern type
   let patternType: PatternType = 'unknown';
   let familyString = '';
   let confidence = 0.0;
 
-  // Priority 1: Keyboard walks (highest confidence - very specific pattern)
-  if (keyboardWalkResult.hasKeyboardWalk && keyboardWalkResult.confidence >= 0.5) {
-    patternType = 'keyboard-walk';
-    confidence = keyboardWalkResult.confidence;
-
-    const walkTypeToken = keyboardWalkResult.walkType === 'horizontal' ? 'HROW' :
-                          keyboardWalkResult.walkType === 'vertical' ? 'VCOL' :
-                          keyboardWalkResult.walkType === 'diagonal' ? 'DIAG' :
-                          keyboardWalkResult.walkType === 'numeric' ? 'NUM' : 'WALK';
-    const keyboardToken = keyboardWalkResult.metadata?.keyboard?.toUpperCase() || 'KEYBOARD';
-    familyString = `${keyboardToken}.${walkTypeToken}@${domain}`;
-  }
-  // Priority 2: Keyboard mashing (region clustering - new research-based detector)
-  else if (keyboardMashingResult.isMashing && keyboardMashingResult.confidence >= 0.5) {
-    patternType = 'keyboard-mashing';
-    confidence = keyboardMashingResult.confidence;
-
-    const regionToken = keyboardMashingResult.metadata?.dominantRegion.replace(' ', '_').toUpperCase() || 'MASHING';
-    familyString = `${regionToken}.MASH@${domain}`;
-  }
-  // Priority 3: Dated patterns (high confidence when detected)
-  else if (datedResult.hasDatedPattern && datedResult.confidence >= 0.6) {
+  // DEPRECATED (v2.2.0): Keyboard walk and mashing detectors removed
+  // These are now detected by Markov Chain analysis
+  // Priority 1 (was 3): Dated patterns (high confidence when detected)
+  if (datedResult.hasDatedPattern && datedResult.confidence >= 0.6) {
     patternType = 'dated';
     confidence = datedResult.confidence;
 

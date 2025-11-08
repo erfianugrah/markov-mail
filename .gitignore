@@ -185,3 +185,10 @@ analysis-archive/
 d1-validations.json
 false-*.json
 label-corrections.json
+
+# Data exports (contains PII - production email addresses)
+*.archive.json
+validations_*.json
+deduped_*.json
+d1-validations.json
+**/exports/*.json

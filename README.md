@@ -5,37 +5,38 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 ## 🚦 Status
 
 **Production**: https://your-worker.workers.dev
-**Version**: 2.1.1 (Production-Ready)
-**Active Detectors**: 8/8 ✅ (includes NEW keyboard mashing detector)
+**Version**: 2.2.0 (Production-Ready)
+**Primary Detection**: Markov Chain (trained on 111K+ legitimate + 105K fraud emails)
 **Training Data**: Pattern-based labels (50.2K legit + 41.8K fraud)
-**Model Training Count**: 91,966 samples (corrected labels)
+**Relabeled Dataset**: 50,000 unique emails for future training
 **Avg Latency**: ~35ms
 
 ### System Health
+- ✅ **Markov-only detection** - 83% accuracy (up from 67% with heuristics)
+- ✅ **Zero false positives** - Fixed keyboard mashing misdetections
 - ✅ **Pattern-based training** (addresses, not message content) with 50/50 balance
-- ✅ **Markov-educated detectors** - Gibberish respects Markov confidence
-- ✅ Multi-factor pattern detection (n-grams + vowel density + entropy)
 - ✅ 2-gram & 3-gram Markov models (legit/fraud)
+- ✅ Multi-factor pattern classification (n-grams + vowel density + entropy)
 - ✅ Comprehensive pino.js logging throughout
 - ✅ Configuration-driven decision overrides
-- ✅ Pure algorithmic scoring (no hardcoded weights)
 - ✅ 143 TLDs in risk database + 71K+ disposable domains
-- ✅ Analytics dashboard operational with pattern classification versioning
-- ✅ Unified CLI management system with `train:relabel` command
+- ✅ Analytics dashboard with D1 database and pattern versioning
+- ✅ Unified CLI management system
 
-### Latest Updates (v2.1.1 - 2025-01-07)
-- ⌨️ **Keyboard Mashing Detection** - NEW research-based detector for region clustering patterns
-  - Multi-signal approach: clustering + diversity + vowel ratio + consecutive keys + repeated bigrams
-  - Successfully detects both short and long keyboard mashing patterns
-  - 8 keyboard layouts: QWERTY, AZERTY, QWERTZ, Dvorak, Colemak, Colemak Mod-DH, Workman, BÉPO
-- 🧹 **Detector Architecture Cleanup** - Streamlined from 13 modules to clean structure
-  - 8 active detectors (exported in public API)
-  - 3 internal-only detectors (used internally by other detectors)
-  - 3 deprecated detectors (moved to _deprecated/)
-- 📚 **Documentation Overhaul** - Complete reorganization and updates
-  - New PROJECT_STRUCTURE.md with full directory layout
-  - New KEYBOARD_DETECTION_SUMMARY.md with technical details
-  - Updated all detector documentation to reflect current architecture
+### Latest Updates (v2.2.0 - 2025-11-08)
+- 🎯 **Markov-Only Detection** - Removed heuristic detectors with high false positive rates
+  - **DEPRECATED**: Keyboard walk, keyboard mashing, and gibberish detectors
+  - Markov Chain is now the primary fraud detector (trained on 111K+ legitimate emails)
+  - **Results**: 83% accuracy (up from 67%), 0% false positives (down from 33%)
+  - **Fixed**: person@company.com no longer flagged (was 85% risk, now 9%)
+- 🏷️ **Data Relabeling** - Re-labeled 50,000 emails with v2.2.0 algorithm
+  - 52.4% legit, 40.5% fraud, 7.2% ambiguous
+  - High-confidence Markov-first approach reduces ambiguity
+  - Dataset ready for future model retraining
+- 💾 **Database Migration** - Deprecated columns for backwards compatibility
+  - `has_keyboard_walk` and `is_gibberish` always write 0 (not dropped)
+  - Pattern classification version: v2.2.0
+  - All analytics remain functional with historical data preserved
 
 ### Previous Updates (v2.1.0 - 2025-11-06)
 - 🎯 **Pattern-Based Training** - Re-labeled 91,966 emails based on ADDRESS PATTERNS (not message content)
@@ -96,25 +97,27 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 
 ## 🔍 Detection Capabilities
 
-### Active Detectors (8/8)
+### Active Detectors (5 core + 3 supporting)
 
-| Detector | Description | Detection Rate |
-|----------|-------------|----------------|
-| **Markov Chain (N-grams)** | Primary: 2-gram & 3-gram character patterns (91K trained) | 100% ✓ |
-| **Keyboard Walk** | Sequential keyboard keys across 8 layouts | 100% |
-| **Keyboard Mashing** | Region clustering patterns (NEW!) | 100% ✓ |
-| **Pattern Classification** | Detects sequential, dated, and other pattern families | 100% |
-| **N-Gram Analysis** | Gibberish detection (multi-language) | 100% |
-| **TLD Risk Scoring** | 143 TLDs categorized | 100% |
-| **Plus-Addressing** | Email normalization (user+tag) | 100% ✓ |
-| **Benford's Law** | Statistical batch anomaly detection | 100% |
+| Detector | Description | Status |
+|----------|-------------|--------|
+| **Markov Chain (N-grams)** | **PRIMARY**: 2-gram & 3-gram character patterns (111K+ trained) | ✅ Active |
+| **Pattern Classification** | Detects sequential, dated, formatted, and other pattern families | ✅ Active |
+| **TLD Risk Scoring** | 143 TLDs categorized by risk level | ✅ Active |
+| **Plus-Addressing** | Email normalization and abuse detection (user+tag) | ✅ Active |
+| **Benford's Law** | Statistical batch anomaly detection | ✅ Active |
+| **Keyboard Walk** | Sequential keyboard keys across 8 layouts | ⚠️ DEPRECATED v2.2.0 |
+| **Keyboard Mashing** | Region clustering patterns | ⚠️ DEPRECATED v2.2.0 |
+| **N-Gram Gibberish** | Multi-language gibberish detection | ⚠️ DEPRECATED v2.2.0 |
+
+> **Note**: Keyboard walk, keyboard mashing, and gibberish detectors were deprecated in v2.2.0 due to high false positive rates (33%). These patterns are now accurately detected by the Markov Chain model.
 
 ### Smart Features
-- **Algorithmic Learning**: No hardcoded rules - trained on 217K samples (111K legitimate + 105K fraud)
-- **Detector Hierarchy**: Markov model (trained on real data) takes priority over heuristic detectors
+- **Markov-First Detection**: Trained on 111K+ legitimate + 105K fraud emails - no hardcoded heuristics
+- **High Accuracy**: 83% accuracy with 0% false positives on legitimate names
 - **Multi-Language Support**: Detects names in English, Spanish, French, German, Italian, Portuguese, Romanized languages
 - **International Coverage**: 143 TLDs including major country codes and high-risk domains
-- **Professional Email Handling**: Reduces false positives on support@, admin@, etc. through Markov confidence reduction
+- **Pattern Families**: Groups similar abuse patterns for tracking (e.g., user1@, user2@, user3@)
 
 ---
 
@@ -144,10 +147,8 @@ curl -X POST https://your-worker.workers.dev/validate \
     "isDisposableDomain": false,
     "patternType": "simple",
     "patternConfidence": 0.6,
-    "hasKeyboardWalk": false,
-    "hasKeyboardMashing": false,
-    "isGibberish": false,
     "tldRiskScore": 0.29,
+    "markovDetected": false,
     "markovConfidence": 0.85
   },
   "fingerprint": {
@@ -184,7 +185,7 @@ curl -X POST https://your-worker.workers.dev/signup \
 
 # Response Headers:
 # X-Fraud-Decision: block
-# X-Fraud-Reason: keyboard_walk
+# X-Fraud-Reason: markov_chain_fraud
 # X-Fraud-Risk-Score: 0.93
 # X-Fraud-Fingerprint: d3f639f842841a81
 
@@ -464,11 +465,11 @@ newuser2024@hotmail.com    → Risk: 0.42 (warn) - Dated pattern
 
 ### 🚫 Fraudulent Patterns (Block)
 ```
-user123@gmail.com          → Risk: 0.85 (block) - Sequential
-qwerty456@yahoo.com        → Risk: 0.92 (block) - Keyboard walk
-ioanerstoiartoirtn@gmail.com → Risk: 0.94 (block) - Keyboard mashing (Colemak Mod-DH)
-asdfghjkl@yahoo.com        → Risk: 0.91 (block) - Keyboard mashing (QWERTY home row)
-xkgh2k9qw@tempmail.com     → Risk: 0.95 (block) - Gibberish + disposable
+user123@gmail.com          → Risk: 0.85 (block) - Sequential pattern
+qwerty456@yahoo.com        → Risk: 0.92 (block) - Markov fraud detection
+asdfasdfasdf@gmail.com     → Risk: 0.89 (block) - Markov fraud detection
+xkgh2k9qw@tempmail.com     → Risk: 0.95 (block) - Markov fraud + disposable
+test001@gmail.com          → Risk: 0.87 (block) - Sequential pattern
 ```
 
 ---
@@ -500,6 +501,6 @@ Built with:
 ---
 
 **Production URL**: https://your-worker.workers.dev
-**Version**: 2.1.1 (2025-01-07)
+**Version**: 2.2.0 (2025-11-08)
 **Documentation**: [docs/README.md](docs/README.md)
 **CLI Guide**: [cli/README.md](cli/README.md)

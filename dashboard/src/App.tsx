@@ -10,7 +10,7 @@ import {
   loadStats, loadDecisions, loadRiskDistribution, loadTimeline,
   loadCountries, loadPatternTypes, loadBlockReasons, loadDomains, loadTLDs,
   loadPatternFamilies, loadDisposableDomains, loadFreeProviders, loadPlusAddressing,
-  loadKeyboardWalks, loadGibberish, loadEntropyScores, loadBotScores,
+  loadEntropyScores, loadBotScores,
   loadLatencyDistribution, loadASNs, loadTLDRiskScores, loadDomainReputation,
   loadPatternConfidence, getApiKey, setApiKey, clearApiKey, type Stats
 } from '@/lib/api'
@@ -83,8 +83,6 @@ function App() {
   const [disposableDomains, setDisposableDomains] = useState<any[]>([])
   const [freeProviders, setFreeProviders] = useState<any[]>([])
   const [plusAddressing, setPlusAddressing] = useState<any[]>([])
-  const [keyboardWalks, setKeyboardWalks] = useState<any[]>([])
-  const [gibberish, setGibberish] = useState<any[]>([])
   const [entropyScores, setEntropyScores] = useState<any[]>([])
   const [botScores, setBotScores] = useState<any[]>([])
   const [latencyDist, setLatencyDist] = useState<any[]>([])
@@ -163,7 +161,7 @@ function App() {
           statsData, decisionsData, riskData, timelineData,
           countriesData, patternTypesData, blockReasonsData, domainsData, tldsData,
           patternFamiliesData, disposableDomainsData, freeProvidersData, plusAddressingData,
-          keyboardWalksData, gibberishData, entropyScoresData, botScoresData,
+          entropyScoresData, botScoresData,
           latencyDistData, asnsData, tldRiskScoresData, domainReputationData, patternConfidenceData
         ] = await Promise.all([
           loadStats(timeRange),
@@ -179,8 +177,6 @@ function App() {
           loadDisposableDomains(timeRange),
           loadFreeProviders(timeRange),
           loadPlusAddressing(timeRange),
-          loadKeyboardWalks(timeRange),
-          loadGibberish(timeRange),
           loadEntropyScores(timeRange),
           loadBotScores(timeRange),
           loadLatencyDistribution(timeRange),
@@ -203,8 +199,6 @@ function App() {
         setDisposableDomains(disposableDomainsData)
         setFreeProviders(freeProvidersData)
         setPlusAddressing(plusAddressingData)
-        setKeyboardWalks(keyboardWalksData)
-        setGibberish(gibberishData)
         setEntropyScores(entropyScoresData)
         setBotScores(botScoresData)
         setLatencyDist(latencyDistData)
@@ -384,8 +378,6 @@ function App() {
                 disposableDomains,
                 freeProviders,
                 plusAddressing,
-                keyboardWalks,
-                gibberish,
                 entropyScores,
                 botScores,
                 latencyDist,
@@ -780,7 +772,6 @@ function App() {
             color="hsl(var(--chart-2))"
             getBarColor={(entry) => {
               const type = String(entry.patternType || entry.displayName).toLowerCase()
-              if (type.includes('keyboard')) return darkMode ? 'hsl(30 80% 55%)' : 'hsl(30 80% 50%)'
               if (type.includes('repeat')) return darkMode ? 'hsl(330 80% 60%)' : 'hsl(330 80% 55%)'
               if (type.includes('sequential')) return darkMode ? 'hsl(270 70% 60%)' : 'hsl(270 70% 55%)'
               if (type === 'none') return darkMode ? 'hsl(142 70% 50%)' : 'hsl(142 70% 45%)'
@@ -801,9 +792,7 @@ function App() {
             color="hsl(var(--chart-3))"
             getBarColor={(entry) => {
               const reason = String(entry.reason || entry.displayName).toLowerCase()
-              if (reason.includes('keyboard')) return darkMode ? 'hsl(30 80% 55%)' : 'hsl(30 80% 50%)'
               if (reason.includes('sequential')) return darkMode ? 'hsl(270 70% 60%)' : 'hsl(270 70% 55%)'
-              if (reason.includes('gibberish')) return darkMode ? 'hsl(0 80% 55%)' : 'hsl(0 80% 50%)'
               if (reason.includes('disposable')) return darkMode ? 'hsl(15 70% 55%)' : 'hsl(15 70% 50%)'
               if (reason.includes('plus')) return darkMode ? 'hsl(48 80% 55%)' : 'hsl(48 80% 50%)'
               if (reason.includes('tld')) return darkMode ? 'hsl(10 80% 55%)' : 'hsl(10 80% 50%)'
@@ -876,32 +865,6 @@ function App() {
             isDark={darkMode}
             color="hsl(var(--chart-4))"
             getBarColor={(_, index) => getChartColor(index, darkMode)}
-          />
-
-          <SimpleBarChart
-            title="Keyboard Walks"
-            description="Detected keyboard walk patterns"
-            data={keyboardWalks}
-            dataKey="count"
-            nameKey="type"
-            isDark={darkMode}
-            color="hsl(var(--chart-5))"
-            getBarColor={(_, index) => getChartColor(index, darkMode)}
-          />
-
-          <SimpleBarChart
-            title="Gibberish Detection"
-            description="Gibberish vs valid patterns"
-            data={gibberish}
-            dataKey="count"
-            nameKey="isGibberish"
-            isDark={darkMode}
-            color="hsl(var(--chart-1))"
-            getBarColor={(entry) => {
-              const val = String(entry.isGibberish).toLowerCase()
-              if (val === 'yes' || val === 'true') return darkMode ? 'hsl(0 80% 55%)' : 'hsl(0 80% 50%)'
-              return darkMode ? 'hsl(142 70% 50%)' : 'hsl(142 70% 45%)'
-            }}
           />
 
           <SimpleBarChart

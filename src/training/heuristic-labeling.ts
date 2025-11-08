@@ -38,7 +38,8 @@ export function applyHeuristicLabel(
 	}
 
 	// 3. Known fraud patterns
-	const fraudPatterns = ['sequential', 'dated', 'keyboard_walk'];
+	// DEPRECATED (v2.2.0): Removed 'keyboard_walk' - now detected by Markov
+	const fraudPatterns = ['sequential', 'dated'];
 	if (record.patternFamily && fraudPatterns.includes(record.patternFamily)) {
 		fraudIndicators.push({
 			weight: 0.7,

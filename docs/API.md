@@ -451,16 +451,16 @@ const result = await env.FRAUD_DETECTOR.validate({
 });
 
 // Access detailed signals for custom logic
-if (result.signals.isGibberish) {
-  console.log('Detected gibberish pattern');
-}
-
-if (result.signals.hasKeyboardWalk) {
-  console.log('Detected keyboard walk:', result.signals.keyboardWalkType);
+if (result.signals.markovDetected) {
+  console.log('Detected fraud via Markov Chain:', result.signals.markovConfidence);
 }
 
 if (result.signals.patternType === 'sequential') {
   console.log('Detected sequential pattern');
+}
+
+if (result.signals.patternType === 'dated') {
+  console.log('Detected dated pattern with confidence:', result.signals.patternConfidence);
 }
 
 // Custom risk scoring
@@ -710,7 +710,8 @@ When `ENABLE_RESPONSE_HEADERS` is set to `"true"`, the following headers are add
 |--------|------|-------------|---------|
 | `X-Pattern-Type` | string | Detected pattern type | `sequential`, `dated`, `random` |
 | `X-Pattern-Confidence` | number | Pattern confidence (0.0-1.0) | `0.85` |
-| `X-Has-Gibberish` | boolean | Gibberish detected (only if true) | `true` |
+| `X-Markov-Detected` | boolean | Markov fraud detection (only if true) | `true` |
+| `X-Markov-Confidence` | number | Markov detection confidence (0.0-1.0) | `0.92` |
 
 **Example Response with Headers:**
 
@@ -764,7 +765,8 @@ All original request headers are preserved, plus the following fraud detection h
 | `X-Fraud-ASN` | number | Autonomous System Number | `15169` |
 | `X-Fraud-Pattern-Type` | string | Detected pattern type | `sequential` |
 | `X-Fraud-Pattern-Confidence` | number | Pattern confidence | `0.85` |
-| `X-Fraud-Has-Gibberish` | boolean | Gibberish detected | `true` |
+| `X-Fraud-Markov-Detected` | boolean | Markov fraud detection | `true` |
+| `X-Fraud-Markov-Confidence` | number | Markov confidence | `0.92` |
 
 **Note:** Origin forwarding is fire-and-forget (non-blocking). The Worker responds to the client immediately while forwarding to your backend asynchronously.
 
@@ -896,7 +898,7 @@ curl -X PUT https://your-worker.dev/admin/config \
       "enableNGramAnalysis": true,
       "enableTLDRiskProfiling": true,
       "enableBenfordsLaw": true,
-      "enableKeyboardWalkDetection": true
+      "enableMarkovChainDetection": true
     },
     "logging": {
       "logAllValidations": true,
@@ -1027,6 +1029,128 @@ def validate_email(email):
 # Usage
 is_valid = validate_email('test@example.com')
 ```
+
+## Admin API
+
+**Authentication Required**: All admin endpoints require API key authentication.
+
+```bash
+# Set admin API key (production)
+wrangler secret put ADMIN_API_KEY
+
+# Use in requests
+curl -H "X-API-Key: your-secret-key" https://your-worker.workers.dev/admin/...
+```
+
+### GET /admin/analytics
+
+Query D1 database with predefined query types.
+
+**Recommended**: Use predefined query types to avoid Cloudflare WAF blocking.
+
+```bash
+# Summary statistics
+curl -H "X-API-Key: $KEY" "https://your-worker.workers.dev/admin/analytics?type=summary&hours=24"
+
+# Available types: summary, blockReasons, riskDistribution, topCountries,
+#                  highRisk, performance, timeline, fingerprints,
+#                  disposableDomains, patternFamilies, markovStats
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "mode": "predefined",
+  "query": "SELECT decision, COUNT(*) as count FROM validations...",
+  "hours": 24,
+  "data": [
+    { "decision": "allow", "count": 1234 },
+    { "decision": "block", "count": 56 }
+  ]
+}
+```
+
+### POST /admin/analytics
+
+Execute custom SQL queries. Use POST to avoid Cloudflare WAF blocking SQL in URLs.
+
+**Security**: Only `SELECT` queries on `validations`, `training_metrics`, `ab_test_metrics`, and `admin_metrics` tables are allowed.
+
+```bash
+curl -X POST "https://your-worker.workers.dev/admin/analytics" \
+  -H "X-API-Key: $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "SELECT pattern_type, COUNT(*) as count FROM validations WHERE timestamp >= datetime('"'"'now'"'"', '"'"'-24 hours'"'"') GROUP BY pattern_type",
+    "hours": 24
+  }'
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "mode": "custom",
+  "query": "SELECT pattern_type...",
+  "hours": 24,
+  "data": [
+    { "pattern_type": "simple", "count": 500 },
+    { "pattern_type": "sequential", "count": 25 }
+  ]
+}
+```
+
+**Why POST?**: Cloudflare WAF blocks SQL keywords in URL query parameters as potential SQLi attacks. Sending SQL in the POST body bypasses this protection.
+
+### GET /admin/analytics/queries
+
+List all available predefined query types with SQL examples.
+
+```bash
+curl -H "X-API-Key: $KEY" "https://your-worker.workers.dev/admin/analytics/queries"
+```
+
+### GET /admin/config
+
+Get current fraud detection configuration.
+
+```bash
+curl -H "X-API-Key: $KEY" "https://your-worker.workers.dev/admin/config"
+```
+
+### PUT /admin/config
+
+Update fraud detection configuration.
+
+```bash
+curl -X PUT "https://your-worker.workers.dev/admin/config" \
+  -H "X-API-Key: $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "riskThresholds": {
+      "block": 0.7,
+      "warn": 0.4
+    }
+  }'
+```
+
+### POST /admin/markov/train
+
+Manually trigger Markov Chain model retraining.
+
+```bash
+curl -X POST "https://your-worker.workers.dev/admin/markov/train" \
+  -H "X-API-Key: $KEY"
+```
+
+### Dashboard
+
+Access the analytics dashboard at: `https://your-worker.workers.dev/dashboard/`
+
+Enter your `ADMIN_API_KEY` when prompted. The dashboard uses the POST endpoint to fetch data.
+
+---
 
 ## Error Codes
 

@@ -30,9 +30,11 @@ export interface ValidationMetric {
   isDisposable?: boolean;
   isFreeProvider?: boolean;
   hasPlusAddressing?: boolean;
-  hasKeyboardWalk?: boolean;
-  hasKeyboardMashing?: boolean;
-  isGibberish?: boolean;
+  // DEPRECATED (2025-11-08): Keyboard/gibberish detectors removed
+  // Kept for backwards compatibility with existing database rows
+  hasKeyboardWalk?: boolean; // No longer written (always undefined)
+  hasKeyboardMashing?: boolean; // No longer written (always undefined) - NOTE: never in DB schema
+  isGibberish?: boolean; // No longer written (always undefined)
   tldRiskScore?: number;
   domainReputationScore?: number;
   patternConfidence?: number;

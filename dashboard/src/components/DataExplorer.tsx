@@ -19,7 +19,6 @@ const VIEWS = {
       pattern_family,
       is_disposable,
       is_free_provider,
-      is_gibberish,
       markov_detected,
       markov_confidence,
       country,
@@ -38,8 +37,6 @@ const VIEWS = {
       pattern_type,
       pattern_family,
       is_disposable,
-      is_gibberish,
-      has_keyboard_walk,
       markov_detected,
       markov_confidence,
       bot_score,
@@ -57,8 +54,6 @@ const VIEWS = {
       pattern_type,
       pattern_family,
       is_disposable,
-      is_gibberish,
-      has_keyboard_walk,
       markov_detected,
       markov_confidence,
       bot_score,
@@ -77,8 +72,6 @@ const VIEWS = {
       pattern_type,
       pattern_family,
       pattern_confidence,
-      has_keyboard_walk,
-      is_gibberish,
       is_disposable,
       markov_detected
     FROM validations WHERE pattern_type IS NOT NULL AND pattern_type != 'none' ORDER BY timestamp DESC LIMIT {limit}`
@@ -111,25 +104,8 @@ const VIEWS = {
       markov_cross_entropy_legit,
       markov_cross_entropy_fraud,
       pattern_type,
-      is_gibberish,
       country
     FROM validations WHERE markov_detected = 1 ORDER BY timestamp DESC LIMIT {limit}`
-  },
-  gibberish: {
-    name: 'Gibberish Patterns',
-    sql: `SELECT
-      timestamp,
-      email_local_part,
-      domain,
-      decision,
-      risk_score,
-      is_gibberish,
-      entropy_score,
-      pattern_type,
-      markov_detected,
-      markov_confidence,
-      country
-    FROM validations WHERE is_gibberish = 1 ORDER BY timestamp DESC LIMIT {limit}`
   },
   comprehensive: {
     name: 'Comprehensive View (All Columns)',
@@ -146,8 +122,6 @@ const VIEWS = {
       is_disposable,
       is_free_provider,
       has_plus_addressing,
-      has_keyboard_walk,
-      is_gibberish,
       email_local_part,
       client_ip,
       user_agent,
@@ -555,7 +529,7 @@ export function DataExplorer() {
                         }
 
                         // Color coding for boolean flags
-                        if (key === 'is_disposable' || key === 'is_gibberish' || key === 'markov_detected' || key === 'has_keyboard_walk' || key === 'is_free_provider') {
+                        if (key === 'is_disposable' || key === 'markov_detected' || key === 'is_free_provider') {
                           if (val === 'yes' || val === 'disposable' || val === 'true') {
                             return (
                               <td key={j} className="px-4 py-2 whitespace-nowrap">

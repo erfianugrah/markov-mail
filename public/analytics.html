@@ -1628,64 +1628,43 @@ LIMIT 100</textarea>
             });
         }
 
-        // Load keyboard walk
+        // DEPRECATED (v2.2.0): Keyboard walk and gibberish detectors removed
+        // These functions are kept for backwards compatibility but always return empty data
         async function loadKeyboard() {
-            const hours = document.getElementById('timeRange').value;
-            const data = await query(`
-                SELECT
-                    blob12 as has_keyboard_walk,
-                    SUM(_sample_interval) as count
-                FROM ANALYTICS
-                WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR
-                GROUP BY has_keyboard_walk
-            `);
-
+            // Deprecated: Keyboard walk detector removed in v2.2.0
             createChart('keyboard', {
                 type: 'doughnut',
                 data: {
-                    labels: data.data.map(r => r.has_keyboard_walk === 'yes' ? 'Keyboard Walk' : 'Normal'),
+                    labels: ['DEPRECATED (v2.2.0)'],
                     datasets: [{
-                        data: data.data.map(r => parseInt(r.count, 10) || 0),
-                        backgroundColor: ['#dc3545', '#28a745'],
+                        data: [1],
+                        backgroundColor: ['#999'],
                     }],
                 },
                 options: {
                     plugins: {
-                        legend: { position: 'bottom' },
+                        legend: { display: false },
+                        title: { display: true, text: 'Keyboard Walk - DEPRECATED (v2.2.0)' }
                     },
                 },
             });
         }
 
-        // Load gibberish
         async function loadGibberish() {
-            const hours = document.getElementById('timeRange').value;
-            const data = await query(`
-                SELECT
-                    blob13 as is_gibberish,
-                    SUM(_sample_interval) as count
-                FROM ANALYTICS
-                WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR
-                GROUP BY is_gibberish
-                ORDER BY is_gibberish DESC
-            `);
-
-            // Map data to ensure consistent ordering (Gibberish first, Normal second)
-            const gibberishCount = data.data.find(r => r.is_gibberish === 'yes')?.count || 0;
-            const normalCount = data.data.find(r => r.is_gibberish !== 'yes')?.count || 0;
-
+            // Deprecated: Gibberish detector removed in v2.2.0
             createChart('gibberish', {
                 type: 'doughnut',
                 data: {
-                    labels: ['Gibberish', 'Normal'],
+                    labels: ['DEPRECATED (v2.2.0)'],
                     datasets: [{
-                        data: [parseInt(gibberishCount, 10) || 0, parseInt(normalCount, 10) || 0],
-                        backgroundColor: ['#dc3545', '#28a745'],
+                        data: [1],
+                        backgroundColor: ['#999'],
                     }],
                 },
                 options: {
                     plugins: {
-                        legend: { position: 'bottom' },
+                        legend: { display: false },
+                        title: { display: true, text: 'Gibberish - DEPRECATED (v2.2.0)' }
                     },
                 },
             });
@@ -2153,8 +2132,8 @@ LIMIT 100</textarea>
                 blob9: 'is_disposable',
                 blob10: 'is_free_provider',
                 blob11: 'has_plus_addressing',
-                blob12: 'has_keyboard_walk',
-                blob13: 'is_gibberish',
+                blob12: 'has_keyboard_walk (DEPRECATED v2.2.0)',
+                blob13: 'is_gibberish (DEPRECATED v2.2.0)',
                 blob14: 'email_local_part',
                 double1: 'risk_score',
                 double2: 'entropy_score',
@@ -2294,9 +2273,8 @@ LIMIT 100</textarea>
                            blob1 as decision, blob2 as block_reason,
                            blob3 as country, blob4 as risk_bucket,
                            blob7 as pattern_type, blob8 as pattern_family,
-                           blob9 as is_disposable, blob10 as is_free_provider,
-                           blob11 as has_plus_addressing, blob12 as has_keyboard_walk,
-                           blob13 as is_gibberish,
+                           blob9 as disposable, blob10 as is_free_provider,
+                           blob11 as has_plus_addressing,
                            double1 as risk_score, double2 as entropy_score,
                            double3 as bot_score, double4 as asn,
                            double5 as latency_ms, double6 as tld_risk_score,

@@ -47,12 +47,14 @@ export async function query(sql: string, hours: number = 24): Promise<QueryResul
     throw new Error('API key not set. Please enter your API key.');
   }
 
-  const encodedSQL = encodeURIComponent(sql);
-  const response = await fetch(`${API_BASE}/admin/analytics?query=${encodedSQL}&hours=${hours}`, {
-    method: 'GET',
+  // Use POST to avoid Cloudflare WAF blocking SQL in URL params
+  const response = await fetch(`${API_BASE}/admin/analytics`, {
+    method: 'POST',
     headers: {
       'X-API-Key': apiKey,
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify({ query: sql, hours }),
   });
 
   if (!response.ok) {
@@ -320,26 +322,20 @@ export async function loadPlusAddressing(hours: number = 24) {
   return (result.data || []).map((row) => ({ domain: String(row.domain), count: Number(row.count) }));
 }
 
-export async function loadKeyboardWalks(hours: number = 24) {
-  const result = await query(`
-    SELECT has_keyboard_walk, COUNT(*) as count
-    FROM validations
-    ${buildTimeFilter(hours)}
-    GROUP BY has_keyboard_walk
-    ORDER BY count DESC
-  `, hours);
-  return (result.data || []).map((row) => ({ hasWalk: Number(row.has_keyboard_walk), count: Number(row.count) }));
+/**
+ * DEPRECATED (v2.2.0): Keyboard walk detector removed
+ * Returns empty data - column always 0 in database
+ */
+export async function loadKeyboardWalks(_hours: number = 24) {
+  return [{ type: 'DEPRECATED (v2.2.0)', count: 0 }];
 }
 
-export async function loadGibberish(hours: number = 24) {
-  const result = await query(`
-    SELECT is_gibberish, COUNT(*) as count
-    FROM validations
-    ${buildTimeFilter(hours)}
-    GROUP BY is_gibberish
-    ORDER BY count DESC
-  `, hours);
-  return (result.data || []).map((row) => ({ isGibberish: String(row.is_gibberish), count: Number(row.count) }));
+/**
+ * DEPRECATED (v2.2.0): Gibberish detector removed
+ * Returns empty data - column always 0 in database
+ */
+export async function loadGibberish(_hours: number = 24) {
+  return [{ isGibberish: 'DEPRECATED (v2.2.0)', count: 0 }];
 }
 
 export async function loadEntropyScores(hours: number = 24) {

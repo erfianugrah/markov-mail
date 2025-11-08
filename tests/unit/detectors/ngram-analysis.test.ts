@@ -2,6 +2,9 @@
  * N-Gram Analysis Tests
  *
  * Tests for natural language detection using character n-grams.
+ *
+ * DEPRECATED (v2.2.0): Gibberish detector removed in favor of Markov Chain.
+ * These tests are kept for reference only.
  */
 
 import { describe, it, expect } from 'vitest';

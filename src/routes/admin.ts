@@ -309,11 +309,12 @@ admin.get('/health', (c) => {
  * Query D1 database with analytics data
  * Query params:
  *   - type: Pre-built query type (summary, blockReasons, etc.) - recommended
- *   - query: Custom SQL query (validated for security) - for dashboard
+ *   - query: Custom SQL query (validated for security) - DEPRECATED: Use POST instead
  *   - hours: Number of hours to look back (default: 24)
  *
  * SECURITY: Custom SQL queries are validated to only allow safe SELECT queries
  * Migration Note: Now uses D1 instead of Analytics Engine
+ * CLOUDFLARE WAF: GET requests with SQL queries may be blocked. Use POST for custom queries.
  */
 admin.get('/analytics', async (c) => {
 	try {
@@ -394,6 +395,73 @@ admin.get('/analytics', async (c) => {
 		return c.json({
 			success: true,
 			mode,
+			query,
+			hours,
+			data,
+		});
+	} catch (error) {
+		return c.json(
+			{
+				error: 'Analytics query failed',
+				message: error instanceof Error ? error.message : 'Unknown error',
+			},
+			500
+		);
+	}
+});
+
+/**
+ * POST /admin/analytics
+ * Query D1 database with custom SQL (bypasses Cloudflare WAF)
+ * Body: { query: string, hours?: number }
+ *
+ * Use this instead of GET with query param to avoid Cloudflare WAF blocking SQL queries
+ */
+admin.post('/analytics', async (c) => {
+	try {
+		if (!c.env.DB) {
+			return c.json(
+				{
+					error: 'D1 database not configured',
+					message: 'DB binding is missing. Check wrangler.jsonc configuration.',
+				},
+				503
+			);
+		}
+
+		const body = await c.req.json<{ query: string; hours?: number }>();
+		const query = body.query;
+		const hours = body.hours || 24;
+
+		if (!query) {
+			return c.json(
+				{
+					error: 'Missing query',
+					message: 'Provide SQL query in request body: { query: "SELECT ..." }',
+				},
+				400
+			);
+		}
+
+		// SECURITY: Validate custom SQL to prevent injection
+		const validation = validateD1Query(query);
+		if (!validation.valid) {
+			return c.json(
+				{
+					error: 'Invalid SQL query',
+					message: validation.error,
+					hint: 'Only SELECT queries on the validations table are allowed',
+				},
+				400
+			);
+		}
+
+		// Execute query on D1
+		const data = await executeD1Query(c.env.DB, query);
+
+		return c.json({
+			success: true,
+			mode: 'custom',
 			query,
 			hours,
 			data,

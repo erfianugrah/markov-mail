@@ -12,11 +12,10 @@ import { loadTLDRiskProfiles } from './services/tld-risk-updater';
 import {
 	extractPatternFamily,
 	normalizeEmail,
-	detectKeyboardWalk,
-	detectGibberish,
 	analyzeTLDRisk,
 	isHighRiskTLD
 } from './detectors/index';
+// DEPRECATED (v2.2.0): detectKeyboardWalk, detectGibberish removed
 import { NGramMarkovChain } from './detectors/ngram-markov';
 import { getConfig } from './config';
 import adminRoutes from './routes/admin';

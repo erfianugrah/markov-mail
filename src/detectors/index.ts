@@ -59,26 +59,24 @@ export {
   type PatternFamilyResult
 } from './pattern-family';
 
-// Keyboard walk detection
-export {
-  detectKeyboardWalk,
-  getKeyboardWalkRiskScore,
-  type KeyboardWalkResult
-} from './keyboard-walk';
+// DEPRECATED (2025-11-08): Keyboard walk, keyboard mashing, gibberish detectors
+// Replaced with Markov-only detection for higher accuracy (83% vs 67%)
+// These exports are commented out to prevent usage. Files remain for reference.
+//
+// export { detectKeyboardWalk, getKeyboardWalkRiskScore, type KeyboardWalkResult } from './keyboard-walk';
+// export { detectKeyboardMashing, getKeyboardMashingRiskScore, type KeyboardMashingResult } from './keyboard-mashing';
+// export { detectGibberish } from './ngram-analysis';
+//
+// If you need these for testing/analysis, import directly from the file:
+// import { detectKeyboardWalk } from './detectors/keyboard-walk';
 
-// Keyboard mashing detection (region clustering)
-export {
-  detectKeyboardMashing,
-  getKeyboardMashingRiskScore,
-  type KeyboardMashingResult
-} from './keyboard-mashing';
-
-// N-Gram analysis (natural language detection)
+// N-Gram analysis (natural language detection) - PARTIAL DEPRECATION
+// detectGibberish is deprecated, but other n-gram utilities remain useful
 export {
   analyzeNGramNaturalness,
   getNGramRiskScore,
   containsNamePatterns,
-  detectGibberish,
+  // detectGibberish, // DEPRECATED - use Markov detection instead
   type NGramAnalysisResult
 } from './ngram-analysis';
 

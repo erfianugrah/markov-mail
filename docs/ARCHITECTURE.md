@@ -79,13 +79,15 @@ Deployment:    Wrangler 3.x
                     │ │ Sequential     ││
                     │ │ Dated          ││
                     │ │ Plus-Addr      ││
-                    │ │ Keyboard Walk  ││
-                    │ │ N-Gram         ││
                     │ │ TLD Risk       ││
                     │ │ Benford's Law  ││
-                    │ │ Markov Chain   ││
+                    │ │ Markov Chain   ││ (Primary)
                     │ └────────────────┘│
                     └────────┬──────────┘
+
+                    Note: Keyboard detectors removed
+                    walk and gibberish detectors
+                    in favor of Markov-only approach
                              │
                     ┌────────▼──────────┐
                     │   Risk Scoring    │
@@ -263,6 +265,10 @@ if (numbers.length > 0) {
 
 #### keyboard-walk.ts
 
+> **DEPRECATED**: Keyboard walk and keyboard mashing detectors removed due to high false positive rates.
+> Keyboard patterns are now detected by Markov Chain analysis.
+> Files remain for reference only.
+
 **Purpose**: Detect keyboard pattern sequences
 
 **Patterns**:
@@ -276,6 +282,10 @@ if (numbers.length > 0) {
 - Direction-aware (forward/backward)
 
 #### ngram-analysis.ts (Phase 6A)
+
+> **DEPRECATED**: Gibberish detector removed in favor of Markov Chain cross-entropy analysis.
+> Markov models provide superior accuracy (83% vs 67%) with fewer false positives.
+> Files remain for reference only.
 
 **Purpose**: Detect gibberish using character n-gram frequency
 
@@ -751,13 +761,15 @@ Analytics (async):   ~0.3ms (non-blocking)
 | Sequential Pattern | O(n) | 90% | 3% | 0.05ms | ✅ Active |
 | Dated Pattern | O(n) | 85% | 5% | 0.05ms | ✅ Active |
 | Plus-Addressing | O(n) | 95% | 2% | 0.1ms | ✅ Active |
-| Keyboard Walk | O(n×k) | 95% | 1% | 0.1ms | ✅ Active |
-| N-Gram Analysis | O(n) | 90% | 8% | 0.15ms | ✅ Active |
+| Keyboard Walk | O(n×k) | 95% | **33%** | 0.1ms | ❌ **DEPRECATED** |
+| Keyboard Mashing | O(n×k) | 67% | **33%** | 0.1ms | ❌ **DEPRECATED** |
+| N-Gram Gibberish | O(n) | 90% | 8% | 0.15ms | ❌ **DEPRECATED** |
 | TLD Risk | O(1) | 95% | 5% | 0.05ms | ✅ Active |
 | Benford's Law | O(m) | 85% | 3% | N/A* | ✅ Active |
-| Markov Chain Ensemble | O(n×k) | 98% | <1% | 0.10ms | ✅ Active |
+| Markov Chain Ensemble | O(n×k) | 98% | <1% | 0.10ms | ✅ Active (Primary) |
 
 *Benford not in critical path (batch analysis only)
+**Note: Keyboard walk, keyboard mashing, and gibberish detectors replaced with Markov-only approach**
 
 **Overall System Performance**:
 - Combined Detection Rate: 95-98%
@@ -1004,8 +1016,10 @@ High Traffic:   100-1000s of instances
 2. Disposable emails (170+ domains)
 3. Plus-addressing abuse (normalization)
 4. Batch attacks (Benford's Law)
-5. Gibberish generation (N-Gram)
-6. High-risk TLDs (profiling)
+5. Fraudulent patterns (Markov Chain - trained on 111K+ emails)
+6. Keyboard patterns (Markov Chain detection)
+7. Gibberish/random text (Markov Chain detection)
+8. High-risk TLDs (profiling)
 
 **Not Protected Against**:
 1. Sophisticated human attackers

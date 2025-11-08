@@ -14,16 +14,14 @@ The fraud detection worker tracks all validations and stores structured metrics 
 - Training pipeline metrics
 - A/B test experiments
 
-## Migration from Analytics Engine
+## Database Backend
 
-**Status:** ✅ Migrated to D1 (November 2025)
-
-This system previously used Cloudflare Workers Analytics Engine but has been migrated to D1 for:
-- **Named columns** instead of blob1-20, double1-13
+The fraud detection worker uses **Cloudflare D1** (SQLite) for analytics storage:
+- **Named columns** for clarity and ease of querying
 - **Full SQL support** (JOINs, subqueries, CTEs)
 - **Mutable data** (can DELETE test data and old records)
-- **Better types** (INTEGER 0/1 instead of 'yes'/'no' strings)
-- **More indexes** (17 indexes for query performance)
+- **Strong typing** (INTEGER 0/1, proper datetime columns)
+- **17 indexes** for query performance
 - **Multiple tables** (validations, training_metrics, ab_test_metrics, admin_metrics)
 
 ## Quick Start
@@ -50,10 +48,11 @@ curl https://your-worker.dev/admin/analytics?type=summary&hours=168 \
 curl https://your-worker.dev/admin/analytics/queries \
   -H "X-API-Key: your-admin-api-key"
 
-# Run custom SQL query (with validation)
-curl -G https://your-worker.dev/admin/analytics \
-  --data-urlencode "query=SELECT decision, COUNT(*) FROM validations WHERE timestamp >= datetime('now', '-24 hours') GROUP BY decision" \
-  -H "X-API-Key: your-admin-api-key"
+# Run custom SQL query (use POST to avoid Cloudflare WAF)
+curl -X POST https://your-worker.dev/admin/analytics \
+  -H "X-API-Key: your-admin-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"SELECT decision, COUNT(*) FROM validations WHERE timestamp >= datetime('\''now'\'', '\''-24 hours'\'') GROUP BY decision","hours":24}'
 ```
 
 ## Database Schema
@@ -87,8 +86,8 @@ Primary table storing all email validation events.
 | `is_disposable` | INTEGER | Is disposable email? (0/1) | 0, 1 |
 | `is_free_provider` | INTEGER | Is free provider? (0/1) | 0, 1 |
 | `has_plus_addressing` | INTEGER | Has + addressing? (0/1) | 0, 1 |
-| `has_keyboard_walk` | INTEGER | Has keyboard walk? (0/1) | 0, 1 |
-| `is_gibberish` | INTEGER | Is gibberish? (0/1) | 0, 1 |
+| `has_keyboard_walk` | INTEGER | Keyboard walk detected (0/1) - Always 0 | 0 |
+| `is_gibberish` | INTEGER | Gibberish detected (0/1) - Always 0 | 0 |
 | `entropy_score` | REAL | Text entropy (0-1) | 0.42 |
 | `bot_score` | REAL | Bot detection score | 0-99 |
 | `tld_risk_score` | REAL | TLD risk score | 0.29 |
@@ -416,6 +415,8 @@ LIMIT 20
 
 #### High entropy emails (potential gibberish)
 
+> **Note**: `is_gibberish` field is always 0. Use `entropy_score` and Markov detection for gibberish detection.
+
 ```sql
 SELECT
   email_local_part,
@@ -423,7 +424,8 @@ SELECT
   decision,
   entropy_score,
   risk_score,
-  is_gibberish
+  markov_detected,
+  markov_confidence
 FROM validations
 WHERE timestamp >= datetime('now', '-24 hours')
   AND entropy_score > 0.7

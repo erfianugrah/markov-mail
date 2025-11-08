@@ -1,14 +1,18 @@
 /**
  * Test Email Generator
  * Generate fraudulent email patterns for testing
+ *
+ * DEPRECATED (v2.2.0): 'gibberish' and 'keyboard_walk' pattern types are deprecated.
+ * These patterns are now detected by Markov Chain analysis.
+ * Pattern types kept for backwards compatibility with existing tests.
  */
 
 export type PatternType =
 	| 'sequential'
 	| 'sequential_padded'
 	| 'dated'
-	| 'gibberish'
-	| 'keyboard_walk'
+	| 'gibberish'          // DEPRECATED: Use Markov detection
+	| 'keyboard_walk'      // DEPRECATED: Use Markov detection
 	| 'plus_addressing'
 	| 'name_sequential'
 	| 'random_suffix'

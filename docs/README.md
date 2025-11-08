@@ -30,12 +30,14 @@
 
 **Production**: ✅ **Live at https://your-worker.workers.dev**
 
-**Version**: 2.1.1 (2025-01-07)
+**Version**: 2.2.0 (2025-11-08)
 
-**Active Detectors**: **8/8** ✅
-- Markov Chain (N-grams), Keyboard Walk, Keyboard Mashing, Pattern Classification, N-Gram Analysis, TLD Risk, Plus-Addressing, Benford's Law
+**Active Detectors**: **5 core** ✅
+- **Active**: Markov Chain (PRIMARY), Pattern Classification, TLD Risk, Plus-Addressing, Benford's Law
+- **Deprecated**: Keyboard Walk, Keyboard Mashing, N-Gram Gibberish (replaced by Markov)
 
-**Training Data**: 91,966 labeled emails (50.2K legit + 41.8K fraud)
+**Training Data**: 111K+ legit + 105K fraud emails (Markov models)
+**Relabeled Dataset**: 50,000 unique emails for future training
 
 **Performance**:
 - Latency: ~35ms average
@@ -223,9 +225,10 @@ See [Analytics Documentation](ANALYTICS.md)
 
 ## 📅 Version History
 
-**Current Version**: 2.1.1 (2025-01-07)
+**Current Version**: 2.2.0 (2025-11-08)
 
 **Major Updates**:
+- **2.2.0** (2025-11-08): Markov-only detection, deprecated heuristic detectors, 83% accuracy (0% false positives)
 - **2.1.1** (2025-01-07): Keyboard mashing detector, 8 keyboard layouts, detector architecture cleanup
 - **2.1.0** (2025-11-06): Pattern-based training (91K emails), Markov-educated gibberish detection
 - **2.0.5** (2025-11-05): Trigram models, birth year protection, false positive reduction

@@ -11,8 +11,9 @@ import { logger } from '../../utils/logger.ts';
 import { parseArgs, getOption, hasFlag } from '../../utils/args.ts';
 
 // Import pattern detectors
-import { detectKeyboardWalk } from '../../../src/detectors/keyboard-walk.ts';
-import { detectGibberish } from '../../../src/detectors/ngram-analysis.ts';
+// DEPRECATED (v2.2.0): Keyboard walk and gibberish detectors removed
+// import { detectKeyboardWalk } from '../../../src/detectors/keyboard-walk.ts';
+// import { detectGibberish } from '../../../src/detectors/ngram-analysis.ts';
 import { extractPatternFamily } from '../../../src/detectors/pattern-family.ts';
 
 interface RelabelOptions {
@@ -40,28 +41,28 @@ async function analyzePattern(email: string): Promise<{ isFraud: boolean; reason
   let fraudScore = 0;
   let reasons: string[] = [];
 
-  // 1. Keyboard walk detection (very strong signal)
-  const keyboardWalk = detectKeyboardWalk(email);
-  if (keyboardWalk.hasKeyboardWalk) {
-    fraudScore += 0.9;
-    reasons.push(`keyboard_walk_${keyboardWalk.walkType}`);
-  }
+  // DEPRECATED (v2.2.0): Keyboard walk detection removed
+  // const keyboardWalk = detectKeyboardWalk(email);
+  // if (keyboardWalk.hasKeyboardWalk) {
+  //   fraudScore += 0.9;
+  //   reasons.push(`keyboard_walk_${keyboardWalk.walkType}`);
+  // }
 
-  // 2. Sequential pattern detection
+  // 1. Sequential pattern detection
   const patternFamily = await extractPatternFamily(email);
   if (patternFamily.patternType === 'sequential') {
     fraudScore += 0.8;
     reasons.push('sequential_pattern');
   }
 
-  // 3. Gibberish detection (moderate signal - can have false positives on names)
-  const gibberish = detectGibberish(email);
-  if (gibberish.isGibberish && gibberish.confidence > 0.8) {
-    fraudScore += 0.6 * gibberish.confidence;
-    reasons.push('gibberish');
-  }
+  // DEPRECATED (v2.2.0): Gibberish detection removed
+  // const gibberish = detectGibberish(email);
+  // if (gibberish.isGibberish && gibberish.confidence > 0.8) {
+  //   fraudScore += 0.6 * gibberish.confidence;
+  //   reasons.push('gibberish');
+  // }
 
-  // 4. Random pattern with high confidence
+  // 2. Random pattern with high confidence
   if (patternFamily.patternType === 'random' && patternFamily.confidence > 0.7) {
     fraudScore += 0.7;
     reasons.push('random_high_confidence');
