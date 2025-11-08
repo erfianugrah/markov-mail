@@ -234,9 +234,9 @@ describe('N-Gram Analysis', () => {
 
     it('should not flag natural names as gibberish', () => {
       const natural = [
-        'anderson@example.com',
-        'williamson@test.com',
-        'personU.personV@domain.com'
+        'person1@example.com',
+        'person2@test.com',
+        'user1@domain.com'
       ];
 
       natural.forEach(email => {
@@ -317,10 +317,10 @@ describe('N-Gram Analysis', () => {
   describe('Integration scenarios', () => {
     it('should handle real-world natural email patterns', () => {
       const realEmails = [
-        'person1.person2@gmail.com',
-        'personI.personJ@yahoo.com',
-        'michael_anderson@company.com',
-        'personU.personV@business.co.uk'
+        'person1@gmail.com',
+        'user1@yahoo.com',
+        'person2@company.com',
+        'user2@business.co.uk'
       ];
 
       realEmails.forEach(email => {

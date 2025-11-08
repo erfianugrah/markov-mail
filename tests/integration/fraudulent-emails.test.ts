@@ -109,7 +109,7 @@ describe('Fraudulent Email Detection Suite', () => {
 			for (const emailData of highRiskEmails) {
 				const result = await validateEmail({
 					email: emailData.email,
-					consumer: 'OWF',
+					consumer: 'MY_APP',
 					flow: 'SIGNUP_EMAIL_VERIFY',
 				});
 
@@ -146,7 +146,7 @@ describe('Fraudulent Email Detection Suite', () => {
 			for (const emailData of sample) {
 				const result = await validateEmail({
 					email: emailData.email,
-					consumer: 'OWF',
+					consumer: 'MY_APP',
 					flow: 'SIGNUP_EMAIL_VERIFY',
 				});
 
@@ -183,7 +183,7 @@ describe('Fraudulent Email Detection Suite', () => {
 				for (const email of gibberishEmails) {
 					const result = await validateEmail({
 						email,
-						consumer: 'OWF',
+						consumer: 'MY_APP',
 						flow: 'SIGNUP_EMAIL_VERIFY',
 					});
 
@@ -214,7 +214,7 @@ describe('Fraudulent Email Detection Suite', () => {
 				for (const email of sequentialEmails) {
 					const result = await validateEmail({
 						email,
-						consumer: 'OWF',
+						consumer: 'MY_APP',
 						flow: 'SIGNUP_EMAIL_VERIFY',
 					});
 
@@ -245,7 +245,7 @@ describe('Fraudulent Email Detection Suite', () => {
 				for (const email of datedEmails) {
 					const result = await validateEmail({
 						email,
-						consumer: 'OWF',
+						consumer: 'MY_APP',
 						flow: 'SIGNUP_EMAIL_VERIFY',
 					});
 
@@ -276,7 +276,7 @@ describe('Fraudulent Email Detection Suite', () => {
 				for (const email of plusAddressingEmails) {
 					const result = await validateEmail({
 						email,
-						consumer: 'OWF',
+						consumer: 'MY_APP',
 						flow: 'SIGNUP_EMAIL_VERIFY',
 					});
 
@@ -303,7 +303,7 @@ describe('Fraudulent Email Detection Suite', () => {
 				for (const email of keyboardWalkEmails) {
 					const result = await validateEmail({
 						email,
-						consumer: 'OWF',
+						consumer: 'MY_APP',
 						flow: 'SIGNUP_EMAIL_VERIFY',
 					});
 
@@ -328,7 +328,7 @@ describe('Fraudulent Email Detection Suite', () => {
 
 			const result = await validateEmail({
 				email: testEmail,
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			});
 
@@ -347,7 +347,7 @@ describe('Fraudulent Email Detection Suite', () => {
 			for (const email of testEmails) {
 				const result = await validateEmail({
 					email,
-					consumer: 'OWF',
+					consumer: 'MY_APP',
 					flow: 'SIGNUP_EMAIL_VERIFY',
 				});
 
@@ -359,7 +359,7 @@ describe('Fraudulent Email Detection Suite', () => {
 		it('should include all required signals', async () => {
 			const result = await validateEmail({
 				email: 'test@example.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			});
 
@@ -379,15 +379,15 @@ describe('Fraudulent Email Detection Suite', () => {
 	describe('Legitimate vs Fraudulent Distinction', () => {
 		it('should allow legitimate business emails', async () => {
 			const legitimateEmails = [
-				'person1.person2@company.com',
-				'personI.personJ@enterprise.org',
+				'person1@company.com',
+				'user1@enterprise.org',
 				'contact@business.net',
 			];
 
 			for (const email of legitimateEmails) {
 				const result = await validateEmail({
 					email,
-					consumer: 'OWF',
+					consumer: 'MY_APP',
 					flow: 'SIGNUP_EMAIL_VERIFY',
 				});
 
@@ -406,7 +406,7 @@ describe('Fraudulent Email Detection Suite', () => {
 			for (const email of fraudulentEmails) {
 				const result = await validateEmail({
 					email,
-					consumer: 'OWF',
+					consumer: 'MY_APP',
 					flow: 'SIGNUP_EMAIL_VERIFY',
 				});
 

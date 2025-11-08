@@ -109,7 +109,7 @@ describe('Fraud Pattern Detection E2E', () => {
 		const testCases = [
 			{ email: 'user1@example.com', expectedPattern: 'sequential' },
 			{ email: 'test001@company.com', expectedPattern: 'sequential' },
-			{ email: 'john.doe.2024@example.com', expectedPattern: 'dated' },
+			{ email: 'person3.2024@example.com', expectedPattern: 'dated' },
 			{ email: 'qwerty123@test.com', expectedSignal: 'hasKeyboardWalk' },
 			{ email: 'user+spam@gmail.com', expectedSignal: 'hasPlusAddressing' },
 		];
@@ -138,9 +138,9 @@ describe('Fraud Pattern Detection E2E', () => {
 
 	test('should correctly identify legitimate emails', async () => {
 		const legitimateEmails = [
-			'person1.person2@company.com',
-			'personI.personJ@enterprise.org',
-			'personG.personH@business.net',
+			'person1@company.com',
+			'user1@enterprise.org',
+			'person2@business.net',
 			'professor@university.edu',
 			'admin@government.gov',
 		];

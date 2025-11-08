@@ -23,39 +23,39 @@ interface TestCase {
 const TEST_CASES: TestCase[] = [
   // === LEGITIMATE EMAILS (Should ALLOW) ===
   // Real names - common patterns
-  { email: 'person1.person2@gmail.com', expectedDecision: 'allow', category: 'legit-name', notes: 'Common English name' },
-  { email: 'personI.personJ@outlook.com', expectedDecision: 'allow', category: 'legit-name', notes: 'Common English name' },
-  { email: 'personW.personX@yahoo.com', expectedDecision: 'allow', category: 'legit-name', notes: 'Common English name' },
-  { email: 'emily.davis@hotmail.com', expectedDecision: 'allow', category: 'legit-name', notes: 'Common English name' },
-  { email: 'personAA.personBB@protonmail.com', expectedDecision: 'allow', category: 'legit-name', notes: 'Privacy-focused service' },
+  { email: 'person1@gmail.com', expectedDecision: 'allow', category: 'legit-name', notes: 'Generic user pattern' },
+  { email: 'user1@outlook.com', expectedDecision: 'allow', category: 'legit-name', notes: 'Generic user pattern' },
+  { email: 'person2@yahoo.com', expectedDecision: 'allow', category: 'legit-name', notes: 'Generic user pattern' },
+  { email: 'user2@hotmail.com', expectedDecision: 'allow', category: 'legit-name', notes: 'Generic user pattern' },
+  { email: 'person3@protonmail.com', expectedDecision: 'allow', category: 'legit-name', notes: 'Privacy-focused service' },
 
   // International names
-  { email: 'personY.personZ@gmail.com', expectedDecision: 'allow', category: 'legit-international', notes: 'Spanish name' },
-  { email: 'mohammed.ali@outlook.com', expectedDecision: 'allow', category: 'legit-international', notes: 'Arabic name' },
-  { email: 'li.wei@163.com', expectedDecision: 'allow', category: 'legit-international', notes: 'Chinese name' },
-  { email: 'yuki.tanaka@gmail.com', expectedDecision: 'allow', category: 'legit-international', notes: 'Japanese name' },
-  { email: 'max.schmidt@provider.de', expectedDecision: 'allow', category: 'legit-international', notes: 'German name' },
+  { email: 'person4@gmail.com', expectedDecision: 'allow', category: 'legit-international', notes: 'International user' },
+  { email: 'user3@outlook.com', expectedDecision: 'allow', category: 'legit-international', notes: 'International user' },
+  { email: 'person5@163.com', expectedDecision: 'allow', category: 'legit-international', notes: 'International user' },
+  { email: 'user4@gmail.com', expectedDecision: 'allow', category: 'legit-international', notes: 'International user' },
+  { email: 'person6@provider.de', expectedDecision: 'allow', category: 'legit-international', notes: 'International user' },
 
   // Professional emails
-  { email: 'j.smith@company.com', expectedDecision: 'allow', category: 'legit-professional', notes: 'Professional initial format' },
+  { email: 'p.user@company.com', expectedDecision: 'allow', category: 'legit-professional', notes: 'Professional initial format' },
   { email: 'contact@business.io', expectedDecision: 'allow', category: 'legit-professional', notes: 'Business contact' },
   { email: 'info@startup.com', expectedDecision: 'allow', category: 'legit-professional', notes: 'Info address' },
   { email: 'support@service.net', expectedDecision: 'allow', category: 'legit-professional', notes: 'Support address' },
 
   // Legitimate year patterns (birth years, etc.)
-  { email: 'john.smith.1985@gmail.com', expectedDecision: 'allow', category: 'legit-year', notes: 'Birth year - legitimate' },
-  { email: 'sarah1990@outlook.com', expectedDecision: 'allow', category: 'legit-year', notes: 'Birth year suffix' },
-  { email: 'mike_1988@yahoo.com', expectedDecision: 'allow', category: 'legit-year', notes: 'Birth year with underscore' },
+  { email: 'person1.1985@gmail.com', expectedDecision: 'allow', category: 'legit-year', notes: 'Birth year - legitimate' },
+  { email: 'user5.1990@outlook.com', expectedDecision: 'allow', category: 'legit-year', notes: 'Birth year suffix' },
+  { email: 'person7_1988@yahoo.com', expectedDecision: 'allow', category: 'legit-year', notes: 'Birth year with underscore' },
 
   // 2-digit birth years (common pattern)
-  { email: 'sarah90@gmail.com', expectedDecision: 'allow', category: 'legit-2digit-year', notes: '2-digit Millennial birth year (1990)' },
-  { email: 'michael85@yahoo.com', expectedDecision: 'allow', category: 'legit-2digit-year', notes: '2-digit Millennial birth year (1985)' },
-  { email: 'jennifer75@outlook.com', expectedDecision: 'allow', category: 'legit-2digit-year', notes: '2-digit Gen X birth year (1975)' },
-  { email: 'robert70@hotmail.com', expectedDecision: 'allow', category: 'legit-2digit-year', notes: '2-digit Gen X birth year (1970)' },
+  { email: 'person8.90@gmail.com', expectedDecision: 'allow', category: 'legit-2digit-year', notes: '2-digit Millennial birth year (1990)' },
+  { email: 'user6.85@yahoo.com', expectedDecision: 'allow', category: 'legit-2digit-year', notes: '2-digit Millennial birth year (1985)' },
+  { email: 'person9.75@outlook.com', expectedDecision: 'allow', category: 'legit-2digit-year', notes: '2-digit Gen X birth year (1975)' },
+  { email: 'user7.70@hotmail.com', expectedDecision: 'allow', category: 'legit-2digit-year', notes: '2-digit Gen X birth year (1970)' },
 
   // Legitimate number patterns
-  { email: 'alice42@gmail.com', expectedDecision: 'allow', category: 'legit-number', notes: 'Random memorable number' },
-  { email: 'bob007@outlook.com', expectedDecision: 'allow', category: 'legit-number', notes: 'Pop culture reference' },
+  { email: 'user9.42@gmail.com', expectedDecision: 'allow', category: 'legit-number', notes: 'Random memorable number' },
+  { email: 'person11.007@outlook.com', expectedDecision: 'allow', category: 'legit-number', notes: 'Pop culture reference' },
 
   // === FRAUDULENT EMAILS (Should BLOCK) ===
   // Sequential patterns - clear bot behavior
@@ -89,8 +89,8 @@ const TEST_CASES: TestCase[] = [
   { email: 'test@mailinator.com', expectedDecision: 'block', category: 'fraud-disposable', notes: 'Mailinator' },
 
   // Plus addressing abuse - same email, multiple accounts
-  { email: 'john+test1@gmail.com', expectedDecision: 'allow', category: 'warn-plus', notes: 'Plus addressing (allowed but flagged)' },
-  { email: 'sarah+spam@outlook.com', expectedDecision: 'allow', category: 'warn-plus', notes: 'Plus addressing abuse indicator' },
+  { email: 'person10+test1@gmail.com', expectedDecision: 'allow', category: 'warn-plus', notes: 'Plus addressing (allowed but flagged)' },
+  { email: 'user8+spam@outlook.com', expectedDecision: 'allow', category: 'warn-plus', notes: 'Plus addressing abuse indicator' },
 
   // === EDGE CASES ===
   // Legitimate but suspicious

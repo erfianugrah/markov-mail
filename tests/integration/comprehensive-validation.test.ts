@@ -7,7 +7,7 @@ import worker from '../../src/index';
  *
  * Tests the /validate endpoint with real-world payload structures including:
  * - email: The email address to validate
- * - consumer: The system/application making the request (e.g., "OWF", "PORTAL", "API")
+ * - consumer: The system/application making the request (e.g., "MY_APP", "WEB_APP", "API")
  * - flow: The authentication/signup flow (e.g., "SIGNUP_EMAIL_VERIFY", "PWDLESS_LOGIN_EMAIL")
  */
 
@@ -69,53 +69,53 @@ describe('Comprehensive Email Validation Test Suite', () => {
 	describe('Valid Legitimate Emails - ALLOW/WARN', () => {
 		const testCases: ValidationPayload[] = [
 			{
-				email: 'person1.person2@company.com',
-				consumer: 'OWF',
+				email: 'user1@company.com',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
-				email: 'personI.personJ@enterprise.org',
-				consumer: 'OWF',
+				email: 'person1@enterprise.org',
+				consumer: 'MY_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
-				email: 'personG.personH@business.net',
-				consumer: 'PORTAL',
+				email: 'user2@business.net',
+				consumer: 'WEB_APP',
 				flow: 'PASSWORD_RESET',
 			},
 			{
-				email: 'personK.personL@startup.io',
+				email: 'person2@startup.io',
 				consumer: 'API',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
-				email: 'personAA.personBB@agency.co',
-				consumer: 'OWF',
+				email: 'user3@agency.co',
+				consumer: 'MY_APP',
 				flow: 'EMAIL_CHANGE',
 			},
 			{
-				email: 'personM.personN@firm.com',
-				consumer: 'PORTAL',
+				email: 'person3@firm.com',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
-				email: 'personO.personP@enterprise.com',
-				consumer: 'OWF',
+				email: 'user4@enterprise.com',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
-				email: 'anna.martin@company.co.uk',
+				email: 'person4@company.co.uk',
 				consumer: 'API',
 				flow: 'ACCOUNT_VERIFY',
 			},
 			{
-				email: 'personQ.personR@business.de',
-				consumer: 'OWF',
+				email: 'user5@business.de',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
-				email: 'personS.personT@startup.fr',
-				consumer: 'PORTAL',
+				email: 'person5@startup.fr',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 		];
@@ -137,12 +137,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 		const testCases: ValidationPayload[] = [
 			{
 				email: 'user123@gmail.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'testuser@yahoo.com',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
@@ -152,12 +152,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 			},
 			{
 				email: 'contact@hotmail.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'hello@protonmail.com',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'EMAIL_CHANGE',
 			},
 		];
@@ -179,12 +179,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 		const testCases: ValidationPayload[] = [
 			{
 				email: 'temp123@throwaway.email',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'fake@tempmail.com',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
@@ -194,12 +194,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 			},
 			{
 				email: 'disposable@10minutemail.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'PASSWORD_RESET',
 			},
 			{
 				email: 'trash@mailinator.com',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
@@ -209,7 +209,7 @@ describe('Comprehensive Email Validation Test Suite', () => {
 			},
 			{
 				email: 'junk@yopmail.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 		];
@@ -229,27 +229,27 @@ describe('Comprehensive Email Validation Test Suite', () => {
 		const testCases: ValidationPayload[] = [
 			{
 				email: 'user1@example.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'user2@example.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'user3@example.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'test001@company.com',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
 				email: 'test002@company.com',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
@@ -264,12 +264,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 			},
 			{
 				email: 'user_a@test.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'user_b@test.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 		];
@@ -289,13 +289,13 @@ describe('Comprehensive Email Validation Test Suite', () => {
 	describe('Dated Pattern Emails - WARN/BLOCK', () => {
 		const testCases: ValidationPayload[] = [
 			{
-				email: 'person1.person2@example.com',
-				consumer: 'OWF',
+				email: 'user8.2024@example.com',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
-				email: 'user_2025@company.com',
-				consumer: 'PORTAL',
+				email: 'person8_2025@company.com',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
@@ -305,12 +305,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 			},
 			{
 				email: 'account.2025@business.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'PASSWORD_RESET',
 			},
 			{
 				email: 'user2024test@example.com',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 		];
@@ -331,32 +331,32 @@ describe('Comprehensive Email Validation Test Suite', () => {
 		const testCases: ValidationPayload[] = [
 			{
 				email: 'user+1@gmail.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'user+2@gmail.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'test+tag1@yahoo.com',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
 				email: 'test+tag2@yahoo.com',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
-				email: 'john+spam@outlook.com',
+				email: 'user6+spam@outlook.com',
 				consumer: 'API',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
-				email: 'sarah+test@hotmail.com',
-				consumer: 'OWF',
+				email: 'person6+test@hotmail.com',
+				consumer: 'MY_APP',
 				flow: 'EMAIL_CHANGE',
 			},
 		];
@@ -375,12 +375,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 		const testCases: ValidationPayload[] = [
 			{
 				email: 'qwerty@example.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'asdfgh@test.com',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
@@ -390,12 +390,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 			},
 			{
 				email: 'qazwsx@company.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'PASSWORD_RESET',
 			},
 			{
 				email: '123456@example.com',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
@@ -419,12 +419,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 		const testCases: ValidationPayload[] = [
 			{
 				email: 'xk9m2qw7r4p3@example.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'zxkj3mq9wr@test.com',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
@@ -434,12 +434,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 			},
 			{
 				email: 'a1b2c3d4e5f6@service.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'PASSWORD_RESET',
 			},
 			{
 				email: 'rtyu1234vbnm@example.com',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
@@ -465,12 +465,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 		const testCases: ValidationPayload[] = [
 			{
 				email: 'user@example.tk',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'test@service.ml',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
@@ -480,12 +480,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 			},
 			{
 				email: 'info@company.cf',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'PASSWORD_RESET',
 			},
 			{
 				email: 'admin@site.gq',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
@@ -495,7 +495,7 @@ describe('Comprehensive Email Validation Test Suite', () => {
 			},
 			{
 				email: 'user@example.xyz',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 		];
@@ -517,12 +517,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 		const testCases: ValidationPayload[] = [
 			{
 				email: 'notanemail',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'missing@domain',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
@@ -532,12 +532,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 			},
 			{
 				email: 'double@@domain.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'PASSWORD_RESET',
 			},
 			{
 				email: 'spaces in@email.com',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
@@ -561,12 +561,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 		const testCases: ValidationPayload[] = [
 			{
 				email: 'a@example.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'ab@test.com',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
@@ -590,12 +590,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 		const testCases: ValidationPayload[] = [
 			{
 				email: 'professor@university.edu',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'admin@government.gov',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
@@ -605,7 +605,7 @@ describe('Comprehensive Email Validation Test Suite', () => {
 			},
 			{
 				email: 'officer@agency.gov',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'PASSWORD_RESET',
 			},
 		];
@@ -624,12 +624,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 		const testCases: ValidationPayload[] = [
 			{
 				email: 'user@company.co.uk',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'contact@business.de',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
@@ -639,12 +639,12 @@ describe('Comprehensive Email Validation Test Suite', () => {
 			},
 			{
 				email: 'support@service.jp',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'PASSWORD_RESET',
 			},
 			{
 				email: 'admin@company.ca',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'EMAIL_CHANGE',
 			},
 			{
@@ -667,23 +667,23 @@ describe('Comprehensive Email Validation Test Suite', () => {
 	describe('Mixed Risk Emails - WARN', () => {
 		const testCases: ValidationPayload[] = [
 			{
-				email: 'person1.person2@gmail.com',
-				consumer: 'OWF',
+				email: 'user7@gmail.com',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'testuser2024@yahoo.com',
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			},
 			{
-				email: 'random.name@outlook.com',
+				email: 'person7@outlook.com',
 				consumer: 'API',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			},
 			{
 				email: 'user+test@protonmail.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'PASSWORD_RESET',
 			},
 		];
@@ -700,10 +700,10 @@ describe('Comprehensive Email Validation Test Suite', () => {
 	});
 
 	describe('Real-world Email Scenarios', () => {
-		it('should handle user@service.com with OWF/PWDLESS_LOGIN_EMAIL', async () => {
+		it('should handle user@service.com with MY_APP/PWDLESS_LOGIN_EMAIL', async () => {
 			const result = await validateEmail({
 				email: 'user@service.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'PWDLESS_LOGIN_EMAIL',
 			});
 
@@ -713,10 +713,10 @@ describe('Comprehensive Email Validation Test Suite', () => {
 			expect(result).toHaveProperty('fingerprint');
 		});
 
-		it('should handle user@service.com with OWF/SIGNUP_EMAIL_VERIFY', async () => {
+		it('should handle user@service.com with MY_APP/SIGNUP_EMAIL_VERIFY', async () => {
 			const result = await validateEmail({
 				email: 'user@service.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			});
 
@@ -737,7 +737,7 @@ describe('Comprehensive Email Validation Test Suite', () => {
 			for (const flow of flows) {
 				const result = await validateEmail({
 					email: 'user@service.com',
-					consumer: 'OWF',
+					consumer: 'MY_APP',
 					flow,
 				});
 
@@ -751,7 +751,7 @@ describe('Comprehensive Email Validation Test Suite', () => {
 		it('should detect batch attack with sequential patterns', async () => {
 			const batchEmails = Array.from({ length: 50 }, (_, i) => ({
 				email: `user${i + 1}@example.com`,
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			}));
 
@@ -780,7 +780,7 @@ describe('Comprehensive Email Validation Test Suite', () => {
 		it('should detect batch attack with dated patterns', async () => {
 			const batchEmails = Array.from({ length: 30 }, (_, i) => ({
 				email: `user${i + 1}.2024@example.com`,
-				consumer: 'PORTAL',
+				consumer: 'WEB_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			}));
 
@@ -806,7 +806,7 @@ describe('Comprehensive Email Validation Test Suite', () => {
 		it('should return consistent response structure', async () => {
 			const result = await validateEmail({
 				email: 'test@example.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			});
 
@@ -834,7 +834,7 @@ describe('Comprehensive Email Validation Test Suite', () => {
 		it('should complete validation within acceptable latency', async () => {
 			const result = await validateEmail({
 				email: 'performance.test@example.com',
-				consumer: 'OWF',
+				consumer: 'MY_APP',
 				flow: 'SIGNUP_EMAIL_VERIFY',
 			});
 
@@ -855,7 +855,7 @@ describe('Comprehensive Email Validation Test Suite', () => {
 	});
 
 	describe('Different Consumer Systems', () => {
-		const consumers = ['OWF', 'PORTAL', 'API', 'MOBILE', 'WEB'];
+		const consumers = ['MY_APP', 'WEB_APP', 'API', 'MOBILE', 'WEB'];
 		const testEmail = 'test@example.com';
 
 		consumers.forEach((consumer) => {
@@ -889,7 +889,7 @@ describe('Comprehensive Email Validation Test Suite', () => {
 			it(`should handle ${flow} flow correctly`, async () => {
 				const result = await validateEmail({
 					email: testEmail,
-					consumer: 'OWF',
+					consumer: 'MY_APP',
 					flow,
 				});
 
