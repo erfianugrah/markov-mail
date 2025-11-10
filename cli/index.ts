@@ -25,6 +25,11 @@ const COMMANDS = {
     file: 'commands/train/validate.ts',
     usage: 'train:validate <dataset-path>'
   },
+  'model:validate': {
+    description: 'Validate trained models against test suite',
+    file: 'commands/model/validate.ts',
+    usage: 'model:validate [--remote] [--orders <n>] [--ensemble] [--verbose]'
+  },
   'training:validate': {
     description: 'Validate trained models before deployment',
     file: 'commands/training/validate.ts',
