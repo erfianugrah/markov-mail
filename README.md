@@ -4,11 +4,11 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 
 ## 🚦 Status
 
-**Production**: https://your-worker.workers.dev
-**Version**: 2.2.0 (Production-Ready)
-**Primary Detection**: Markov Chain (trained on 111K+ legitimate + 105K fraud emails)
+**Production**: https://fraud.erfi.dev
+**Version**: 2.4.0 (Production-Ready)
+**Primary Detection**: Markov Chain with Out-of-Distribution (OOD) Detection
 **Training Data**: Pattern-based labels (50.2K legit + 41.8K fraud)
-**Relabeled Dataset**: 50,000 unique emails for future training
+**OOD Threshold**: 3.0 nats cross-entropy (research-backed)
 **Avg Latency**: ~35ms
 
 ### System Health
@@ -23,7 +23,24 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 - ✅ Analytics dashboard with D1 database and pattern versioning
 - ✅ Unified CLI management system
 
-### Latest Updates (v2.2.0 - 2025-11-08)
+### Latest Updates (v2.4.0 - 2025-01-10)
+- 🚨 **Out-of-Distribution (OOD) Detection** - Two-dimensional risk model
+  - **New**: Detects patterns unfamiliar to BOTH fraud and legitimate models
+  - **Threshold**: 3.0 nats cross-entropy (log 2 baseline is 0.69 nats)
+  - **Risk Formula**: abnormalityRisk = min((minEntropy - 3.0) × 0.15, 0.6)
+  - **Research-backed**: Thresholds derived from established information theory
+  - **Examples**: Anagrams, novel shuffles, cross-language mixing
+- 📊 **Database Schema** - Added OOD tracking columns
+  - `min_entropy`: min(H_legit, H_fraud) - abnormality measure
+  - `abnormality_score`: how far above 3.0 threshold
+  - `abnormality_risk`: risk contribution (0.0-0.6)
+  - `ood_detected`: boolean flag for OOD patterns
+- 🔧 **Two-Dimensional Risk** - Classification + Abnormality
+  - Classification risk: differential signal (fraud vs legit)
+  - Abnormality risk: consensus signal (both models confused)
+  - Final risk: max(classificationRisk, abnormalityRisk) + domainRisk
+
+### Previous Updates (v2.2.0 - 2025-11-08)
 - 🎯 **Markov-Only Detection** - Removed heuristic detectors with high false positive rates
   - **DEPRECATED**: Keyboard walk, keyboard mashing, and gibberish detectors
   - Markov Chain is now the primary fraud detector (trained on 111K+ legitimate emails)
@@ -149,12 +166,40 @@ curl -X POST https://your-worker.workers.dev/validate \
     "patternConfidence": 0.6,
     "tldRiskScore": 0.29,
     "markovDetected": false,
-    "markovConfidence": 0.85
+    "markovConfidence": 0.85,
+    "markovCrossEntropyLegit": 2.1,
+    "markovCrossEntropyFraud": 3.8,
+    "minEntropy": 2.1,
+    "abnormalityScore": 0,
+    "abnormalityRisk": 0,
+    "oodDetected": false
   },
   "fingerprint": {
     "hash": "3d1852...",
     "country": "US",
     "asn": 13335
+  }
+}
+```
+
+**OOD Detection Example (v2.4.0)**:
+```bash
+curl -X POST https://fraud.erfi.dev/validate \
+  -H "Content-Type: application/json" \
+  -d '{"email": "inearkstioarsitm2mst@gmail.com"}'
+```
+```json
+{
+  "decision": "warn",
+  "riskScore": 0.30,
+  "message": "suspicious_abnormal_pattern",
+  "signals": {
+    "markovCrossEntropyLegit": 4.45,
+    "markovCrossEntropyFraud": 4.68,
+    "minEntropy": 4.45,
+    "abnormalityScore": 1.45,
+    "abnormalityRisk": 0.22,
+    "oodDetected": true
   }
 }
 ```

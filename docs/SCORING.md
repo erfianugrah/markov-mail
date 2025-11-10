@@ -15,15 +15,16 @@
 
 ## Overview
 
-**Version 2.0+** uses a pure algorithmic approach with **no hardcoded weight multiplications**. Risk scores are calculated directly from detector confidence values.
+**Version 2.4+** uses a two-dimensional risk model combining classification and abnormality detection. Risk scores are calculated algorithmically from Markov Chain cross-entropy values.
 
 ### Key Characteristics
 
 - **Range**: 0.0 - 1.0 (normalized)
-- **Primary Detector**: Markov Chain cross-entropy
-- **Strategy**: Algorithmic with deterministic overrides
-- **Accuracy**: 93% (100% fraud detection, 0% false negatives)
-- **Latency**: < 50ms for all calculations
+- **Primary Detector**: Markov Chain cross-entropy (two-dimensional)
+- **Strategy**: Max of classification risk and abnormality risk
+- **OOD Detection**: Catches patterns unfamiliar to both models (v2.4.0)
+- **Accuracy**: 83% overall (0% false positives on legitimate names)
+- **Latency**: ~35ms average
 
 ---
 
@@ -54,26 +55,39 @@ riskScore = Math.max(markovRisk, patternRisk, entropyRisk) + domainRisk;
 - Entropy and pattern detection overlap with Markov
 - Manual tuning required
 
-**Current Approach** - Markov-only:
+**Current Approach (v2.4.0)** - Two-Dimensional Risk:
 ```typescript
-// Primary: Use Markov confidence directly
-riskScore = markovResult?.isLikelyFraudulent ? markovResult.confidence : 0;
+// Dimension 1: Classification Risk (differential signal)
+// Which model fits better: fraud vs legit?
+const classificationRisk = markovResult?.isLikelyFraudulent
+  ? markovResult.confidence
+  : 0;
 
-// Secondary: Deterministic pattern overrides only
-if (sequential) riskScore = Math.max(riskScore, 0.8);
-if (dated) riskScore = Math.max(riskScore, patternConfidence);
-if (hasPlus) riskScore = Math.max(riskScore, 0.6);
+// Dimension 2: Abnormality Risk (consensus signal)
+// Are BOTH models confused? (OOD detection)
+const minEntropy = Math.min(H_legit, H_fraud);
+const abnormalityScore = Math.max(0, minEntropy - 3.0);
+const abnormalityRisk = Math.min(abnormalityScore * 0.15, 0.6);
 
-// Tertiary: Domain signals (additive)
+// Take worst case (maximum of two dimensions)
+let score = Math.max(classificationRisk, abnormalityRisk);
+
+// Pattern overrides (deterministic)
+if (sequential) score = Math.max(score, 0.8);
+if (dated) score = Math.max(score, patternConfidence);
+if (hasPlus) score = Math.max(score, 0.6);
+
+// Add domain risk (additive)
 const domainRisk = domainReputationScore * 0.2 + tldRiskScore * 0.3;
-riskScore = Math.min(riskScore + domainRisk, 1.0);
+riskScore = Math.min(score + domainRisk, 1.0);
 ```
 
 **Benefits**:
-- Markov confidence used directly (no dilution)
+- Catches novel patterns unfamiliar to both models (OOD)
+- Classification and abnormality are independent dimensions
+- No dilution from weight multiplication
 - Clear priority order
-- Deterministic pattern overrides
-- No overlap or double-counting
+- Research-backed thresholds (3.0 nats)
 
 ---
 
@@ -88,12 +102,34 @@ These cause immediate blocking regardless of algorithmic scoring:
 | Invalid email format | 0.8 | Malformed address |
 | Disposable domain | 0.95 | Temp email service |
 
-### Priority 2: Algorithmic Scoring
+### Priority 2: Two-Dimensional Algorithmic Scoring (v2.4.0)
 
-**Step 1: Primary Detection (Markov Chain)**
+**Dimension 1: Classification Risk**
 
 ```typescript
-// v2.2.0 - Markov-only approach
+// Differential signal: fraud vs legit
+const classificationRisk = markovResult?.isLikelyFraudulent
+  ? markovResult.confidence
+  : 0;
+```
+
+**Dimension 2: Abnormality Risk (OOD Detection)**
+
+```typescript
+// Consensus signal: both models confused?
+const minEntropy = Math.min(
+  markovResult.crossEntropyLegit,
+  markovResult.crossEntropyFraud
+);
+
+const abnormalityScore = Math.max(0, minEntropy - 3.0);
+const abnormalityRisk = Math.min(abnormalityScore * 0.15, 0.6);
+```
+
+**Combined Risk Calculation**
+
+```typescript
+// v2.4.0 - Two-dimensional approach
 function calculateAlgorithmicRiskScore({
   markovResult,
   patternFamilyResult,

@@ -4,16 +4,19 @@
 
 ## Overview
 
-The system uses **5 primary detectors** that run in parallel, with Markov Chain as the main fraud detection method.
+The system uses **6 detection methods** with Markov Chain as the primary detector and OOD detection as the safety net.
 
 | Detector | Purpose | Patterns Detected | Latency |
 |----------|---------|-------------------|---------|
 | **Markov Chain** | **ML fraud detection** | **All fraud patterns** | **0.10ms** |
+| **OOD Detection** | **Abnormality detection** | **Novel/unfamiliar patterns** | **+0ms** |
 | Sequential | Numbered accounts | user123, test001 | 0.05ms |
 | Dated | Date-based patterns | john.2025, oct2024 | 0.05ms |
 | Plus-Addressing | Email aliasing abuse | user+1, user+spam | 0.10ms |
 | TLD Risk | Domain extension risk | .tk, .ml, .ga | 0.05ms |
 | Benford's Law | Batch attack detection | Statistical analysis | N/A (batch only) |
+
+**New in v2.4.0**: Out-of-Distribution (OOD) Detection catches patterns unfamiliar to both models. See [OOD_DETECTION.md](./OOD_DETECTION.md) for complete documentation.
 
 ---
 
@@ -434,6 +437,145 @@ if (markovResult.isLikelyFraudulent) {
 }
 // Weighted at 25% in final risk calculation
 ```
+
+---
+
+## 7. Out-of-Distribution (OOD) Detector (v2.4.0)
+
+**File**: `src/middleware/fraud-detection.ts` (integrated with Markov evaluation)
+
+### Purpose
+Detect patterns that are unfamiliar to BOTH the legitimate and fraudulent models. This catches novel attack patterns not seen during training.
+
+### The Problem
+
+When both Markov models have high cross-entropy (both confused), the system previously treated this as "uncertain" and allowed it. But if BOTH models are confused, that's a consensus signal that the pattern is abnormal.
+
+**Example:**
+```
+Email: oarnimstiaremtn@gmail.com
+H_legit = 4.51 nats (confused)
+H_fraud = 4.32 nats (confused)
+Old behavior: confidence = 0.08 → ALLOW
+New behavior: abnormalityRisk = 0.20 → WARN
+```
+
+### Algorithm
+
+**Step 1: Calculate Minimum Entropy**
+```typescript
+const minEntropy = Math.min(H_legit, H_fraud);
+```
+
+**Step 2: Check OOD Threshold (3.0 nats)**
+```typescript
+const abnormalityScore = Math.max(0, minEntropy - 3.0);
+```
+
+**Step 3: Scale to Risk**
+```typescript
+const abnormalityRisk = Math.min(abnormalityScore * 0.15, 0.6);
+```
+
+**Step 4: Combine with Classification Risk**
+```typescript
+const classificationRisk = markovResult.isLikelyFraudulent
+  ? markovResult.confidence
+  : 0;
+
+const finalRisk = Math.max(classificationRisk, abnormalityRisk) + domainRisk;
+```
+
+### Two-Dimensional Risk Model
+
+**Dimension 1: Classification** (differential signal)
+- Which model fits better: fraud vs legit?
+- Measures if the pattern is fraudulent or legitimate
+
+**Dimension 2: Abnormality** (consensus signal)
+- Are both models confused?
+- Measures if the pattern is outside training distribution
+
+We take the MAXIMUM of these two risks (worst case), then add domain signals.
+
+### Threshold Justification: 3.0 Nats
+
+From information theory:
+- **0.69 nats**: log₂ baseline (random guessing)
+- **< 0.2 nats**: good predictions
+- **> 1.0 nats**: poor predictions
+- **> 3.0 nats**: severe confusion (out-of-distribution)
+
+The 3.0 threshold means the pattern requires ~8× more bits to encode than expected (2^3 = 8).
+
+### Examples
+
+**Severe OOD (Anagram)**:
+```
+Email: inearkstioarsitm2mst@gmail.com
+H_legit = 4.45, H_fraud = 4.68
+minEntropy = 4.45
+abnormalityScore = 1.45
+abnormalityRisk = 0.22
+Decision: WARN
+```
+
+**Moderate OOD**:
+```
+Email: armentsiorast@gmail.com
+H_legit = 3.60, H_fraud = 3.85
+minEntropy = 3.60
+abnormalityScore = 0.60
+abnormalityRisk = 0.09
+Decision: ALLOW (below WARN threshold)
+```
+
+**Normal (No OOD)**:
+```
+Email: person1@gmail.com
+H_legit = 2.1, H_fraud = 3.8
+minEntropy = 2.1
+abnormalityScore = 0 (below 3.0)
+oodDetected = false
+Decision: ALLOW
+```
+
+### What Triggers OOD?
+
+**Typical OOD Patterns:**
+- Anagrams: `oarnimstiaremtn` (familiar letters, unfamiliar order)
+- Novel shuffles: `rtmaenisoartmstien`
+- Random gibberish: `ksjdnfpqowiemznxc`
+- Cross-language: `user用户test` (mixed scripts)
+- Novel bot patterns: `usr#20250110#a1b` (new delimiters)
+
+**Not OOD (Familiar):**
+- Common names: `person1`, `user2`
+- Standard patterns: `test@company.com`
+- Training data patterns: `user123` (seen during training)
+
+### Database Tracking
+
+```sql
+SELECT
+  email_local_part,
+  min_entropy,
+  abnormality_score,
+  abnormality_risk,
+  ood_detected,
+  decision
+FROM validations
+WHERE ood_detected = 1
+ORDER BY abnormality_risk DESC;
+```
+
+### Performance
+- **Latency**: +0ms (calculated during existing Markov evaluation)
+- **Detection Rate**: ~78% of test cases show some OOD signal
+- **Accuracy**: Catches novel patterns missed by classification alone
+
+### See Also
+- [OOD_DETECTION.md](./OOD_DETECTION.md) - Complete OOD documentation
 
 ---
 

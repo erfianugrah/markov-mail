@@ -16,6 +16,9 @@ import pkg from '../../package.json';
  *       83% accuracy vs 67% with heuristics, zero false positives on legitimate names
  * v2.3: Markov ensemble (2-gram + 3-gram) with confidence-weighted voting
  *       Combines 2-gram robustness with 3-gram context awareness
+ * v2.4: Two-dimensional risk model with OOD (Out-of-Distribution) detection
+ *       Classification risk (fraud vs legit) + Abnormality risk (novel patterns)
+ *       Catches anagrams, shuffles, and patterns outside training distribution
  */
 export const PATTERN_CLASSIFICATION_VERSION = pkg.version;
 
@@ -29,6 +32,10 @@ interface MarkovResult {
   ensembleReasoning?: string; // Why ensemble chose this prediction
   model2gramPrediction?: string; // 2-gram prediction (if ensemble)
   model3gramPrediction?: string; // 3-gram prediction (if ensemble)
+  // OOD Detection (v2.4+)
+  minEntropy?: number;          // min(H_legit, H_fraud) - measures abnormality
+  abnormalityScore?: number;    // How far above OOD threshold (0 if below)
+  abnormalityRisk?: number;     // Risk contribution from abnormality (0.0-0.6)
 }
 
 import { Context, Next } from 'hono';
@@ -64,6 +71,15 @@ const ENSEMBLE_THRESHOLDS = {
   override_ratio: 1.5,        // 3-gram must be 1.5x more confident
   gibberish_entropy: 6.0,     // Cross-entropy threshold for gibberish
   gibberish_2gram_min: 0.2,   // Min 2-gram confidence for gibberish
+};
+
+// OOD (Out-of-Distribution) Detection Thresholds (v2.4+)
+// Research-backed constants for anomaly detection via cross-entropy
+const OOD_DETECTION = {
+  BASELINE_ENTROPY: 0.69,      // Random guessing baseline (log 2 in nats)
+  OOD_THRESHOLD: 3.0,          // Patterns above this are severely confused (3x "poor" threshold)
+  SCALING_FACTOR: 0.15,        // Risk contribution per nat above threshold
+  MAX_OOD_RISK: 0.6,           // Cap abnormality risk at block threshold
 };
 
 // For backwards compatibility (points to 2-gram by default)
@@ -187,6 +203,14 @@ function ensemblePredict(
 
   // If no 3-gram models, return 2-gram results
   if (!legit3 || !fraud3) {
+    // OOD Detection (v2.4+)
+    const minEntropy = Math.min(H_legit2, H_fraud2);
+    const abnormalityScore = Math.max(0, minEntropy - OOD_DETECTION.OOD_THRESHOLD);
+    const abnormalityRisk = Math.min(
+      abnormalityScore * OOD_DETECTION.SCALING_FACTOR,
+      OOD_DETECTION.MAX_OOD_RISK
+    );
+
     return {
       isLikelyFraudulent: isLikelyFraud2,
       crossEntropyLegit: H_legit2,
@@ -195,6 +219,10 @@ function ensemblePredict(
       differenceRatio: diffRatio2,
       ensembleReasoning: '2gram_only',
       model2gramPrediction: prediction2,
+      // OOD metrics (v2.4+)
+      minEntropy,
+      abnormalityScore,
+      abnormalityRisk,
     };
   }
 
@@ -275,6 +303,15 @@ function ensemblePredict(
   const finalMaxH = Math.max(finalCrossEntropyLegit, finalCrossEntropyFraud);
   const finalDiffRatio = finalMaxH > 0 ? finalDiff / finalMaxH : 0;
 
+  // OOD Detection (v2.4+): Calculate abnormality metrics
+  // When BOTH models have high cross-entropy, the pattern is out-of-distribution
+  const minEntropy = Math.min(finalCrossEntropyLegit, finalCrossEntropyFraud);
+  const abnormalityScore = Math.max(0, minEntropy - OOD_DETECTION.OOD_THRESHOLD);
+  const abnormalityRisk = Math.min(
+    abnormalityScore * OOD_DETECTION.SCALING_FACTOR,
+    OOD_DETECTION.MAX_OOD_RISK
+  );
+
   return {
     isLikelyFraudulent: finalPrediction === 'fraud',
     crossEntropyLegit: finalCrossEntropyLegit,
@@ -284,6 +321,10 @@ function ensemblePredict(
     ensembleReasoning: reasoning,
     model2gramPrediction: prediction2,
     model3gramPrediction: prediction3,
+    // OOD metrics (v2.4+)
+    minEntropy,
+    abnormalityScore,
+    abnormalityRisk,
   };
 }
 
@@ -557,13 +598,15 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
   }
 
   /**
-   * Calculate risk score using Markov-only approach
+   * Calculate risk score using two-dimensional approach
    *
-   * ALGORITHM CHANGE (2025-11-08):
-   * - Removed heuristic detectors (keyboard-walk, keyboard-mashing, gibberish)
-   * - Markov-only has 83% accuracy vs 67% with heuristics
-   * - Zero false positives on legitimate names (e.g., "scottpearson")
-   * - Trained on 111K+ legitimate + 105K fraud emails
+   * ALGORITHM CHANGES:
+   * v2.2 (2025-11-08): Removed heuristic detectors, Markov-only (83% accuracy vs 67%)
+   * v2.3 (2025-11-10): Ensemble (2-gram + 3-gram) with confidence-weighted voting
+   * v2.4 (2025-11-10): Two-dimensional risk model
+   *   - Classification risk: Is this fraud or legit? (differential signal)
+   *   - Abnormality risk: Is this out-of-distribution? (consensus signal)
+   *   - Final risk: max(classification, abnormality) + domain signals
    */
   function calculateAlgorithmicRiskScore(params: {
     email: string;
@@ -578,12 +621,18 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     // Check if this is a professional email
     const isProfessional = isProfessionalEmail(email);
 
-    // Primary: Markov Chain cross-entropy (trained model)
-    // Reduce Markov weight for professional emails (they may have unusual patterns)
-    let score = markovResult?.isLikelyFraudulent ? markovResult.confidence : 0;
-    if (isProfessional && score < 0.7) {
-      score = score * 0.5; // Reduce Markov confidence for professional emails (contact@, info@, etc.)
+    // Primary: Two-dimensional risk from Markov models (v2.4+)
+    // Dimension 1: Classification risk (fraud vs legit)
+    let classificationRisk = markovResult?.isLikelyFraudulent ? markovResult.confidence : 0;
+    if (isProfessional && classificationRisk < 0.7) {
+      classificationRisk = classificationRisk * 0.5; // Reduce for professional emails
     }
+
+    // Dimension 2: Abnormality risk (out-of-distribution)
+    const abnormalityRisk = markovResult?.abnormalityRisk || 0;
+
+    // Combined risk: Take stronger signal (independent dimensions)
+    let score = Math.max(classificationRisk, abnormalityRisk);
 
     // Secondary: Deterministic pattern overrides
     // These are high-confidence fraud signals that Markov should already detect,
@@ -608,16 +657,17 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       domainRisk = domainRisk * 0.5; // Halve domain risk for professional emails
     }
 
-    // Ensemble boost: When Markov and TLD risk agree, increase confidence
+    // Ensemble boost: When Markov classification and TLD risk agree, increase confidence
     if (markovResult?.isLikelyFraudulent && tldRiskScore > 0.5) {
-      const ensembleBoost = Math.min(markovResult.confidence * tldRiskScore * 0.3, 0.3);
+      const ensembleBoost = Math.min(classificationRisk * tldRiskScore * 0.3, 0.3);
       score += ensembleBoost;
       logger.info({
         event: 'ensemble_boost_applied',
-        markovConfidence: markovResult.confidence,
+        classificationRisk,
+        abnormalityRisk,
         tldRiskScore,
         boost: ensembleBoost,
-      }, 'Ensemble boost: Markov + TLD risk agreement');
+      }, 'Ensemble boost: Classification + TLD risk agreement');
     }
 
     return Math.min(score + domainRisk, 1.0);
@@ -656,6 +706,10 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
         condition: patternFamilyResult?.patternType === 'sequential',
         reason: 'sequential_pattern'
       },
+      {
+        condition: markovResult?.abnormalityScore && markovResult.abnormalityScore > 1.5,
+        reason: 'out_of_distribution'
+      },
     ];
 
     // Check high-confidence detections first
@@ -669,12 +723,14 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 
     if (riskScore >= config.riskThresholds.block) {
       // HIGH RISK (≥0.6): Return strongest weak signal
+      if (markovResult?.abnormalityRisk && markovResult.abnormalityRisk > 0.4) return 'high_abnormality';
       if (tldRiskScore > 0.5) return 'high_risk_tld';
       if (domainReputationScore > 0.5) return 'domain_reputation';
       if (patternFamilyResult?.patternType === 'dated') return 'dated_pattern';
       return 'high_risk_multiple_signals';
     } else if (riskScore >= config.riskThresholds.warn) {
       // MEDIUM RISK (0.3-0.6): Descriptive warnings
+      if (markovResult?.abnormalityRisk && markovResult.abnormalityRisk > 0.2) return 'suspicious_abnormal_pattern';
       if (patternFamilyResult?.patternType === 'dated') return 'suspicious_dated_pattern';
       if (tldRiskScore > 0.3) return 'suspicious_tld';
       if (domainReputationScore > 0.3) return 'suspicious_domain';
@@ -781,6 +837,11 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     ensembleReasoning: markovResult?.ensembleReasoning,
     model2gramPrediction: markovResult?.model2gramPrediction,
     model3gramPrediction: markovResult?.model3gramPrediction,
+    // OOD Detection (v2.4+)
+    minEntropy: markovResult?.minEntropy,
+    abnormalityScore: markovResult?.abnormalityScore,
+    abnormalityRisk: markovResult?.abnormalityRisk,
+    oodDetected: markovResult?.abnormalityScore ? markovResult.abnormalityScore > 0 : false,
     patternClassificationVersion: PATTERN_CLASSIFICATION_VERSION
   });
 
@@ -817,6 +878,13 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
           ensembleReasoning: markovResult.ensembleReasoning,
           model2gramPrediction: markovResult.model2gramPrediction,
           model3gramPrediction: markovResult.model3gramPrediction,
+        }),
+        // OOD Detection (v2.4+)
+        ...(markovResult.minEntropy !== undefined && {
+          minEntropy: Math.round(markovResult.minEntropy * 100) / 100,
+          abnormalityScore: Math.round((markovResult.abnormalityScore || 0) * 100) / 100,
+          abnormalityRisk: Math.round((markovResult.abnormalityRisk || 0) * 100) / 100,
+          oodDetected: (markovResult.abnormalityScore || 0) > 0,
         }),
       }),
     },

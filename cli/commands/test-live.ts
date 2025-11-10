@@ -100,6 +100,43 @@ const TEST_CASES: TestCase[] = [
   // High-risk TLDs but legitimate use
   { email: 'contact@business.xyz', expectedDecision: 'allow', category: 'edge-tld', notes: 'New gTLD but legitimate' },
   { email: 'info@company.top', expectedDecision: 'allow', category: 'edge-tld', notes: 'High-risk TLD but professional' },
+
+  // === OUT-OF-DISTRIBUTION (OOD) DETECTION TESTS (v2.4+) ===
+  // These test cases specifically target the OOD detection system, which identifies
+  // patterns that are unfamiliar to BOTH fraud and legitimate models (high entropy on both).
+  // Expected: WARN or BLOCK depending on how far above the OOD threshold (3.0 nats)
+
+  // Severe OOD - very high entropy (> 4.0 nats) - should WARN or BLOCK
+  { email: 'inearkstioarsitm2mst@gmail.com', expectedDecision: 'warn', category: 'ood-severe', notes: 'Anagram shuffle - very high entropy (H~4.45)' },
+  { email: 'oarnimstiaremtn@gmail.com', expectedDecision: 'warn', category: 'ood-severe', notes: 'Random anagram - high entropy on both models' },
+  { email: 'aremtinsoartmsient@gmail.com', expectedDecision: 'warn', category: 'ood-severe', notes: 'Long anagram pattern - abnormal structure' },
+  { email: 'rtmaenisoartmstien@outlook.com', expectedDecision: 'warn', category: 'ood-severe', notes: 'Cross-shuffle pattern - unfamiliar transitions' },
+  { email: 'ksjdnfpqowiemznxc@gmail.com', expectedDecision: 'warn', category: 'ood-severe', notes: 'Novel gibberish - not in training distribution' },
+
+  // Moderate OOD - above threshold but not extreme (3.0-4.0 nats) - should WARN
+  { email: 'inearkstioaermst@gmail.com', expectedDecision: 'warn', category: 'ood-moderate', notes: 'Moderate entropy anagram (H~3.99)' },
+  { email: 'armentsiorast@gmail.com', expectedDecision: 'warn', category: 'ood-moderate', notes: 'Moderate shuffle - above OOD threshold' },
+  { email: 'nmraoestinart@outlook.com', expectedDecision: 'warn', category: 'ood-moderate', notes: 'Mixed consonant-vowel pattern' },
+  { email: 'trnaeoimsart@yahoo.com', expectedDecision: 'warn', category: 'ood-moderate', notes: 'Unfamiliar character transitions' },
+
+  // Near-threshold OOD (just above 3.0) - should WARN or ALLOW depending on other signals
+  { email: 'marinestone@gmail.com', expectedDecision: 'allow', category: 'ood-near-threshold', notes: 'Unusual but plausible word combo - borderline' },
+  { email: 'artemisnor@outlook.com', expectedDecision: 'allow', category: 'ood-near-threshold', notes: 'Name-like but uncommon - near threshold' },
+  { email: 'stormarine@gmail.com', expectedDecision: 'allow', category: 'ood-near-threshold', notes: 'Plausible compound - just above threshold' },
+
+  // Cross-language mixing - tests OOD with international patterns
+  { email: 'user用户test@gmail.com', expectedDecision: 'allow', category: 'ood-cross-language', notes: 'Mixed Latin/Chinese - uncommon but valid' },
+  { email: 'emailテスト123@outlook.com', expectedDecision: 'allow', category: 'ood-cross-language', notes: 'Mixed Latin/Japanese - valid use case' },
+
+  // Novel bot patterns not in training data
+  { email: 'acc_20250110_x7f@gmail.com', expectedDecision: 'block', category: 'ood-novel-bot', notes: 'New bot pattern - date + suffix' },
+  { email: 'usr#20250110#a1b@outlook.com', expectedDecision: 'block', category: 'ood-novel-bot', notes: 'Novel delimiter pattern' },
+  { email: 'id||2025||001@gmail.com', expectedDecision: 'block', category: 'ood-novel-bot', notes: 'Unusual separator style' },
+
+  // Edge case: Low entropy (familiar patterns) - should NOT trigger OOD
+  { email: 'person12@gmail.com', expectedDecision: 'allow', category: 'ood-low-entropy', notes: 'Common pattern - low entropy, no OOD' },
+  { email: 'user13@outlook.com', expectedDecision: 'allow', category: 'ood-low-entropy', notes: 'Familiar pattern - should not trigger OOD' },
+  { email: 'test@company.com', expectedDecision: 'allow', category: 'ood-low-entropy', notes: 'Standard pattern - low entropy baseline' },
 ];
 
 interface TestResult {
@@ -112,12 +149,26 @@ interface TestResult {
   category: string;
   notes: string;
   latency: number;
+  // OOD Detection fields (v2.4+)
+  minEntropy?: number;
+  abnormalityScore?: number;
+  abnormalityRisk?: number;
+  oodDetected?: boolean;
 }
 
 async function testEmail(
   email: string,
   endpoint: string
-): Promise<{ decision: string; riskScore: number; reason: string; latency: number }> {
+): Promise<{
+  decision: string;
+  riskScore: number;
+  reason: string;
+  latency: number;
+  minEntropy?: number;
+  abnormalityScore?: number;
+  abnormalityRisk?: number;
+  oodDetected?: boolean;
+}> {
   const startTime = Date.now();
 
   try {
@@ -149,6 +200,11 @@ async function testEmail(
         riskScore: data.riskScore || 0,
         reason: data.message || 'allowed',
         latency,
+        // OOD Detection fields (v2.4+)
+        minEntropy: data.signals?.minEntropy,
+        abnormalityScore: data.signals?.abnormalityScore,
+        abnormalityRisk: data.signals?.abnormalityRisk,
+        oodDetected: data.signals?.oodDetected,
       };
     } else {
       // Error response with JSON
@@ -157,6 +213,10 @@ async function testEmail(
         riskScore: data.riskScore || 0,
         reason: data.reason || 'blocked',
         latency,
+        minEntropy: data.signals?.minEntropy,
+        abnormalityScore: data.signals?.abnormalityScore,
+        abnormalityRisk: data.signals?.abnormalityRisk,
+        oodDetected: data.signals?.oodDetected,
       };
     }
   } catch (error) {
@@ -229,6 +289,11 @@ async function runTests(endpoint: string, verbose: boolean) {
       category: testCase.category,
       notes: testCase.notes,
       latency: result.latency,
+      // OOD Detection fields (v2.4+)
+      minEntropy: result.minEntropy,
+      abnormalityScore: result.abnormalityScore,
+      abnormalityRisk: result.abnormalityRisk,
+      oodDetected: result.oodDetected,
     });
 
     console.log(passed ? '✅' : '❌');
@@ -236,6 +301,9 @@ async function runTests(endpoint: string, verbose: boolean) {
     if (verbose || !passed) {
       console.log(`  Expected: ${testCase.expectedDecision}, Got: ${result.decision}`);
       console.log(`  Risk Score: ${result.riskScore.toFixed(2)}, Reason: ${result.reason}`);
+      if (result.oodDetected) {
+        console.log(`  🚨 OOD Detected: minEntropy=${result.minEntropy?.toFixed(2)}, abnormalityRisk=${result.abnormalityRisk?.toFixed(2)}`);
+      }
       console.log(`  Category: ${testCase.category}, Notes: ${testCase.notes}`);
       console.log(`  Latency: ${result.latency}ms\n`);
     }
@@ -267,6 +335,18 @@ async function runTests(endpoint: string, verbose: boolean) {
   console.log(`  Recall:          ${metrics.recall.toFixed(1)}% (of all fraud, how many we caught)`);
   console.log(`  F1 Score:        ${metrics.f1Score.toFixed(1)}% (harmonic mean)`);
 
+  // OOD Detection Statistics (v2.4+)
+  const oodResults = results.filter(r => r.oodDetected);
+  if (oodResults.length > 0) {
+    console.log(`\n🚨 OOD Detection Statistics (v2.4+):`);
+    console.log(`  Total OOD Detected:    ${oodResults.length} of ${results.length} (${((oodResults.length / results.length) * 100).toFixed(1)}%)`);
+    const avgMinEntropy = oodResults.reduce((sum, r) => sum + (r.minEntropy || 0), 0) / oodResults.length;
+    const avgAbnormalityRisk = oodResults.reduce((sum, r) => sum + (r.abnormalityRisk || 0), 0) / oodResults.length;
+    console.log(`  Avg minEntropy:        ${avgMinEntropy.toFixed(2)} nats (threshold: 3.0)`);
+    console.log(`  Avg abnormalityRisk:   ${avgAbnormalityRisk.toFixed(2)} (0.0-0.6)`);
+    console.log(`  OOD Categories:        ${[...new Set(oodResults.map(r => r.category))].join(', ')}`);
+  }
+
   // Category breakdown
   console.log(`\n${'='.repeat(80)}`);
   console.log('📋 CATEGORY BREAKDOWN');
@@ -286,7 +366,8 @@ async function runTests(endpoint: string, verbose: boolean) {
     if (verbose) {
       for (const result of categoryResults) {
         const status = result.passed ? '✅' : '❌';
-        console.log(`  ${status} ${result.email} - ${result.actual} (score: ${result.riskScore.toFixed(2)})`);
+        const oodInfo = result.oodDetected ? ` [OOD: ${result.minEntropy?.toFixed(2)}]` : '';
+        console.log(`  ${status} ${result.email} - ${result.actual} (score: ${result.riskScore.toFixed(2)})${oodInfo}`);
       }
     }
   }
@@ -304,6 +385,9 @@ async function runTests(endpoint: string, verbose: boolean) {
       console.log(`  Expected:  ${test.expected}`);
       console.log(`  Got:       ${test.actual} (score: ${test.riskScore.toFixed(2)})`);
       console.log(`  Reason:    ${test.reason}`);
+      if (test.oodDetected) {
+        console.log(`  🚨 OOD:    minEntropy=${test.minEntropy?.toFixed(2)}, abnormalityRisk=${test.abnormalityRisk?.toFixed(2)}`);
+      }
       console.log(`  Notes:     ${test.notes}`);
     }
   }

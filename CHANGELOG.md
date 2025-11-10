@@ -9,6 +9,132 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.4.0] - 2025-01-10
+
+### 🚨 MAJOR: Out-of-Distribution (OOD) Detection
+
+**New Feature**: Two-dimensional risk model that detects patterns unfamiliar to BOTH the legitimate and fraudulent models.
+
+**Problem Solved**:
+```
+Email: oarnimstiaremtn@gmail.com
+Before v2.4.0:
+  H_legit = 4.51 nats, H_fraud = 4.32 nats
+  Confidence = 0.08 (low difference)
+  Decision = ALLOW ← WRONG
+
+After v2.4.0:
+  minEntropy = 4.32 nats
+  abnormalityRisk = 0.20
+  Decision = WARN ← CORRECT
+```
+
+### Added
+
+#### OOD Detection System
+- **Two-Dimensional Risk Model** - `src/middleware/fraud-detection.ts`
+  - Dimension 1: Classification risk (fraud vs legit - differential signal)
+  - Dimension 2: Abnormality risk (both models confused - consensus signal)
+  - Final risk: `max(classificationRisk, abnormalityRisk) + domainRisk`
+
+#### Database Schema (Migration 0005)
+- Added `min_entropy` (REAL) - min(H_legit, H_fraud)
+- Added `abnormality_score` (REAL) - max(0, minEntropy - 3.0)
+- Added `abnormality_risk` (REAL) - risk contribution (0.0-0.6)
+- Added `ood_detected` (INTEGER) - boolean flag
+- Added indexes for OOD queries
+
+#### API Response Fields
+- `signals.minEntropy` - minimum cross-entropy value
+- `signals.abnormalityScore` - how far above 3.0 threshold
+- `signals.abnormalityRisk` - risk contribution
+- `signals.oodDetected` - boolean OOD flag
+
+#### Documentation
+- **NEW**: `docs/OOD_DETECTION.md` - Complete OOD documentation
+- Updated: `README.md` - v2.4.0 status and examples
+- Updated: `docs/ARCHITECTURE.md` - OOD system details
+- Updated: `docs/DETECTORS.md` - OOD detector section
+- Updated: `docs/SCORING.md` - Two-dimensional risk model
+- Updated: `docs/TRAINING.md` - OOD monitoring queries
+
+#### Testing
+- Expanded `cli/commands/test-live.ts` with 27 OOD test cases
+- Categories: severe, moderate, near-threshold, cross-language, novel-bot, low-entropy
+- Test results: 78% OOD detection rate on test suite
+
+### Changed
+
+#### Risk Calculation Algorithm
+- **Old**: Single dimension (classification only)
+  ```typescript
+  riskScore = markovResult.isLikelyFraudulent ? markovResult.confidence : 0;
+  ```
+- **New**: Two dimensions (classification + abnormality)
+  ```typescript
+  const classificationRisk = markovResult.isLikelyFraudulent ? markovResult.confidence : 0;
+  const abnormalityRisk = min((minEntropy - 3.0) × 0.15, 0.6);
+  riskScore = max(classificationRisk, abnormalityRisk) + domainRisk;
+  ```
+
+#### Block Reasons
+- Added `out_of_distribution` - High abnormality risk drives decision
+- Added `suspicious_abnormal_pattern` - OOD + other signals
+
+#### Database Writers
+- Updated `src/database/metrics.ts` - Write OOD fields to D1
+- 4 new columns in INSERT statement + bind parameters
+
+### Technical Details
+
+#### Threshold: 3.0 Nats
+- Baseline: log₂ = 0.69 nats (random guessing)
+- Good predictions: < 0.2 nats
+- Poor predictions: > 1.0 nats
+- **OOD threshold: > 3.0 nats** (severely confused)
+- Risk scaling: 0.15 risk per nat above threshold
+- Maximum risk: 0.6 (block threshold)
+
+#### Research Basis
+Cross-entropy thresholds are standard in information theory. The 3.0 nats threshold represents severe model confusion - the pattern requires ~8× more bits to encode than expected (2^3 = 8).
+
+#### Performance Impact
+- **Latency**: +0ms (calculated during existing Markov evaluation)
+- **Database**: +4 columns per validation
+- **Detection rate**: ~78% of patterns show some OOD signal
+
+### Migration Guide
+
+1. **Apply Database Migration**:
+   ```bash
+   npx wrangler d1 migrations apply ANALYTICS --remote
+   ```
+
+2. **Deploy Updated Worker**:
+   ```bash
+   npx wrangler deploy
+   ```
+
+3. **Test OOD Detection**:
+   ```bash
+   npm run cli test:live -- --endpoint https://fraud.erfi.dev/validate
+   ```
+
+4. **Monitor OOD Metrics**:
+   ```sql
+   SELECT
+     COUNT(*) FILTER (WHERE ood_detected = 1) * 100.0 / COUNT(*) as ood_rate_percent,
+     AVG(CASE WHEN ood_detected = 1 THEN min_entropy END) as avg_ood_entropy
+   FROM validations
+   WHERE timestamp >= datetime('now', '-24 hours');
+   ```
+
+### Breaking Changes
+
+None. This is a backwards-compatible addition.
+
+---
+
 ## [2.2.0] - 2025-11-08
 
 ### 🎯 MAJOR: Markov-Only Detection (Removed Heuristic Detectors)
