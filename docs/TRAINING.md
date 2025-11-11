@@ -82,15 +82,25 @@ Training 2-gram Models
 ✅ 2-gram training complete!
 ```
 
-## Automated Training (Currently Disabled)
+## Online Training
 
-### ⚠️ Status: Disabled Due to Data Quality Issues
+### ⚠️ Status: Partially Disabled
 
-**Automated online training is currently disabled** (as of 2025-01-06) to prevent model degradation.
+**Training Status (as of 2025-01-06):**
+
+| Method | Status | Location | Use Case |
+|--------|--------|----------|----------|
+| **Scheduled/Cron** (every 6h) | ❌ DISABLED | `src/index.ts:448-467` | Fully automated training |
+| **Manual API Endpoint** | ✅ ENABLED | `POST /admin/markov/train` | On-demand training |
+| **CLI Training** | ✅ ENABLED | `npm run cli train:markov` | Recommended |
+
+**TL;DR**: Automatic scheduled training is disabled, but you can still manually trigger online training via the API endpoint if needed. **CLI training with labeled CSV data is the recommended approach.**
+
+---
 
 ### The Problem: Circular Reasoning
 
-The online training pipeline had a critical flaw where it used the model's own predictions to label training data:
+The online training pipeline has a critical flaw where it uses the model's own predictions to label training data:
 
 ```typescript
 // Labels fraud based on the model's OWN risk_score
@@ -106,35 +116,86 @@ if (sample.risk_score >= 0.7 && (sample.decision === 'block')) {
 4. False positives get reinforced
 5. Model quality degrades over time
 
-### Ground Truth Requirement
+**Ground Truth Requirement**: Proper training requires human-verified fraud vs legitimate classifications, not model predictions.
 
-**Proper training requires ground truth labels** - human-verified fraud vs legitimate classifications, not model predictions.
+---
 
-### Current Approach
+### Manual API Training (Available with Caution)
 
-Until a proper ground truth mechanism is implemented (e.g., user feedback, manual review), **only manual training with labeled CSV datasets is used**:
+While scheduled training is disabled, you can still manually trigger the online training pipeline via the admin API:
 
 ```bash
-# Train with verified ground truth data
+# Manually trigger online training (uses last 7 days of production data)
+curl -X POST "https://your-worker.workers.dev/admin/markov/train" \
+  -H "X-API-Key: $ADMIN_API_KEY"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Training completed successfully",
+  "result": {
+    "success": true,
+    "fraud_count": 1234,
+    "legit_count": 5678,
+    "version": "v1762063221887_69",
+    "duration_ms": 8542
+  }
+}
+```
+
+**⚠️ Use with Caution:**
+- Training uses model's own predictions as labels (circular reasoning risk)
+- May reinforce false positives if model is already making mistakes
+- No human verification of training labels
+- Only use if you understand the implications
+
+**When to use:**
+- Quick model updates when you trust current production accuracy
+- Testing the training pipeline
+- Emergency model refreshes
+
+**Recommended instead:** Use CLI training with human-labeled CSV data.
+
+---
+
+### Scheduled Training (Disabled)
+
+The cron trigger still fires every 6 hours but only updates the disposable domain list:
+
+```jsonc
+// wrangler.jsonc
+"triggers": {
+  "crons": ["0 */6 * * *"]  // Fires, but training code is commented out
+}
+```
+
+**Previous Process** (now disabled in `src/index.ts:448-467`):
+1. ✅ Updates disposable domain list from GitHub
+2. ❌ ~~Trains models on last 7 days of D1 data~~ (commented out)
+3. ❌ ~~Validates and deploys new models~~ (commented out)
+
+**Why Training Was Disabled**: No ground truth verification - relies entirely on model's own decisions.
+
+---
+
+### Recommended Approach
+
+**Use CLI training with pattern-labeled CSV data:**
+
+```bash
+# 1. Prepare dataset with pattern-based labels
+npm run cli train:relabel --input ./dataset/raw.csv --output ./dataset/labeled.csv
+
+# 2. Train models from labeled CSV
 npm run cli train:markov -- --orders "2,3" --upload --remote
+
+# 3. Verify models
+npm run cli test:live
 ```
 
-### Previous Automated Approach (Disabled)
-
-The automated training worker previously ran every 6 hours via Cloudflare cron:
-
-```yaml
-# wrangler.jsonc (currently disabled in src/index.ts)
-triggers = { crons = ["0 */6 * * *"] }
-```
-
-**Previous Process** (now disabled):
-1. Loaded last 7 days of validation data from D1
-2. Labeled samples based on risk_score and decision
-3. Trained incrementally on new data
-4. Deployed updated models
-
-**Why Disabled**: No ground truth verification - relied entirely on model's own decisions.
+This approach avoids circular reasoning by using pattern analysis (not model predictions) to label training data.
 
 ## Model Quality Metrics
 
@@ -197,13 +258,24 @@ npm run cli train:markov -- --orders "2" --upload --remote
 
 ### Automated Training Not Running
 
-**Note**: Automated training is intentionally disabled (see "Automated Training (Currently Disabled)" section above).
+**Note**: Scheduled training is intentionally disabled (see "Online Training" section above).
 
 **If you need to update models**:
+
+**Option 1: CLI Training (Recommended)**
 ```bash
 # Use manual training with labeled CSV data
 npm run cli train:markov -- --orders "2,3" --upload --remote
 ```
+
+**Option 2: Manual API Training (Use with caution)**
+```bash
+# Trigger online training via API (uses production data)
+curl -X POST "https://your-worker.workers.dev/admin/markov/train" \
+  -H "X-API-Key: $ADMIN_API_KEY"
+```
+
+Note: API training uses model predictions as labels (circular reasoning risk). CLI training with labeled CSV data is preferred.
 
 ### High False Positive Rate
 

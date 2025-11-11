@@ -3,14 +3,55 @@
  */
 
 import { logger } from '../../utils/logger.ts';
-import { parseArgs } from '../../utils/args.ts';
+import { parseArgs, getOption, hasFlag } from '../../utils/args.ts';
 import { $ } from 'bun';
 
 export default async function config(args: string[]) {
   const parsed = parseArgs(args);
   const command = process.argv[2]; // Get the full command like "config:set"
 
+  // Check for help flag
+  if (hasFlag(parsed, 'help', 'h')) {
+    console.log(`
+╔════════════════════════════════════════════════════════╗
+║          Configuration Management                      ║
+╚════════════════════════════════════════════════════════╝
+
+Manage configuration stored in Cloudflare KV.
+
+USAGE
+  npm run cli config:<command> [options]
+
+COMMANDS
+  config:get <key>           Get configuration value
+  config:set <key> <value>   Set configuration value
+  config:list                List all configuration
+  config:sync                Sync local config to KV (not implemented)
+
+OPTIONS
+  --binding <name>           KV binding name (default: CONFIG)
+  --help, -h                 Show this help message
+
+EXAMPLES
+  # Get a configuration value
+  npm run cli config:get riskWeights.patternDetection
+
+  # Set a configuration value
+  npm run cli config:set riskWeights.patternDetection 0.50
+
+  # List all configuration
+  npm run cli config:list
+
+  # Use custom binding
+  npm run cli config:get mykey --binding MY_CONFIG
+    `);
+    return;
+  }
+
+  const binding = getOption(parsed, 'binding') || 'CONFIG';
+
   logger.section('⚙️  Configuration Management');
+  logger.info(`Binding: ${binding}`);
 
   if (command?.includes('config:get')) {
     const key = parsed.positional[0];
@@ -20,7 +61,7 @@ export default async function config(args: string[]) {
     }
 
     try {
-      const result = await $`npx wrangler kv key get config.json --binding=CONFIG`.text();
+      const result = await $`npx wrangler kv key get config.json --binding=${binding}`.text();
       const configData = JSON.parse(result);
 
       if (!configData) {
@@ -65,7 +106,7 @@ export default async function config(args: string[]) {
       }
 
       // Get current config
-      const result = await $`npx wrangler kv key get config.json --binding=CONFIG`.text();
+      const result = await $`npx wrangler kv key get config.json --binding=${binding}`.text();
       const configData = JSON.parse(result || '{}');
 
       // Navigate and set nested key
@@ -84,7 +125,7 @@ export default async function config(args: string[]) {
       const tempFile = `/tmp/config-${Date.now()}.json`;
       await Bun.write(tempFile, JSON.stringify(configData, null, 2));
 
-      await $`npx wrangler kv key put config.json --path=${tempFile} --binding=CONFIG --remote`;
+      await $`npx wrangler kv key put config.json --path=${tempFile} --binding=${binding} --remote`;
 
       // Clean up temp file
       await $`rm ${tempFile}`;
@@ -96,7 +137,7 @@ export default async function config(args: string[]) {
     }
   } else if (command?.includes('config:list')) {
     try {
-      const result = await $`npx wrangler kv key get config.json --binding=CONFIG`.text();
+      const result = await $`npx wrangler kv key get config.json --binding=${binding}`.text();
       const configData = JSON.parse(result);
 
       if (!configData) {

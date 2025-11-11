@@ -1137,12 +1137,54 @@ curl -X PUT "https://your-worker.workers.dev/admin/config" \
 
 ### POST /admin/markov/train
 
-Manually trigger Markov Chain model retraining.
+Manually trigger Markov Chain model retraining using production data from the last 7 days.
 
+**⚠️ Important**: This endpoint uses the model's own predictions as training labels, which can create circular reasoning issues. CLI training with human-labeled CSV data is recommended instead. See [TRAINING.md](./TRAINING.md) for details.
+
+**Request:**
 ```bash
 curl -X POST "https://your-worker.workers.dev/admin/markov/train" \
-  -H "X-API-Key: $KEY"
+  -H "X-API-Key: $ADMIN_API_KEY"
 ```
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "Training completed successfully",
+  "result": {
+    "success": true,
+    "fraud_count": 1234,
+    "legit_count": 5678,
+    "version": "v1762063221887_69",
+    "duration_ms": 8542,
+    "anomaly_score": 0.25,
+    "deployed": true
+  }
+}
+```
+
+**Response (Failure):**
+```json
+{
+  "success": false,
+  "message": "Training failed",
+  "error": "Insufficient samples: need at least 500, got 342"
+}
+```
+
+**Training Process:**
+1. Fetches high-confidence validation data from D1 (last 7 days)
+2. Labels samples based on risk_score and decision
+3. Runs anomaly detection for data poisoning
+4. Trains new 3-gram models
+5. Validates against production models
+6. Saves to KV with backup and versioning
+
+**Requirements:**
+- Minimum 500 samples in last 7 days
+- Anomaly score < 0.8 (security check)
+- D1 database configured
 
 ### Dashboard
 

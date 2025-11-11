@@ -47,7 +47,11 @@
 	 * Cron Triggers
 	 * Every 6 hours:
 	 * 1. Update disposable domain list from external sources (GitHub)
-	 * 2. Retrain online learning models (N-gram ensemble)
+	 * 2. Model training (DISABLED - see src/index.ts:448-467)
+	 *
+	 * Note: Scheduled training is disabled to prevent circular reasoning.
+	 * Use manual training instead: npm run cli train:markov
+	 * Or trigger via API: POST /admin/markov/train
 	 * https://developers.cloudflare.com/workers/configuration/cron-triggers/
 	 */
 	"triggers": {

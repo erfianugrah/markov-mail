@@ -279,10 +279,10 @@ function ensemblePredict(
   }
 }
 
-async function downloadModel(key: string, remote: boolean): Promise<any> {
+async function downloadModel(key: string, remote: boolean, binding: string): Promise<any> {
   const remoteFlag = remote ? '--remote' : '';
   try {
-    const result = await $`npx wrangler kv key get ${key} --binding=MARKOV_MODEL ${remoteFlag}`.text();
+    const result = await $`npx wrangler kv key get ${key} --binding=${binding} ${remoteFlag}`.text();
     return JSON.parse(result);
   } catch (error) {
     logger.error(`Failed to download ${key}: ${error}`);
@@ -311,6 +311,7 @@ OPTIONS
   --ensemble          Test ensemble approach (requires 2 and 3-gram)
   --verbose           Show detailed results for each test case
   --category <cat>    Only test specific category (gibberish, sequential, etc.)
+  --binding <name>    KV binding name (default: MARKOV_MODEL)
   --help, -h          Show this help message
 
 EXAMPLES
@@ -325,6 +326,9 @@ EXAMPLES
 
   # Test only gibberish detection
   npm run cli model:validate --remote --category gibberish
+
+  # Use custom KV binding
+  npm run cli model:validate --remote --binding MY_MODELS
     `);
     return;
   }
@@ -333,12 +337,14 @@ EXAMPLES
   const testEnsemble = hasFlag(parsed, 'ensemble');
   const verbose = hasFlag(parsed, 'verbose');
   const categoryFilter = getOption(parsed, 'category');
+  const binding = getOption(parsed, 'binding') || 'MARKOV_MODEL';
 
   const ordersStr = getOption(parsed, 'orders') || (testEnsemble ? '2,3' : '2');
   const orders = ordersStr.split(',').map(s => parseInt(s.trim(), 10)).filter(n => n >= 1 && n <= 3);
 
   logger.section('🧪 Model Validation');
   logger.info(`Source: ${remote ? 'Remote (production)' : 'Local (dev)'}`);
+  logger.info(`Binding: ${binding}`);
   logger.info(`Testing orders: ${orders.join(', ')}`);
   if (testEnsemble) logger.info('Ensemble testing: enabled');
   if (categoryFilter) logger.info(`Category filter: ${categoryFilter}`);
@@ -350,8 +356,8 @@ EXAMPLES
   for (const order of orders) {
     logger.subsection(`Loading ${order}-gram models`);
 
-    const legitData = await downloadModel(`MM_legit_${order}gram`, remote);
-    const fraudData = await downloadModel(`MM_fraud_${order}gram`, remote);
+    const legitData = await downloadModel(`MM_legit_${order}gram`, remote, binding);
+    const fraudData = await downloadModel(`MM_fraud_${order}gram`, remote, binding);
 
     if (!legitData || !fraudData) {
       logger.error(`Failed to load ${order}-gram models`);

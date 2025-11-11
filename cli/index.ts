@@ -136,11 +136,11 @@ const COMMANDS = {
     file: 'commands/test-live.ts',
     usage: 'test:live [--endpoint <url>] [--verbose]'
   },
-  'test:ood': {
-    description: 'Run OOD (Out-of-Distribution) detection test suite (v2.4+)',
-    file: 'commands/test-ood.ts',
-    usage: 'test:ood [--endpoint <url>] [--verbose]'
-  },
+  // 'test:ood': {
+  //   description: 'Run OOD (Out-of-Distribution) detection test suite (v2.4+)',
+  //   file: 'commands/test-ood.ts',  // TODO: File not implemented yet
+  //   usage: 'test:ood [--endpoint <url>] [--verbose]'
+  // },
   'test:batch': {
     description: 'Batch test large email datasets against production',
     file: 'commands/test/batch.ts',
