@@ -1,4 +1,4 @@
-# 🔧 Fraud Detection CLI
+# Fraud Detection CLI
 
 Unified command-line interface for managing the fraud detection system.
 
@@ -23,9 +23,9 @@ npm run cli kv:list --binding MARKOV_MODEL --remote
 
 ## Command Categories
 
-### 📦 Training
+### Training
 
-> **Note:** Scheduled training is currently disabled (as of 2025-01-06) to prevent circular reasoning issues. Manual training commands below are the **recommended** approach. You can also trigger online training via the admin API endpoint if needed (see [TRAINING.md](../docs/TRAINING.md) for details).
+**Note:** Scheduled training is currently disabled (as of 2025-01-06) to prevent circular reasoning issues. Manual training commands below are the **recommended** approach. You can also trigger online training via the admin API endpoint if needed (see [TRAINING.md](../docs/TRAINING.md) for details).
 
 **`training:extract`** - [Optional] Extract training data from Analytics Engine
 
@@ -38,10 +38,9 @@ npm run cli training:extract --days 7 --min-confidence 0.9
 
 # Extract from production Analytics Engine
 npm run cli training:extract --days 1 --remote
-
-# Show help
-npm run cli training:extract --help
 ```
+
+Use `--help` for full options.
 
 **`train:markov`** - Train Markov Chain models from CSV datasets
 
@@ -54,10 +53,9 @@ npm run cli train:markov --upload --remote
 
 # Upload to custom KV binding
 npm run cli train:markov --upload --remote --binding MY_MODELS
-
-# Show help
-npm run cli train:markov --help
 ```
+
+Use `--help` for full options.
 
 **`train:validate`** - Validate training dataset quality
 ```bash
@@ -77,10 +75,9 @@ npm run cli train:relabel --input ./data/raw.csv --output ./data/clean.csv
 
 # Stricter fraud threshold (default: 0.5)
 npm run cli train:relabel --threshold 0.7 --verbose
-
-# Show help
-npm run cli train:relabel --help
 ```
+
+Use `--help` for full options.
 
 **`training:train`** - Train models from extracted datasets
 
@@ -98,10 +95,9 @@ npm run cli training:train --days 14 --min-samples 200
 
 # Train against production data
 npm run cli training:train --remote
-
-# Show help
-npm run cli training:train --help
 ```
+
+Use `--help` for full options.
 
 **`training:validate`** - Validate trained models before deployment
 
@@ -121,10 +117,9 @@ npm run cli training:validate \
 npm run cli training:validate \
   --version 20251102_020000 \
   --compare-production false
-
-# Show help
-npm run cli training:validate --help
 ```
+
+Use `--help` for full options.
 
 **`model:validate`** - Validate models against comprehensive test suite
 
@@ -145,12 +140,11 @@ npm run cli model:validate --remote --category gibberish
 
 # Use custom KV binding
 npm run cli model:validate --remote --binding MY_MODELS
-
-# Show help
-npm run cli model:validate --help
 ```
 
-### 🚀 Deployment
+Use `--help` for full options.
+
+### Deployment
 
 **`deploy`** - Deploy worker to Cloudflare
 
@@ -170,7 +164,7 @@ npm run cli deploy --env production
 npm run cli deploy:status
 ```
 
-### 💾 Data Management
+### Data Management
 
 **KV Commands**
 
@@ -218,12 +212,11 @@ npm run cli domains:cache:clear
 
 # Use custom API URL
 npm run cli domains:update --api-url https://my-worker.workers.dev
-
-# Show help
-npm run cli domains:update --help
 ```
 
-**Note:** Requires `ADMIN_API_KEY` environment variable. Optional `API_URL` env var or `--api-url` flag.
+**Requirements:** `ADMIN_API_KEY` environment variable. Optional `API_URL` environment variable or `--api-url` flag.
+
+Use `--help` for full options.
 
 **TLD Risk Profiles Commands**
 
@@ -251,20 +244,22 @@ npm run cli tld:cache:clear
 
 # Use custom API URL
 npm run cli tld:sync --api-url https://my-worker.workers.dev
-
-# Show help
-npm run cli tld:sync --help
 ```
 
-**Note:** Requires `ADMIN_API_KEY` environment variable. Optional `API_URL` env var or `--api-url` flag.
+**Requirements:** `ADMIN_API_KEY` environment variable. Optional `API_URL` environment variable or `--api-url` flag.
 
-**TLD Categories:**
-- `trusted` - .edu, .gov, .mil (0.2-0.5 risk)
-- `standard` - .com, .net, .org (0.8-1.2 risk)
-- `suspicious` - .info, .biz (1.3-2.0 risk)
-- `high_risk` - .tk, .ml, .ga (2.0-3.0 risk)
+Use `--help` for full options.
 
-### 🧪 Testing
+**TLD Risk Categories:**
+
+| Category | Examples | Risk Multiplier |
+|----------|----------|-----------------|
+| `trusted` | .edu, .gov, .mil | 0.2 - 0.5 |
+| `standard` | .com, .net, .org | 0.8 - 1.2 |
+| `suspicious` | .info, .biz | 1.3 - 2.0 |
+| `high_risk` | .tk, .ml, .ga | 2.0 - 3.0 |
+
+### Testing
 
 **`test:cron`** - Test cron triggers locally
 
@@ -277,10 +272,9 @@ npm run cli test:cron --cron "0 */6 * * *"
 
 # Test with custom port
 npm run cli test:cron --port 9000
-
-# Show help
-npm run cli test:cron --help
 ```
+
+Use `--help` for full options.
 
 **`test:generate`** - Generate test email dataset
 
@@ -316,10 +310,9 @@ npm run cli test:live --verbose
 
 # Test custom endpoint
 npm run cli test:live --endpoint https://your-worker.workers.dev/validate
-
-# Show help
-npm run cli test:live --help
 ```
+
+Use `--help` for full options.
 
 **`test:batch`** - Batch test large datasets
 
@@ -337,10 +330,9 @@ npm run cli test:batch --input data.csv --endpoint https://fraud.erfi.dev/valida
 
 # Save results to custom path
 npm run cli test:batch --input data.csv --output ./results.json
-
-# Show help
-npm run cli test:batch --help
 ```
+
+Use `--help` for full options.
 
 **CSV Format for test:batch:**
 ```csv
@@ -354,42 +346,36 @@ test123@gmail.com,fraudulent,sequential
 Tests name detection across 15+ languages (English, Spanish, French, German, Italian, Portuguese, Russian, Chinese, Arabic, etc.).
 
 ```bash
-# Run multi-language tests
 npm run cli test:multilang
-
-# Note: This command runs immediately (no --help flag)
 ```
 
-### ⚙️ Configuration
+**Note:** This command runs immediately without requiring additional flags.
 
-**`config:get`** - Get configuration value
+### Configuration
+
+Manage configuration stored in Cloudflare KV.
+
 ```bash
+# Get configuration value
 npm run cli config:get threshold
-```
 
-**`config:set`** - Set configuration value
-```bash
+# Set configuration value
 npm run cli config:set threshold 0.75
-```
 
-**`config:list`** - List all configurations
-```bash
+# List all configurations
 npm run cli config:list
-```
 
-**`config:sync`** - Sync local config to KV
-```bash
+# Sync local config to KV
 npm run cli config:sync
-```
 
-**Note:** All config commands support `--binding <name>` to use custom KV bindings:
-```bash
-# Use custom binding
+# Use custom KV binding
 npm run cli config:get mykey --binding MY_CONFIG
 npm run cli config:set mykey myvalue --binding MY_CONFIG
 ```
 
-### 🧪 A/B Testing
+All config commands support `--binding <name>` to target custom KV bindings (default: `CONFIG`).
+
+### A/B Testing
 
 **`ab:create`** - Create new A/B test experiment
 
@@ -414,10 +400,9 @@ npm run cli ab:create \
   --experiment-id "bot_mgmt_test" \
   --description "Test Bot Management weight" \
   --remote
-
-# Show help
-npm run cli ab:create --help
 ```
+
+Use `--help` for full options.
 
 **`ab:status`** - Show active A/B test status
 
@@ -427,9 +412,6 @@ npm run cli ab:status
 
 # Check production experiment
 npm run cli ab:status --remote
-
-# Show help
-npm run cli ab:status --help
 ```
 
 **`ab:analyze`** - Analyze A/B test results
@@ -445,10 +427,9 @@ npm run cli ab:analyze --experiment-id "bot_mgmt_test" --hours 24
 
 # Get JSON output for further processing
 npm run cli ab:analyze --experiment-id "ensemble_markov" --format json
-
-# Show help
-npm run cli ab:analyze --help
 ```
+
+Use `--help` for full options.
 
 **`ab:stop`** - Stop active A/B test
 
@@ -458,9 +439,6 @@ npm run cli ab:stop
 
 # Stop production experiment without confirmation
 npm run cli ab:stop --remote --yes
-
-# Show help
-npm run cli ab:stop --help
 ```
 
 **A/B Test Workflow:**
@@ -480,20 +458,26 @@ npm run cli ab:stop --remote --yes
 
 ## Environment Variables
 
-For analytics and KV commands, set these environment variables:
+For analytics and KV commands, configure these environment variables:
 
 ```bash
+# Method 1: Export in shell
 export CLOUDFLARE_API_KEY="your_api_key"
 export CLOUDFLARE_EMAIL="your@email.com"
 export CLOUDFLARE_ACCOUNT_ID="your_account_id"
-```
 
-Or create a `.env` file:
-
-```bash
+# Method 2: Create .env file
+cat > .env << EOF
 CLOUDFLARE_API_KEY=your_api_key
 CLOUDFLARE_EMAIL=your@email.com
 CLOUDFLARE_ACCOUNT_ID=your_account_id
+EOF
+```
+
+For admin endpoints (domains, TLD management):
+```bash
+export ADMIN_API_KEY="your_admin_key"
+export API_URL="https://your-worker.workers.dev"  # optional
 ```
 
 ## Common Workflows
@@ -582,21 +566,28 @@ export default async function myCommand(args: string[]) {
 
 ## Tips
 
-- Use `--help` on any command for detailed usage
-- Most commands support `--remote` flag for production KV
-- Analytics queries use SQL syntax
-- KV commands default to local unless `--remote` is specified
+**General:**
+- Use `--help` on any command for detailed usage information
 - Debug mode: `DEBUG=1 npm run cli <command>`
+
+**KV and Remote Operations:**
+- Most commands support `--remote` flag for production KV access
+- KV commands default to local unless `--remote` is specified
+- Use `--binding <name>` to target custom KV bindings
+
+**Analytics:**
+- Queries use standard SQL syntax
+- All queries run against `ANALYTICS_DATASET` table
 
 ## Troubleshooting
 
-**Command not found**: Ensure you're using `npm run cli` prefix
-
-**KV errors**: Check binding names match wrangler.toml
-
-**Analytics errors**: Verify environment variables are set
-
-**Permission errors**: Ensure API key has required scopes
+| Issue | Solution |
+|-------|----------|
+| Command not found | Ensure you're using `npm run cli` prefix |
+| KV errors | Check binding names match `wrangler.jsonc` configuration |
+| Analytics errors | Verify environment variables are set correctly |
+| Permission errors | Ensure API key has required scopes for the operation |
+| Remote operations fail | Confirm you're authenticated with Wrangler (`wrangler login`) |
 
 ---
 
