@@ -103,9 +103,34 @@ const VIEWS = {
       markov_confidence,
       markov_cross_entropy_legit,
       markov_cross_entropy_fraud,
+      ensemble_reasoning,
+      model_2gram_prediction,
+      model_3gram_prediction,
+      min_entropy,
+      abnormality_risk,
+      ood_detected,
       pattern_type,
       country
     FROM validations WHERE markov_detected = 1 ORDER BY timestamp DESC LIMIT {limit}`
+  },
+  ood: {
+    name: 'OOD Detections',
+    sql: `SELECT
+      timestamp,
+      email_local_part,
+      domain,
+      decision,
+      risk_score,
+      min_entropy,
+      abnormality_score,
+      abnormality_risk,
+      markov_confidence,
+      markov_cross_entropy_legit,
+      markov_cross_entropy_fraud,
+      ensemble_reasoning,
+      block_reason,
+      country
+    FROM validations WHERE ood_detected = 1 ORDER BY min_entropy DESC, timestamp DESC LIMIT {limit}`
   },
   comprehensive: {
     name: 'Comprehensive View (All Columns)',
@@ -140,6 +165,13 @@ const VIEWS = {
       markov_confidence,
       markov_cross_entropy_legit,
       markov_cross_entropy_fraud,
+      ensemble_reasoning,
+      model_2gram_prediction,
+      model_3gram_prediction,
+      min_entropy,
+      abnormality_score,
+      abnormality_risk,
+      ood_detected,
       ip_reputation_score,
       bucket,
       fingerprint_hash

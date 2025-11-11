@@ -82,15 +82,25 @@ Training 2-gram Models
 ✅ 2-gram training complete!
 ```
 
-## Automated Training (Currently Disabled)
+## Online Training
 
-### ⚠️ Status: Disabled Due to Data Quality Issues
+### ⚠️ Status: Partially Disabled
 
-**Automated online training is currently disabled** (as of 2025-01-06) to prevent model degradation.
+**Training Status (as of 2025-01-06):**
+
+| Method | Status | Location | Use Case |
+|--------|--------|----------|----------|
+| **Scheduled/Cron** (every 6h) | ❌ DISABLED | `src/index.ts:448-467` | Fully automated training |
+| **Manual API Endpoint** | ✅ ENABLED | `POST /admin/markov/train` | On-demand training |
+| **CLI Training** | ✅ ENABLED | `npm run cli train:markov` | Recommended |
+
+**TL;DR**: Automatic scheduled training is disabled, but you can still manually trigger online training via the API endpoint if needed. **CLI training with labeled CSV data is the recommended approach.**
+
+---
 
 ### The Problem: Circular Reasoning
 
-The online training pipeline had a critical flaw where it used the model's own predictions to label training data:
+The online training pipeline has a critical flaw where it uses the model's own predictions to label training data:
 
 ```typescript
 // Labels fraud based on the model's OWN risk_score
@@ -106,35 +116,86 @@ if (sample.risk_score >= 0.7 && (sample.decision === 'block')) {
 4. False positives get reinforced
 5. Model quality degrades over time
 
-### Ground Truth Requirement
+**Ground Truth Requirement**: Proper training requires human-verified fraud vs legitimate classifications, not model predictions.
 
-**Proper training requires ground truth labels** - human-verified fraud vs legitimate classifications, not model predictions.
+---
 
-### Current Approach
+### Manual API Training (Available with Caution)
 
-Until a proper ground truth mechanism is implemented (e.g., user feedback, manual review), **only manual training with labeled CSV datasets is used**:
+While scheduled training is disabled, you can still manually trigger the online training pipeline via the admin API:
 
 ```bash
-# Train with verified ground truth data
+# Manually trigger online training (uses last 7 days of production data)
+curl -X POST "https://your-worker.workers.dev/admin/markov/train" \
+  -H "X-API-Key: $ADMIN_API_KEY"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Training completed successfully",
+  "result": {
+    "success": true,
+    "fraud_count": 1234,
+    "legit_count": 5678,
+    "version": "v1762063221887_69",
+    "duration_ms": 8542
+  }
+}
+```
+
+**⚠️ Use with Caution:**
+- Training uses model's own predictions as labels (circular reasoning risk)
+- May reinforce false positives if model is already making mistakes
+- No human verification of training labels
+- Only use if you understand the implications
+
+**When to use:**
+- Quick model updates when you trust current production accuracy
+- Testing the training pipeline
+- Emergency model refreshes
+
+**Recommended instead:** Use CLI training with human-labeled CSV data.
+
+---
+
+### Scheduled Training (Disabled)
+
+The cron trigger still fires every 6 hours but only updates the disposable domain list:
+
+```jsonc
+// wrangler.jsonc
+"triggers": {
+  "crons": ["0 */6 * * *"]  // Fires, but training code is commented out
+}
+```
+
+**Previous Process** (now disabled in `src/index.ts:448-467`):
+1. ✅ Updates disposable domain list from GitHub
+2. ❌ ~~Trains models on last 7 days of D1 data~~ (commented out)
+3. ❌ ~~Validates and deploys new models~~ (commented out)
+
+**Why Training Was Disabled**: No ground truth verification - relies entirely on model's own decisions.
+
+---
+
+### Recommended Approach
+
+**Use CLI training with pattern-labeled CSV data:**
+
+```bash
+# 1. Prepare dataset with pattern-based labels
+npm run cli train:relabel --input ./dataset/raw.csv --output ./dataset/labeled.csv
+
+# 2. Train models from labeled CSV
 npm run cli train:markov -- --orders "2,3" --upload --remote
+
+# 3. Verify models
+npm run cli test:live
 ```
 
-### Previous Automated Approach (Disabled)
-
-The automated training worker previously ran every 6 hours via Cloudflare cron:
-
-```yaml
-# wrangler.jsonc (currently disabled in src/index.ts)
-triggers = { crons = ["0 */6 * * *"] }
-```
-
-**Previous Process** (now disabled):
-1. Loaded last 7 days of validation data from D1
-2. Labeled samples based on risk_score and decision
-3. Trained incrementally on new data
-4. Deployed updated models
-
-**Why Disabled**: No ground truth verification - relied entirely on model's own decisions.
+This approach avoids circular reasoning by using pattern analysis (not model predictions) to label training data.
 
 ## Model Quality Metrics
 
@@ -197,13 +258,24 @@ npm run cli train:markov -- --orders "2" --upload --remote
 
 ### Automated Training Not Running
 
-**Note**: Automated training is intentionally disabled (see "Automated Training (Currently Disabled)" section above).
+**Note**: Scheduled training is intentionally disabled (see "Online Training" section above).
 
 **If you need to update models**:
+
+**Option 1: CLI Training (Recommended)**
 ```bash
 # Use manual training with labeled CSV data
 npm run cli train:markov -- --orders "2,3" --upload --remote
 ```
+
+**Option 2: Manual API Training (Use with caution)**
+```bash
+# Trigger online training via API (uses production data)
+curl -X POST "https://your-worker.workers.dev/admin/markov/train" \
+  -H "X-API-Key: $ADMIN_API_KEY"
+```
+
+Note: API training uses model predictions as labels (circular reasoning risk). CLI training with labeled CSV data is preferred.
 
 ### High False Positive Rate
 
@@ -277,6 +349,333 @@ export async function runTrainingPipeline(
   incremental: boolean = true
 ): Promise<TrainedModels>
 ```
+
+## Model Ensemble Strategy
+
+### Overview
+
+The system can use an ensemble approach combining multiple n-gram orders (2-gram + 3-gram) to leverage the strengths of each model while mitigating their weaknesses.
+
+### Why Ensemble?
+
+**2-gram Model (Bigram):**
+- ✅ Robust gibberish detection
+- ✅ Good generalization with limited data (44K samples sufficient)
+- ✅ Low false positive rate on legitimate users
+- ❌ Limited context awareness (only 1 character back)
+
+**3-gram Model (Trigram):**
+- ✅ Better context understanding (2 characters back)
+- ✅ High confidence on well-trained patterns
+- ✅ Better at distinguishing similar patterns
+- ❌ Requires 200K-1M samples to avoid sparsity
+- ❌ Prone to overfitting with limited data
+
+### Ensemble Algorithm
+
+The ensemble uses **confidence-weighted voting** with intelligent fallback logic:
+
+```typescript
+// Step 1: Get predictions from both models
+const result2gram = {
+  H_legit: legit2gram.crossEntropy(localPart),
+  H_fraud: fraud2gram.crossEntropy(localPart),
+};
+
+const result3gram = {
+  H_legit: legit3gram.crossEntropy(localPart),
+  H_fraud: fraud3gram.crossEntropy(localPart),
+};
+
+// Step 2: Calculate confidence for each model
+const confidence2 = calculateConfidence(result2gram.H_legit, result2gram.H_fraud);
+const confidence3 = calculateConfidence(result3gram.H_legit, result3gram.H_fraud);
+
+// Step 3: Ensemble decision logic
+let finalPrediction, finalConfidence, reasoning;
+
+// Case 1: Both agree with high confidence (>0.3)
+if (prediction2 === prediction3 && Math.min(confidence2, confidence3) > 0.3) {
+  finalPrediction = prediction2;
+  finalConfidence = Math.max(confidence2, confidence3);
+  reasoning = 'both_agree_high_confidence';
+}
+// Case 2: 3-gram has VERY high confidence (>0.5) - trust it
+else if (confidence3 > 0.5 && confidence3 > confidence2 * 1.5) {
+  finalPrediction = prediction3;
+  finalConfidence = confidence3;
+  reasoning = '3gram_high_confidence_override';
+}
+// Case 3: 2-gram detects gibberish (high cross-entropy)
+else if (prediction2 === 'fraud' && confidence2 > 0.2 && result2gram.H_fraud > 6.0) {
+  finalPrediction = 'fraud';
+  finalConfidence = confidence2;
+  reasoning = '2gram_gibberish_detection';
+}
+// Case 4: Disagree - default to 2-gram (more robust)
+else if (prediction2 !== prediction3) {
+  finalPrediction = prediction2;
+  finalConfidence = confidence2;
+  reasoning = 'disagree_default_to_2gram';
+}
+// Case 5: Use higher confidence model
+else {
+  finalPrediction = confidence2 >= confidence3 ? prediction2 : prediction3;
+  finalConfidence = Math.max(confidence2, confidence3);
+  reasoning = confidence2 >= confidence3 ? '2gram_higher_confidence' : '3gram_higher_confidence';
+}
+```
+
+### Configuration Thresholds
+
+```typescript
+const ENSEMBLE_THRESHOLDS = {
+  both_agree_min: 0.3,        // Minimum confidence when both agree
+  override_3gram_min: 0.5,    // 3-gram needs this to override
+  override_ratio: 1.5,        // 3-gram must be 1.5x more confident
+  gibberish_entropy: 6.0,     // Cross-entropy threshold for gibberish
+  gibberish_2gram_min: 0.2,   // Min 2-gram confidence for gibberish
+};
+```
+
+### Validation
+
+Test model performance before deploying:
+
+```bash
+# Validate production models with ensemble
+npm run cli model:validate --remote --ensemble --verbose
+
+# Test specific category
+npm run cli model:validate --remote --category gibberish --ensemble
+
+# Compare model orders
+npm run cli model:validate --remote --orders "2,3" --verbose
+```
+
+### Expected Performance
+
+Based on validation testing:
+- **2-gram alone:** 87.5% accuracy
+- **3-gram alone:** 79.2% accuracy (data sparsity issues)
+- **Ensemble:** 87.5% accuracy with intelligent reasoning
+
+**Ensemble reasoning distribution:**
+- 37.5% → Use 3-gram (higher confidence)
+- 20.8% → Disagree, default to 2-gram
+- 16.7% → 3-gram high confidence override
+- 12.5% → Both agree with high confidence
+
+### Monitoring
+
+Track these metrics in production:
+- Disagreement rate between models
+- Ensemble override frequency
+- Confidence distribution per reasoning type
+- False positive/negative rates
+- Per-category accuracy
+
+### When to Use Ensemble
+
+**Use ensemble when:**
+- You have both 2-gram and 3-gram models trained
+- You want maximum accuracy across diverse patterns
+- You can tolerate slightly higher latency (~20-30ms)
+
+**Use single model when:**
+- Minimizing latency is critical
+- You only have one well-trained model
+- Simplicity is preferred over marginal gains
+
+## Out-of-Distribution (OOD) Detection
+
+### Overview (v2.4+)
+
+The fraud detection system uses a **two-dimensional risk model** that combines classification (fraud vs legit) with anomaly detection (out-of-distribution patterns).
+
+### The Problem
+
+Traditional Markov models only ask: **"Is this fraud or legit?"**
+
+But what if the pattern is **neither** - something the model has never seen before?
+
+**Example:** `oarnimstiaremtn@gmail.com`
+- Cross-entropy (legit): 4.51 (very high!)
+- Cross-entropy (fraud): 4.32 (very high!)
+- Difference: Only 0.19
+- **Both models are confused** - this is an out-of-distribution pattern (likely an anagram)
+
+Traditional confidence calculation:
+```typescript
+confidence = diff / max = 0.19 / 4.51 = 0.04 (4%)
+risk = 0.04 → ALLOW ❌
+```
+
+### The Solution: Two-Dimensional Risk
+
+Instead of just classification, measure two independent signals:
+
+**Dimension 1: Classification Risk** (Which class?)
+- Differential signal: Is fraud cross-entropy lower than legit?
+- Formula: `diff / (diff + BASELINE_ENTROPY)`
+- Answers: "Which type of pattern is this?"
+
+**Dimension 2: Abnormality Risk** (Is this normal?)
+- Consensus signal: Are BOTH cross-entropies high?
+- Formula: `max(0, minEntropy - OOD_THRESHOLD) * SCALING_FACTOR`
+- Answers: "Is this pattern outside training distribution?"
+
+**Final Risk:**
+```typescript
+finalRisk = max(classificationRisk, abnormalityRisk) + domainRisk
+```
+
+### Research-Backed Thresholds
+
+Based on information theory for binary classification:
+
+```typescript
+const OOD_DETECTION = {
+  BASELINE_ENTROPY: 0.69,      // Random guessing (log 2 in nats)
+  OOD_THRESHOLD: 3.0,          // 3x "poor prediction" threshold
+  SCALING_FACTOR: 0.15,        // Risk per nat above threshold
+  MAX_OOD_RISK: 0.6,           // Cap at block threshold
+};
+```
+
+**Cross-Entropy Ranges (nats):**
+- Random guessing: 0.69 (log 2)
+- Good predictions: < 0.2
+- Poor predictions: > 1.0
+- **Severely confused (OOD): > 3.0**
+
+### Algorithm
+
+```typescript
+// 1. Calculate both dimensions
+const minEntropy = Math.min(crossEntropyLegit, crossEntropyFraud);
+const abnormalityScore = Math.max(0, minEntropy - 3.0);
+const abnormalityRisk = Math.min(abnormalityScore * 0.15, 0.6);
+
+const diff = Math.abs(crossEntropyLegit - crossEntropyFraud);
+const classificationRisk = prediction === 'fraud' ?
+  diff / (diff + 0.69) : 0;
+
+// 2. Take stronger signal
+const finalRisk = Math.max(classificationRisk, abnormalityRisk);
+```
+
+### Results
+
+**For "oarnimstiaremtn@gmail.com":**
+```
+Classification Risk:
+  diff = 0.19
+  confidence = 0.19 / 0.88 = 0.22
+
+Abnormality Risk:
+  minEntropy = 4.32
+  abnormalityScore = 4.32 - 3.0 = 1.32
+  abnormalityRisk = 1.32 * 0.15 = 0.20
+
+Final Risk: max(0.22, 0.20) + domainRisk(0.09) = 0.31 → WARN ✅
+```
+
+**For normal fraud (entropy ~2.0-2.5):**
+```
+minEntropy = 2.0 < 3.0
+abnormalityRisk = 0
+Uses classification risk only → unchanged behavior ✅
+```
+
+**For legitimate patterns (entropy ~1.5-2.0):**
+```
+minEntropy = 1.5 < 3.0
+abnormalityRisk = 0
+Predicted legit → risk = 0 ✅
+```
+
+### Database Tracking
+
+OOD detections are tracked in the database:
+
+```sql
+-- New columns (migration 0005)
+min_entropy REAL               -- min(H_legit, H_fraud)
+abnormality_score REAL         -- How far above threshold
+abnormality_risk REAL          -- Risk contribution
+ood_detected INTEGER           -- Boolean flag
+```
+
+Query OOD patterns:
+
+```sql
+-- Find all OOD detections
+SELECT email_local_part, min_entropy, abnormality_risk, decision
+FROM validations
+WHERE ood_detected = 1
+ORDER BY min_entropy DESC;
+
+-- Analyze OOD by decision
+SELECT decision, COUNT(*) as count, AVG(abnormality_risk) as avg_risk
+FROM validations
+WHERE ood_detected = 1
+GROUP BY decision;
+```
+
+### Block Reasons
+
+New OOD-specific block reasons:
+
+- `out_of_distribution`: Very high abnormality (score > 1.5)
+- `high_abnormality`: High risk block (abnormality > 0.4)
+- `suspicious_abnormal_pattern`: Medium risk warning (abnormality > 0.2)
+
+### Performance Impact
+
+- **Latency:** +1-2ms (minimal overhead)
+- **Accuracy:** Catches novel patterns missed by classification alone
+- **False Positives:** No increase (abnormality threshold is conservative)
+- **Use Cases:** Detects anagrams, shuffles, novel bot patterns
+
+### When OOD Helps
+
+**Catches:**
+- Anagrams: `oarnimstiaremtn` (martinsonear shuffled)
+- Character shuffles: `aeimnorst` → `mtorsiean`
+- Novel bot patterns not in training data
+- Hybrid human/bot patterns
+
+**Doesn't affect:**
+- Normal fraud patterns (classification dominant)
+- Legitimate names (low entropy)
+- Well-trained patterns (classification confident)
+
+### Monitoring
+
+Track OOD metrics:
+
+```bash
+# Check OOD detection rate
+SELECT
+  COUNT(CASE WHEN ood_detected = 1 THEN 1 END) * 100.0 / COUNT(*) as ood_rate
+FROM validations
+WHERE timestamp > datetime('now', '-7 days');
+
+# OOD risk distribution
+SELECT
+  ROUND(abnormality_risk, 1) as risk_bucket,
+  COUNT(*) as count
+FROM validations
+WHERE ood_detected = 1
+GROUP BY risk_bucket
+ORDER BY risk_bucket;
+```
+
+**Expected rates:**
+- OOD detection: 1-3% of total validations
+- Most OOD: 0.15-0.35 risk range (warning level)
+- High OOD (>0.4): <0.5% (block level)
 
 ## See Also
 

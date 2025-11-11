@@ -21,11 +21,14 @@ interface ApiResponse {
 	};
 }
 
+// Store API URL globally (set by main handler)
+let globalApiUrl: string | undefined;
+
 /**
- * Get API URL and key from environment
+ * Get API URL and key from environment or CLI flags
  */
 function getApiConfig() {
-	const apiUrl = process.env.API_URL || 'https://your-worker.workers.dev';
+	const apiUrl = globalApiUrl || process.env.API_URL || 'https://your-worker.workers.dev';
 	const apiKey = process.env.ADMIN_API_KEY;
 
 	if (!apiKey) {
@@ -185,6 +188,10 @@ ENVIRONMENT VARIABLES
   ADMIN_API_KEY         API key for admin endpoints (required)
   API_URL               API base URL (default: https://your-worker.workers.dev)
 
+OPTIONS
+  --api-url <url>       Override API URL (default: $API_URL or https://your-worker.workers.dev)
+  --help, -h            Show this help message
+
 EXAMPLES
   # Update domains from GitHub
   npm run cli domains:update
@@ -195,8 +202,8 @@ EXAMPLES
   # Clear cache (forces reload on next validation)
   npm run cli domains:cache:clear
 
-OPTIONS
-  --help, -h            Show this help message
+  # Use custom API URL
+  npm run cli domains:update --api-url https://my-worker.workers.dev
 `);
 }
 
@@ -208,6 +215,7 @@ export default async function handler(args: string[], commandName: string) {
 		args,
 		options: {
 			help: { type: 'boolean', short: 'h' },
+			'api-url': { type: 'string' },
 		},
 		allowPositionals: true,
 	});
@@ -215,6 +223,11 @@ export default async function handler(args: string[], commandName: string) {
 	if (values.help) {
 		showHelp();
 		return;
+	}
+
+	// Set global API URL if provided
+	if (values['api-url']) {
+		globalApiUrl = values['api-url'] as string;
 	}
 
 	// Extract subcommand from command name (e.g., "domains:update" -> "update")

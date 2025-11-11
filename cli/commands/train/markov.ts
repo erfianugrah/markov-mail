@@ -17,6 +17,7 @@ interface TrainingOptions {
   upload: boolean;
   remote: boolean;
   orders: number[]; // N-gram orders to train (1, 2, 3)
+  binding: string; // KV binding name
 }
 
 // Removed hardcoded DEFAULT_DATASETS - now scans directory dynamically
@@ -78,9 +79,11 @@ async function loadCSV(filepath: string): Promise<{ legit: string[], fraud: stri
 
 async function uploadModelsToKV(
   files: Array<{ order: number; legitFile: string; fraudFile: string }>,
-  remote: boolean
+  remote: boolean,
+  binding: string
 ) {
   logger.section('📤 Uploading to Cloudflare KV');
+  logger.info(`Binding: ${binding}`);
 
   const remoteFlag = remote ? '--remote' : '';
 
@@ -88,12 +91,12 @@ async function uploadModelsToKV(
     for (const { order, legitFile, fraudFile } of files) {
       logger.info(`Uploading ${order}-gram legitimate model...`);
       const legitKey = `MM_legit_${order}gram`;
-      await $`npx wrangler kv key put ${legitKey} --path=${legitFile} --binding=MARKOV_MODEL ${remoteFlag}`.quiet();
+      await $`npx wrangler kv key put ${legitKey} --path=${legitFile} --binding=${binding} ${remoteFlag}`.quiet();
       logger.success(`${order}-gram legitimate model uploaded (${legitKey})`);
 
       logger.info(`Uploading ${order}-gram fraudulent model...`);
       const fraudKey = `MM_fraud_${order}gram`;
-      await $`npx wrangler kv key put ${fraudKey} --path=${fraudFile} --binding=MARKOV_MODEL ${remoteFlag}`.quiet();
+      await $`npx wrangler kv key put ${fraudKey} --path=${fraudFile} --binding=${binding} ${remoteFlag}`.quiet();
       logger.success(`${order}-gram fraudulent model uploaded (${fraudKey})`);
     }
 
@@ -126,6 +129,7 @@ OPTIONS
                       Valid orders: 1 (unigram), 2 (bigram), 3 (trigram)
   --upload            Upload models to KV after training
   --remote            Use remote KV (requires --upload)
+  --binding <name>    KV binding name (default: MARKOV_MODEL)
   --help, -h          Show this help message
 
 EXAMPLES
@@ -140,6 +144,9 @@ EXAMPLES
 
   # Use custom dataset
   npm run cli train:markov --dataset ./my-datasets --orders "2,3"
+
+  # Upload to custom KV binding
+  npm run cli train:markov --upload --remote --binding MY_MODELS
 `);
     return;
   }
@@ -162,7 +169,8 @@ EXAMPLES
     output: getOption(parsed, 'output') || './',
     upload: hasFlag(parsed, 'upload'),
     remote: hasFlag(parsed, 'remote'),
-    orders: orders
+    orders: orders,
+    binding: getOption(parsed, 'binding') || 'MARKOV_MODEL'
   };
 
   logger.section('🚀 Markov Chain Model Training');
@@ -284,7 +292,7 @@ EXAMPLES
 
   // Upload to KV if requested
   if (options.upload) {
-    await uploadModelsToKV(savedFiles, options.remote);
+    await uploadModelsToKV(savedFiles, options.remote, options.binding);
   }
 
   logger.section('✅ Training Complete!');

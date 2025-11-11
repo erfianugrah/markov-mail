@@ -460,6 +460,81 @@ Ensemble Decision:
 - Online learning: Retrains every 6 hours
 - Auto-validation: Blocks regressions
 
+#### Out-of-Distribution Detection (v2.4.0)
+
+**Purpose**: Detect patterns that are unfamiliar to BOTH the legitimate and fraudulent models.
+
+**Problem**: When both models have high cross-entropy (H > 3.0 nats), this indicates the pattern is outside the training distribution - not a classification uncertainty, but a consensus that the pattern is abnormal.
+
+**Two-Dimensional Risk Model**:
+```typescript
+// Dimension 1: Classification Risk (differential signal)
+// Which model fits better: fraud vs legit?
+const classificationRisk = markovResult.isLikelyFraudulent
+  ? markovResult.confidence
+  : 0;
+
+// Dimension 2: Abnormality Risk (consensus signal)
+// Are BOTH models confused by this pattern?
+const minEntropy = Math.min(H_legit, H_fraud);
+const abnormalityScore = Math.max(0, minEntropy - 3.0);
+const abnormalityRisk = Math.min(abnormalityScore * 0.15, 0.6);
+
+// Final Risk: Take the maximum (worst case)
+const finalRisk = Math.max(classificationRisk, abnormalityRisk) + domainRisk;
+```
+
+**Threshold: 3.0 nats**
+- **Baseline**: log₂ = 0.69 nats (random guessing)
+- **Good predictions**: < 0.2 nats
+- **Poor predictions**: > 1.0 nats
+- **OOD threshold**: > 3.0 nats (severely confused)
+
+**Risk Scaling**:
+```typescript
+// Linear scaling from threshold to max
+abnormalityRisk = min((minEntropy - 3.0) × 0.15, 0.6)
+
+// Examples:
+minEntropy = 3.0  → abnormalityRisk = 0.00
+minEntropy = 4.0  → abnormalityRisk = 0.15
+minEntropy = 5.0  → abnormalityRisk = 0.30
+minEntropy = 7.0  → abnormalityRisk = 0.60 (capped)
+```
+
+**Example Cases**:
+
+*Email 1*: `inearkstioarsitm2mst@gmail.com` (anagram shuffle)
+```
+H_legit = 4.45, H_fraud = 4.68
+minEntropy = 4.45
+abnormalityScore = 1.45
+abnormalityRisk = 0.22
+Decision: WARN (suspicious_abnormal_pattern)
+```
+
+*Email 2*: `person1@gmail.com` (familiar pattern)
+```
+H_legit = 2.1, H_fraud = 3.8
+minEntropy = 2.1
+abnormalityScore = 0 (below threshold)
+abnormalityRisk = 0
+Decision: ALLOW (no OOD)
+```
+
+**Database Tracking**:
+- `min_entropy`: min(H_legit, H_fraud)
+- `abnormality_score`: max(0, minEntropy - 3.0)
+- `abnormality_risk`: risk contribution (0.0-0.6)
+- `ood_detected`: boolean flag (abnormalityScore > 0)
+
+**Block Reasons**:
+- `out_of_distribution`: High abnormality risk drives decision
+- `suspicious_abnormal_pattern`: OOD + other signals
+
+**Research Basis**:
+Cross-entropy thresholds are established in information theory literature. The 3.0 nats threshold represents severe model confusion - the pattern requires ~8× more bits to encode than expected (2^3 = 8).
+
 ### 4. Fingerprinting (`src/fingerprint.ts`)
 
 **Purpose**: Generate unique user fingerprints

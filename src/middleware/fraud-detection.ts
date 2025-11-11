@@ -5,6 +5,8 @@
  * Routes can opt-out by setting: c.set('skipFraudDetection', true)
  */
 
+import pkg from '../../package.json';
+
 /**
  * Pattern Classification Algorithm Version
  *
@@ -12,8 +14,13 @@
  * v2.1: Multi-factor detection (n-grams + vowel density + entropy) + dynamic messages
  * v2.2: Markov-only detection (removed keyboard-walk, keyboard-mashing, gibberish heuristics)
  *       83% accuracy vs 67% with heuristics, zero false positives on legitimate names
+ * v2.3: Markov ensemble (2-gram + 3-gram) with confidence-weighted voting
+ *       Combines 2-gram robustness with 3-gram context awareness
+ * v2.4: Two-dimensional risk model with OOD (Out-of-Distribution) detection
+ *       Classification risk (fraud vs legit) + Abnormality risk (novel patterns)
+ *       Catches anagrams, shuffles, and patterns outside training distribution
  */
-export const PATTERN_CLASSIFICATION_VERSION = '2.2.0';
+export const PATTERN_CLASSIFICATION_VERSION = pkg.version;
 
 // Local type for Markov result in middleware (combines results from legit and fraud models)
 interface MarkovResult {
@@ -22,6 +29,13 @@ interface MarkovResult {
   crossEntropyFraud: number;
   confidence: number;
   differenceRatio: number;
+  ensembleReasoning?: string; // Why ensemble chose this prediction
+  model2gramPrediction?: string; // 2-gram prediction (if ensemble)
+  model3gramPrediction?: string; // 3-gram prediction (if ensemble)
+  // OOD Detection (v2.4+)
+  minEntropy?: number;          // min(H_legit, H_fraud) - measures abnormality
+  abnormalityScore?: number;    // How far above OOD threshold (0 if below)
+  abnormalityRisk?: number;     // Risk contribution from abnormality (0.0-0.6)
 }
 
 import { Context, Next } from 'hono';
@@ -43,13 +57,40 @@ import { getConfig } from '../config';
 import { logger } from '../logger';
 
 // Cache Markov models globally per worker instance
+// Ensemble approach: Use both 2-gram (robust) and 3-gram (context-aware)
+let markovLegitModel2gram: NGramMarkovChain | null = null;
+let markovFraudModel2gram: NGramMarkovChain | null = null;
+let markovLegitModel3gram: NGramMarkovChain | null = null;
+let markovFraudModel3gram: NGramMarkovChain | null = null;
+let markovModelsLoaded = false;
+
+// Ensemble configuration thresholds
+const ENSEMBLE_THRESHOLDS = {
+  both_agree_min: 0.3,        // Minimum confidence when both agree
+  override_3gram_min: 0.5,    // 3-gram needs this to override
+  override_ratio: 1.5,        // 3-gram must be 1.5x more confident
+  gibberish_entropy: 6.0,     // Cross-entropy threshold for gibberish
+  gibberish_2gram_min: 0.2,   // Min 2-gram confidence for gibberish
+};
+
+// OOD (Out-of-Distribution) Detection Thresholds (v2.4+)
+// Research-backed constants for anomaly detection via cross-entropy
+const OOD_DETECTION = {
+  BASELINE_ENTROPY: 0.69,      // Random guessing baseline (log 2 in nats)
+  OOD_THRESHOLD: 3.0,          // Patterns above this are severely confused (3x "poor" threshold)
+  SCALING_FACTOR: 0.15,        // Risk contribution per nat above threshold
+  MAX_OOD_RISK: 0.6,           // Cap abnormality risk at block threshold
+};
+
+// For backwards compatibility (points to 2-gram by default)
 let markovLegitModel: NGramMarkovChain | null = null;
 let markovFraudModel: NGramMarkovChain | null = null;
-let markovModelsLoaded = false;
 
 /**
  * Load Markov Chain models from KV storage
- * Now using NGramMarkovChain (trained with 111k legit + 105k fraud samples)
+ * Ensemble approach: Load both 2-gram and 3-gram models
+ * - 2-gram: Robust gibberish detection, good generalization
+ * - 3-gram: Context-aware, high confidence on well-trained patterns
  */
 async function loadMarkovModels(env: Env): Promise<boolean> {
   if (markovModelsLoaded) return true;
@@ -60,34 +101,65 @@ async function loadMarkovModels(env: Env): Promise<boolean> {
       return false;
     }
 
-    // Use 3-gram models for better context (trained with 111k+ samples)
-    const legitData = await env.MARKOV_MODEL.get('MM_legit_3gram', 'json');
-    const fraudData = await env.MARKOV_MODEL.get('MM_fraud_3gram', 'json');
+    // Load both 2-gram and 3-gram models for ensemble
+    const legit2Data = await env.MARKOV_MODEL.get('MM_legit_2gram', 'json');
+    const fraud2Data = await env.MARKOV_MODEL.get('MM_fraud_2gram', 'json');
+    const legit3Data = await env.MARKOV_MODEL.get('MM_legit_3gram', 'json');
+    const fraud3Data = await env.MARKOV_MODEL.get('MM_fraud_3gram', 'json');
 
     logger.info({
       event: 'markov_kv_fetch_result',
-      hasLegitData: !!legitData,
-      hasFraudData: !!fraudData,
-      legitOrder: legitData ? (legitData as any).order : null,
-      fraudOrder: fraudData ? (fraudData as any).order : null,
+      has2gramLegit: !!legit2Data,
+      has2gramFraud: !!fraud2Data,
+      has3gramLegit: !!legit3Data,
+      has3gramFraud: !!fraud3Data,
     }, 'KV fetch result');
 
-    if (legitData && fraudData) {
-      markovLegitModel = NGramMarkovChain.fromJSON(legitData);
-      markovFraudModel = NGramMarkovChain.fromJSON(fraudData);
-      markovModelsLoaded = true;
+    // Load 2-gram models (primary)
+    if (legit2Data && fraud2Data) {
+      markovLegitModel2gram = NGramMarkovChain.fromJSON(legit2Data);
+      markovFraudModel2gram = NGramMarkovChain.fromJSON(fraud2Data);
+
+      // Set backwards compatible pointers
+      markovLegitModel = markovLegitModel2gram;
+      markovFraudModel = markovFraudModel2gram;
+
       logger.info({
-        event: 'ngram_markov_models_loaded',
-        legitSamples: (legitData as any).trainingCount || 'unknown',
-        fraudSamples: (fraudData as any).trainingCount || 'unknown',
-      }, 'NGram Markov Chain models loaded successfully');
+        event: '2gram_markov_models_loaded',
+        legitSamples: (legit2Data as any).trainingCount || 'unknown',
+        fraudSamples: (fraud2Data as any).trainingCount || 'unknown',
+      }, '2-gram models loaded');
+    }
+
+    // Load 3-gram models (for ensemble)
+    if (legit3Data && fraud3Data) {
+      markovLegitModel3gram = NGramMarkovChain.fromJSON(legit3Data);
+      markovFraudModel3gram = NGramMarkovChain.fromJSON(fraud3Data);
+
+      logger.info({
+        event: '3gram_markov_models_loaded',
+        legitSamples: (legit3Data as any).trainingCount || 'unknown',
+        fraudSamples: (fraud3Data as any).trainingCount || 'unknown',
+      }, '3-gram models loaded');
+    }
+
+    // Mark as loaded if we have at least 2-gram
+    if (markovLegitModel2gram && markovFraudModel2gram) {
+      markovModelsLoaded = true;
+      const ensembleEnabled = !!(markovLegitModel3gram && markovFraudModel3gram);
+      logger.info({
+        event: 'markov_models_ready',
+        has2gram: true,
+        has3gram: ensembleEnabled,
+        ensembleEnabled,
+      }, 'Markov models ready');
       return true;
     } else {
       logger.warn({
         event: 'markov_data_missing',
-        hasLegitData: !!legitData,
-        hasFraudData: !!fraudData,
-      }, 'Missing Markov model data from KV');
+        has2gram: !!(legit2Data && fraud2Data),
+        has3gram: !!(legit3Data && fraud3Data),
+      }, 'Missing required Markov model data');
     }
   } catch (error) {
     logger.error({
@@ -97,6 +169,163 @@ async function loadMarkovModels(env: Env): Promise<boolean> {
   }
 
   return false;
+}
+
+/**
+ * Ensemble prediction combining 2-gram and 3-gram models
+ * Uses confidence-weighted voting with intelligent fallback logic
+ *
+ * Strategy:
+ * 1. Both models agree with high confidence → use agreed prediction
+ * 2. 3-gram has very high confidence → trust 3-gram
+ * 3. 2-gram detects gibberish (high entropy) → trust 2-gram
+ * 4. Models disagree → default to 2-gram (more robust)
+ * 5. Otherwise → use higher confidence model
+ */
+function ensemblePredict(
+  localPart: string,
+  legit2: NGramMarkovChain,
+  fraud2: NGramMarkovChain,
+  legit3: NGramMarkovChain | null,
+  fraud3: NGramMarkovChain | null
+): MarkovResult {
+  // Calculate 2-gram results (always available)
+  const H_legit2 = legit2.crossEntropy(localPart);
+  const H_fraud2 = fraud2.crossEntropy(localPart);
+
+  const isLikelyFraud2 = H_fraud2 < H_legit2;
+  const diff2 = Math.abs(H_legit2 - H_fraud2);
+  const maxH2 = Math.max(H_legit2, H_fraud2);
+  const diffRatio2 = maxH2 > 0 ? diff2 / maxH2 : 0;
+  const confidence2 = Math.min(diffRatio2 * 2, 1.0);
+
+  const prediction2 = isLikelyFraud2 ? 'fraud' : 'legit';
+
+  // If no 3-gram models, return 2-gram results
+  if (!legit3 || !fraud3) {
+    // OOD Detection (v2.4+)
+    const minEntropy = Math.min(H_legit2, H_fraud2);
+    const abnormalityScore = Math.max(0, minEntropy - OOD_DETECTION.OOD_THRESHOLD);
+    const abnormalityRisk = Math.min(
+      abnormalityScore * OOD_DETECTION.SCALING_FACTOR,
+      OOD_DETECTION.MAX_OOD_RISK
+    );
+
+    return {
+      isLikelyFraudulent: isLikelyFraud2,
+      crossEntropyLegit: H_legit2,
+      crossEntropyFraud: H_fraud2,
+      confidence: confidence2,
+      differenceRatio: diffRatio2,
+      ensembleReasoning: '2gram_only',
+      model2gramPrediction: prediction2,
+      // OOD metrics (v2.4+)
+      minEntropy,
+      abnormalityScore,
+      abnormalityRisk,
+    };
+  }
+
+  // Calculate 3-gram results
+  const H_legit3 = legit3.crossEntropy(localPart);
+  const H_fraud3 = fraud3.crossEntropy(localPart);
+
+  const isLikelyFraud3 = H_fraud3 < H_legit3;
+  const diff3 = Math.abs(H_legit3 - H_fraud3);
+  const maxH3 = Math.max(H_legit3, H_fraud3);
+  const diffRatio3 = maxH3 > 0 ? diff3 / maxH3 : 0;
+  const confidence3 = Math.min(diffRatio3 * 2, 1.0);
+
+  const prediction3 = isLikelyFraud3 ? 'fraud' : 'legit';
+
+  // Ensemble decision logic
+  let finalPrediction: 'fraud' | 'legit';
+  let finalConfidence: number;
+  let finalCrossEntropyLegit: number;
+  let finalCrossEntropyFraud: number;
+  let reasoning: string;
+
+  // Case 1: Both agree with high confidence (>0.3)
+  if (prediction2 === prediction3 && Math.min(confidence2, confidence3) > ENSEMBLE_THRESHOLDS.both_agree_min) {
+    finalPrediction = prediction2;
+    finalConfidence = Math.max(confidence2, confidence3);
+    finalCrossEntropyLegit = prediction2 === prediction3 ?
+      (confidence2 >= confidence3 ? H_legit2 : H_legit3) : H_legit2;
+    finalCrossEntropyFraud = prediction2 === prediction3 ?
+      (confidence2 >= confidence3 ? H_fraud2 : H_fraud3) : H_fraud2;
+    reasoning = 'both_agree_high_confidence';
+  }
+  // Case 2: 3-gram has VERY high confidence (>0.5) - trust it
+  else if (confidence3 > ENSEMBLE_THRESHOLDS.override_3gram_min &&
+           confidence3 > confidence2 * ENSEMBLE_THRESHOLDS.override_ratio) {
+    finalPrediction = prediction3;
+    finalConfidence = confidence3;
+    finalCrossEntropyLegit = H_legit3;
+    finalCrossEntropyFraud = H_fraud3;
+    reasoning = '3gram_high_confidence_override';
+  }
+  // Case 3: 2-gram detects gibberish (high cross-entropy for fraud)
+  else if (prediction2 === 'fraud' &&
+           confidence2 > ENSEMBLE_THRESHOLDS.gibberish_2gram_min &&
+           H_fraud2 > ENSEMBLE_THRESHOLDS.gibberish_entropy) {
+    finalPrediction = 'fraud';
+    finalConfidence = confidence2;
+    finalCrossEntropyLegit = H_legit2;
+    finalCrossEntropyFraud = H_fraud2;
+    reasoning = '2gram_gibberish_detection';
+  }
+  // Case 4: Disagree - default to 2-gram (more robust)
+  else if (prediction2 !== prediction3) {
+    finalPrediction = prediction2;
+    finalConfidence = confidence2;
+    finalCrossEntropyLegit = H_legit2;
+    finalCrossEntropyFraud = H_fraud2;
+    reasoning = 'disagree_default_to_2gram';
+  }
+  // Case 5: Use higher confidence model
+  else {
+    if (confidence2 >= confidence3) {
+      finalPrediction = prediction2;
+      finalConfidence = confidence2;
+      finalCrossEntropyLegit = H_legit2;
+      finalCrossEntropyFraud = H_fraud2;
+      reasoning = '2gram_higher_confidence';
+    } else {
+      finalPrediction = prediction3;
+      finalConfidence = confidence3;
+      finalCrossEntropyLegit = H_legit3;
+      finalCrossEntropyFraud = H_fraud3;
+      reasoning = '3gram_higher_confidence';
+    }
+  }
+
+  const finalDiff = Math.abs(finalCrossEntropyLegit - finalCrossEntropyFraud);
+  const finalMaxH = Math.max(finalCrossEntropyLegit, finalCrossEntropyFraud);
+  const finalDiffRatio = finalMaxH > 0 ? finalDiff / finalMaxH : 0;
+
+  // OOD Detection (v2.4+): Calculate abnormality metrics
+  // When BOTH models have high cross-entropy, the pattern is out-of-distribution
+  const minEntropy = Math.min(finalCrossEntropyLegit, finalCrossEntropyFraud);
+  const abnormalityScore = Math.max(0, minEntropy - OOD_DETECTION.OOD_THRESHOLD);
+  const abnormalityRisk = Math.min(
+    abnormalityScore * OOD_DETECTION.SCALING_FACTOR,
+    OOD_DETECTION.MAX_OOD_RISK
+  );
+
+  return {
+    isLikelyFraudulent: finalPrediction === 'fraud',
+    crossEntropyLegit: finalCrossEntropyLegit,
+    crossEntropyFraud: finalCrossEntropyFraud,
+    confidence: finalConfidence,
+    differenceRatio: finalDiffRatio,
+    ensembleReasoning: reasoning,
+    model2gramPrediction: prediction2,
+    model3gramPrediction: prediction3,
+    // OOD metrics (v2.4+)
+    minEntropy,
+    abnormalityScore,
+    abnormalityRisk,
+  };
 }
 
 /**
@@ -247,46 +476,48 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
   }
 
   // Markov Chain detection (NGram implementation) - PRIMARY SCORING METHOD
+  // Uses ensemble approach combining 2-gram and 3-gram models
   let markovResult: MarkovResult | undefined;
 
   if (emailValidation.valid && config.features.enableMarkovChainDetection) {
-    logger.info({ event: 'markov_starting', email: email.substring(0, 3) + '***' }, 'Starting Markov detection');
+    const ensembleEnabled = !!(markovLegitModel2gram && markovFraudModel2gram && markovLegitModel3gram && markovFraudModel3gram);
+    logger.info({
+      event: 'markov_starting',
+      email: email.substring(0, 3) + '***',
+      ensembleEnabled,
+    }, 'Starting Markov detection');
 
-    if (markovLegitModel && markovFraudModel) {
+    if (markovLegitModel2gram && markovFraudModel2gram) {
       try {
         const [localPart] = email.split('@');
-        logger.info({ event: 'markov_calculating', localPart: localPart.substring(0, 3) + '***' }, 'Calculating cross-entropy');
+        logger.info({
+          event: 'markov_calculating',
+          localPart: localPart.substring(0, 3) + '***',
+          hasEnsemble: ensembleEnabled,
+        }, 'Calculating ensemble prediction');
 
-        // Calculate cross-entropy for both models
-        const H_legit = markovLegitModel.crossEntropy(localPart);
-        logger.info({ event: 'markov_legit_done', H_legit }, 'Legit cross-entropy calculated');
+        // Use ensemble prediction (combines 2-gram and 3-gram if available)
+        markovResult = ensemblePredict(
+          localPart,
+          markovLegitModel2gram,
+          markovFraudModel2gram,
+          markovLegitModel3gram,
+          markovFraudModel3gram
+        );
 
-        const H_fraud = markovFraudModel.crossEntropy(localPart);
-        logger.info({ event: 'markov_fraud_done', H_fraud }, 'Fraud cross-entropy calculated');
-
-        // Lower cross-entropy = better fit to that model
-        const isLikelyFraudulent = H_fraud < H_legit;
-
-        // Calculate confidence based on difference
-        const diff = Math.abs(H_legit - H_fraud);
-        const maxH = Math.max(H_legit, H_fraud);
-        const differenceRatio = maxH > 0 ? diff / maxH : 0;
-
-        // Confidence scales with difference ratio
-        const confidence = Math.min(differenceRatio * 2, 1.0);
-
-        markovResult = {
-          isLikelyFraudulent,
-          crossEntropyLegit: H_legit,
-          crossEntropyFraud: H_fraud,
-          confidence,
-          differenceRatio,
-        };
+        logger.info({
+          event: 'markov_prediction_complete',
+          isLikelyFraudulent: markovResult.isLikelyFraudulent,
+          confidence: markovResult.confidence,
+          ensembleReasoning: markovResult.ensembleReasoning,
+          model2gramPrediction: markovResult.model2gramPrediction,
+          model3gramPrediction: markovResult.model3gramPrediction,
+        }, 'Ensemble prediction complete');
       } catch (crossEntropyError) {
         logger.error({
-          event: 'markov_crossentropy_failed',
+          event: 'markov_prediction_failed',
           error: crossEntropyError instanceof Error ? crossEntropyError.message : String(crossEntropyError),
-        }, 'Failed to calculate cross-entropy');
+        }, 'Failed to calculate ensemble prediction');
       }
     }
   }
@@ -367,13 +598,15 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
   }
 
   /**
-   * Calculate risk score using Markov-only approach
+   * Calculate risk score using two-dimensional approach
    *
-   * ALGORITHM CHANGE (2025-11-08):
-   * - Removed heuristic detectors (keyboard-walk, keyboard-mashing, gibberish)
-   * - Markov-only has 83% accuracy vs 67% with heuristics
-   * - Zero false positives on legitimate names (e.g., "scottpearson")
-   * - Trained on 111K+ legitimate + 105K fraud emails
+   * ALGORITHM CHANGES:
+   * v2.2 (2025-11-08): Removed heuristic detectors, Markov-only (83% accuracy vs 67%)
+   * v2.3 (2025-11-10): Ensemble (2-gram + 3-gram) with confidence-weighted voting
+   * v2.4 (2025-11-10): Two-dimensional risk model
+   *   - Classification risk: Is this fraud or legit? (differential signal)
+   *   - Abnormality risk: Is this out-of-distribution? (consensus signal)
+   *   - Final risk: max(classification, abnormality) + domain signals
    */
   function calculateAlgorithmicRiskScore(params: {
     email: string;
@@ -388,12 +621,18 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     // Check if this is a professional email
     const isProfessional = isProfessionalEmail(email);
 
-    // Primary: Markov Chain cross-entropy (trained model)
-    // Reduce Markov weight for professional emails (they may have unusual patterns)
-    let score = markovResult?.isLikelyFraudulent ? markovResult.confidence : 0;
-    if (isProfessional && score < 0.7) {
-      score = score * 0.5; // Reduce Markov confidence for professional emails (contact@, info@, etc.)
+    // Primary: Two-dimensional risk from Markov models (v2.4+)
+    // Dimension 1: Classification risk (fraud vs legit)
+    let classificationRisk = markovResult?.isLikelyFraudulent ? markovResult.confidence : 0;
+    if (isProfessional && classificationRisk < 0.7) {
+      classificationRisk = classificationRisk * 0.5; // Reduce for professional emails
     }
+
+    // Dimension 2: Abnormality risk (out-of-distribution)
+    const abnormalityRisk = markovResult?.abnormalityRisk || 0;
+
+    // Combined risk: Take stronger signal (independent dimensions)
+    let score = Math.max(classificationRisk, abnormalityRisk);
 
     // Secondary: Deterministic pattern overrides
     // These are high-confidence fraud signals that Markov should already detect,
@@ -418,16 +657,17 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       domainRisk = domainRisk * 0.5; // Halve domain risk for professional emails
     }
 
-    // Ensemble boost: When Markov and TLD risk agree, increase confidence
+    // Ensemble boost: When Markov classification and TLD risk agree, increase confidence
     if (markovResult?.isLikelyFraudulent && tldRiskScore > 0.5) {
-      const ensembleBoost = Math.min(markovResult.confidence * tldRiskScore * 0.3, 0.3);
+      const ensembleBoost = Math.min(classificationRisk * tldRiskScore * 0.3, 0.3);
       score += ensembleBoost;
       logger.info({
         event: 'ensemble_boost_applied',
-        markovConfidence: markovResult.confidence,
+        classificationRisk,
+        abnormalityRisk,
         tldRiskScore,
         boost: ensembleBoost,
-      }, 'Ensemble boost: Markov + TLD risk agreement');
+      }, 'Ensemble boost: Classification + TLD risk agreement');
     }
 
     return Math.min(score + domainRisk, 1.0);
@@ -466,6 +706,10 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
         condition: patternFamilyResult?.patternType === 'sequential',
         reason: 'sequential_pattern'
       },
+      {
+        condition: markovResult?.abnormalityScore && markovResult.abnormalityScore > 1.5,
+        reason: 'out_of_distribution'
+      },
     ];
 
     // Check high-confidence detections first
@@ -479,12 +723,14 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 
     if (riskScore >= config.riskThresholds.block) {
       // HIGH RISK (≥0.6): Return strongest weak signal
+      if (markovResult?.abnormalityRisk && markovResult.abnormalityRisk > 0.4) return 'high_abnormality';
       if (tldRiskScore > 0.5) return 'high_risk_tld';
       if (domainReputationScore > 0.5) return 'domain_reputation';
       if (patternFamilyResult?.patternType === 'dated') return 'dated_pattern';
       return 'high_risk_multiple_signals';
     } else if (riskScore >= config.riskThresholds.warn) {
       // MEDIUM RISK (0.3-0.6): Descriptive warnings
+      if (markovResult?.abnormalityRisk && markovResult.abnormalityRisk > 0.2) return 'suspicious_abnormal_pattern';
       if (patternFamilyResult?.patternType === 'dated') return 'suspicious_dated_pattern';
       if (tldRiskScore > 0.3) return 'suspicious_tld';
       if (domainReputationScore > 0.3) return 'suspicious_domain';
@@ -588,7 +834,15 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     markovConfidence: markovResult?.confidence,
     markovCrossEntropyLegit: markovResult?.crossEntropyLegit,
     markovCrossEntropyFraud: markovResult?.crossEntropyFraud,
-    patternClassificationVersion: '2.2.0', // v2.2: Markov-only detection (removed heuristics)
+    ensembleReasoning: markovResult?.ensembleReasoning,
+    model2gramPrediction: markovResult?.model2gramPrediction,
+    model3gramPrediction: markovResult?.model3gramPrediction,
+    // OOD Detection (v2.4+)
+    minEntropy: markovResult?.minEntropy,
+    abnormalityScore: markovResult?.abnormalityScore,
+    abnormalityRisk: markovResult?.abnormalityRisk,
+    oodDetected: markovResult?.abnormalityScore ? markovResult.abnormalityScore > 0 : false,
+    patternClassificationVersion: PATTERN_CLASSIFICATION_VERSION
   });
 
   // Store validation result in context for downstream handlers
@@ -620,6 +874,18 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
         markovConfidence: Math.round(markovResult.confidence * 100) / 100,
         markovCrossEntropyLegit: Math.round(markovResult.crossEntropyLegit * 100) / 100,
         markovCrossEntropyFraud: Math.round(markovResult.crossEntropyFraud * 100) / 100,
+        ...(markovResult.ensembleReasoning && {
+          ensembleReasoning: markovResult.ensembleReasoning,
+          model2gramPrediction: markovResult.model2gramPrediction,
+          model3gramPrediction: markovResult.model3gramPrediction,
+        }),
+        // OOD Detection (v2.4+)
+        ...(markovResult.minEntropy !== undefined && {
+          minEntropy: Math.round(markovResult.minEntropy * 100) / 100,
+          abnormalityScore: Math.round((markovResult.abnormalityScore || 0) * 100) / 100,
+          abnormalityRisk: Math.round((markovResult.abnormalityRisk || 0) * 100) / 100,
+          oodDetected: (markovResult.abnormalityScore || 0) > 0,
+        }),
       }),
     },
   });

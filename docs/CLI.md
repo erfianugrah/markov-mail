@@ -345,6 +345,61 @@ npm run cli test:api --file emails.txt
 
 ---
 
+#### `model:validate`
+Validate trained Markov models against comprehensive test suite.
+
+```bash
+# Validate production models
+npm run cli model:validate --remote
+
+# Test with ensemble approach (2-gram + 3-gram)
+npm run cli model:validate --remote --ensemble
+
+# Test specific n-gram order
+npm run cli model:validate --remote --orders "2"
+
+# Test specific category with verbose output
+npm run cli model:validate --remote --category gibberish --verbose
+
+# Compare all models
+npm run cli model:validate --remote --orders "2,3" --ensemble --verbose
+```
+
+**Options:**
+- `--remote` - Test production models (from KV)
+- `--orders <list>` - Which n-gram orders to test (default: "2,3")
+- `--ensemble` - Test ensemble approach combining models
+- `--verbose` - Show detailed results for each test case
+- `--category <name>` - Only test specific category
+  - `gibberish` - Random character spam
+  - `sequential` - user1, user2 patterns
+  - `keyboard` - qwerty, asdfgh patterns
+  - `legitimate` - Real names and role emails
+  - `legit_numbers` - Names with birth years
+
+**Output:**
+- Overall accuracy per model
+- Per-category accuracy breakdown
+- Ensemble reasoning distribution
+- Failed test cases with details
+- Cross-entropy and confidence scores
+
+**Test Suite Coverage:**
+- 5 gibberish patterns (pure random, repetitive, keyboard spam)
+- 5 sequential patterns (user1, test001, account99)
+- 4 keyboard walks (qwerty, asdfgh, zxcvbn, 123456)
+- 8 legitimate patterns (real names, role emails, name.year)
+- 2 legitimate numbers (birth years, 2-digit years)
+
+**Use Cases:**
+- Pre-deployment model validation
+- Compare 2-gram vs 3-gram performance
+- Test ensemble strategy before implementing
+- Identify false positives/negatives
+- Validate after retraining
+
+---
+
 #### `test:multilang`
 Test multi-language N-gram support.
 

@@ -36,11 +36,14 @@ interface ApiResponse {
 	profile?: unknown;
 }
 
+// Store API URL globally (set by main handler)
+let globalApiUrl: string | undefined;
+
 /**
- * Get API URL and key from environment
+ * Get API URL and key from environment or CLI flags
  */
 function getApiConfig() {
-	const apiUrl = process.env.API_URL || 'https://your-worker.workers.dev';
+	const apiUrl = globalApiUrl || process.env.API_URL || 'https://your-worker.workers.dev';
 	const apiKey = process.env.ADMIN_API_KEY;
 
 	if (!apiKey) {
@@ -274,6 +277,10 @@ ENVIRONMENT VARIABLES
   ADMIN_API_KEY         API key for admin endpoints (required)
   API_URL               API base URL (default: https://your-worker.workers.dev)
 
+OPTIONS
+  --api-url <url>       Override API URL (default: $API_URL or https://your-worker.workers.dev)
+  --help, -h            Show this help message
+
 EXAMPLES
   # Initialize KV with hardcoded profiles
   npm run cli tld:sync
@@ -293,6 +300,9 @@ EXAMPLES
   # Clear cache (forces reload on next validation)
   npm run cli tld:cache:clear
 
+  # Use custom API URL
+  npm run cli tld:sync --api-url https://my-worker.workers.dev
+
 TLD CATEGORIES
   trusted      - .edu, .gov, .mil (restricted registration)
   standard     - .com, .net, .org (normal commercial)
@@ -304,9 +314,6 @@ RISK MULTIPLIER
   0.8-1.2      - Standard (normal risk)
   1.3-2.0      - Suspicious (elevated risk)
   2.0-3.0      - High risk (significant abuse)
-
-OPTIONS
-  --help, -h            Show this help message
 `);
 }
 
@@ -318,6 +325,7 @@ export default async function handler(args: string[], commandName: string) {
 		args,
 		options: {
 			help: { type: 'boolean', short: 'h' },
+			'api-url': { type: 'string' },
 		},
 		allowPositionals: true,
 	});
@@ -325,6 +333,11 @@ export default async function handler(args: string[], commandName: string) {
 	if (values.help) {
 		showHelp();
 		return;
+	}
+
+	// Set global API URL if provided
+	if (values['api-url']) {
+		globalApiUrl = values['api-url'] as string;
 	}
 
 	// Extract subcommand from command name (e.g., "tld:sync" -> "sync")

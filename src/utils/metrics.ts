@@ -43,6 +43,15 @@ export interface ValidationMetric {
   markovConfidence?: number;
   markovCrossEntropyLegit?: number;
   markovCrossEntropyFraud?: number;
+  // Ensemble metadata (v2.3+)
+  ensembleReasoning?: string;       // Ensemble decision reasoning
+  model2gramPrediction?: string;    // 2-gram model prediction (fraud/legit)
+  model3gramPrediction?: string;    // 3-gram model prediction (fraud/legit)
+  // OOD Detection (v2.4+)
+  minEntropy?: number;              // min(H_legit, H_fraud) - abnormality measure
+  abnormalityScore?: number;        // How far above OOD threshold
+  abnormalityRisk?: number;         // Risk contribution from abnormality (0.0-0.6)
+  oodDetected?: boolean;            // Whether OOD was detected
   // Phase 8: Online Learning data (NEW)
   clientIp?: string;            // For fraud pattern analysis
   userAgent?: string;           // For bot detection
