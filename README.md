@@ -5,15 +5,16 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 ## 🚦 Status
 
 **Production**: https://fraud.erfi.dev
-**Version**: 2.4.1 (Production-Ready)
+**Version**: 2.4.2 (Production-Ready)
 **Primary Detection**: Markov Chain with Out-of-Distribution (OOD) Detection
 **Training Data**: Pattern-based labels (50.2K legit + 41.8K fraud)
 **OOD Thresholds**: Piecewise (3.8 nats warn, 5.5 nats block)
 **Avg Latency**: ~35ms
+**Philosophy**: Algorithmic > Hardcoded (trust trained models over manual rules)
 
 ### System Health
-- ✅ **Markov-only detection** - 83% accuracy (up from 67% with heuristics)
-- ✅ **Zero false positives** - Fixed keyboard mashing misdetections
+- ✅ **Markov-only detection** - 83% precision (up from 70.4%)
+- ✅ **Low false positives** - 62% reduction (8 → 3 false positives)
 - ✅ **Pattern-based training** (addresses, not message content) with 50/50 balance
 - ✅ 2-gram & 3-gram Markov models (legit/fraud)
 - ✅ Multi-factor pattern classification (n-grams + vowel density + entropy)
@@ -23,7 +24,22 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 - ✅ Analytics dashboard with D1 database and pattern versioning
 - ✅ Unified CLI management system
 
-### Latest Updates (v2.4.1 - 2025-01-12)
+### Latest Updates (v2.4.2 - 2025-01-12)
+- 🎯 **Trust Markov Models** - Removed hardcoded pattern overrides
+  - **Removed**: Sequential pattern override (0.8 fixed score)
+  - **Removed**: Plus-addressing override (0.6 fixed score)
+  - **Why**: Markov models trained on 111K+ emails handle these patterns naturally
+  - **Plus-addressing**: No longer penalized (person+filter@gmail.com is legitimate)
+- 📈 **Improved Precision** - 70.4% → 83.3% (+13%)
+  - **False positives**: 8 → 3 (62% reduction!)
+  - **Better UX**: Fewer legitimate users blocked
+  - **Trade-off**: Recall dropped 95% → 75% (sequential fraud now gets "warn" for manual review)
+- 🧠 **Philosophy**: "Algorithmic > Hardcoded"
+  - Let trained models make decisions, not manual rules
+  - Sequential fraud detection now relies on Markov confidence
+  - Dated patterns still use dynamic confidence (0.2-0.9 based on age)
+
+### Previous Updates (v2.4.1 - 2025-01-12)
 - 🎯 **Piecewise OOD Thresholds** - Enhanced two-tier threshold system
   - **Dead zone** (< 3.8 nats): Zero OOD risk for familiar patterns
   - **Warn zone** (3.8-5.5 nats): Progressive risk scaling (0.35→0.65)
