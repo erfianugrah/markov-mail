@@ -667,16 +667,8 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     let score = Math.max(classificationRisk, abnormalityRisk);
 
     // Secondary: Deterministic pattern overrides
-    // These are high-confidence fraud signals that Markov should already detect,
-    // but we keep them as fallbacks in case Markov models aren't loaded
-    if (patternFamilyResult?.patternType === 'sequential') {
-      score = Math.max(score, 0.8); // Sequential patterns (abc123, 123456)
-    }
-
-    // Plus-addressing abuse (deterministic pattern)
-    if (normalizedEmailResult?.hasPlus) {
-      score = Math.max(score, 0.6);
-    }
+    // v2.4.2: Removed sequential and plus-addressing overrides - Markov handles these
+    // Keep dated pattern override as it has dynamic confidence based on age analysis
 
     // Dated patterns use confidence from age-aware algorithm (0.2 for birth years, 0.9 for fraud)
     if (patternFamilyResult?.patternType === 'dated') {
@@ -729,14 +721,11 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 
     // TIER 1: HIGH CONFIDENCE DETECTIONS (any risk level)
     // These are definitive fraud signals that override risk-based messaging
+    // v2.4.2: Removed sequential_pattern - now handled by Markov models
     const highConfidenceReasons = [
       {
         condition: markovResult?.isLikelyFraudulent && markovResult.confidence > config.confidenceThresholds.markovFraud,
         reason: 'markov_chain_fraud'
-      },
-      {
-        condition: patternFamilyResult?.patternType === 'sequential',
-        reason: 'sequential_pattern'
       },
       {
         condition: markovResult?.abnormalityScore && markovResult.abnormalityScore > 1.5,
