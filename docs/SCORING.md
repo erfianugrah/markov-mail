@@ -64,10 +64,16 @@ const classificationRisk = markovResult?.isLikelyFraudulent
   : 0;
 
 // Dimension 2: Abnormality Risk (consensus signal)
-// Are BOTH models confused? (OOD detection)
+// Are BOTH models confused? (OOD detection - v2.4.1 piecewise)
 const minEntropy = Math.min(H_legit, H_fraud);
-const abnormalityScore = Math.max(0, minEntropy - 3.0);
-const abnormalityRisk = Math.min(abnormalityScore * 0.15, 0.6);
+let abnormalityRisk: number;
+if (minEntropy < 3.8) {
+  abnormalityRisk = 0;
+} else if (minEntropy < 5.5) {
+  abnormalityRisk = 0.35 + ((minEntropy - 3.8) / 1.7) * 0.30;
+} else {
+  abnormalityRisk = 0.65;
+}
 
 // Take worst case (maximum of two dimensions)
 let score = Math.max(classificationRisk, abnormalityRisk);
@@ -87,7 +93,7 @@ riskScore = Math.min(score + domainRisk, 1.0);
 - Classification and abnormality are independent dimensions
 - No dilution from weight multiplication
 - Clear priority order
-- Research-backed thresholds (3.0 nats)
+- Research-backed piecewise thresholds (3.8 warn, 5.5 block)
 
 ---
 
@@ -122,8 +128,10 @@ const minEntropy = Math.min(
   markovResult.crossEntropyFraud
 );
 
-const abnormalityScore = Math.max(0, minEntropy - 3.0);
-const abnormalityRisk = Math.min(abnormalityScore * 0.15, 0.6);
+// v2.4.1: Piecewise threshold
+const abnormalityRisk = minEntropy < 3.8 ? 0 :
+  minEntropy < 5.5 ? 0.35 + ((minEntropy - 3.8) / 1.7) * 0.30 :
+  0.65;
 ```
 
 **Combined Risk Calculation**

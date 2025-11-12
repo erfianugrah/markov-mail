@@ -536,10 +536,10 @@ Based on information theory for binary classification:
 
 ```typescript
 const OOD_DETECTION = {
-  BASELINE_ENTROPY: 0.69,      // Random guessing (log 2 in nats)
-  OOD_THRESHOLD: 3.0,          // 3x "poor prediction" threshold
-  SCALING_FACTOR: 0.15,        // Risk per nat above threshold
-  MAX_OOD_RISK: 0.6,           // Cap at block threshold
+  BASELINE_ENTROPY: 0.69,       // Random guessing (log 2 in nats)
+  OOD_WARN_THRESHOLD: 3.8,      // Warn zone start
+  OOD_BLOCK_THRESHOLD: 5.5,     // Block zone start
+  MAX_OOD_RISK: 0.65,           // Maximum risk (v2.4.1: was 0.6)
 };
 ```
 
