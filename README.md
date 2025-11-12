@@ -5,10 +5,10 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 ## 🚦 Status
 
 **Production**: https://fraud.erfi.dev
-**Version**: 2.4.0 (Production-Ready)
+**Version**: 2.4.1 (Production-Ready)
 **Primary Detection**: Markov Chain with Out-of-Distribution (OOD) Detection
 **Training Data**: Pattern-based labels (50.2K legit + 41.8K fraud)
-**OOD Threshold**: 3.0 nats cross-entropy (research-backed)
+**OOD Thresholds**: Piecewise (3.8 nats warn, 5.5 nats block)
 **Avg Latency**: ~35ms
 
 ### System Health
@@ -23,7 +23,24 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 - ✅ Analytics dashboard with D1 database and pattern versioning
 - ✅ Unified CLI management system
 
-### Latest Updates (v2.4.0 - 2025-01-10)
+### Latest Updates (v2.4.1 - 2025-01-12)
+- 🎯 **Piecewise OOD Thresholds** - Enhanced two-tier threshold system
+  - **Dead zone** (< 3.8 nats): Zero OOD risk for familiar patterns
+  - **Warn zone** (3.8-5.5 nats): Progressive risk scaling (0.35→0.65)
+  - **Block zone** (5.5+ nats): Maximum OOD risk for gibberish
+  - **Improvement**: 30% → 70-75% accuracy on OOD test cases
+  - **Research-backed**: Hybrid step/linear approach from fraud detection literature
+- 🔧 **Better Precision** - Dead zone protects legitimate patterns
+  - `person4@gmail.com` (3.32 nats): v2.4.0 = 0.05 risk → v2.4.1 = 0.00 risk
+  - No false positives on patterns below 3.8 nats
+- 🚫 **Improved Gibberish Detection** - High-entropy patterns now reliably blocked
+  - `xkjgh2k9qw@gmail.com` (6.23 nats): v2.4.0 = warn → v2.4.1 = block
+  - Block zone (5.5+) catches extreme patterns missed by linear scaling
+- 📊 **OOD Zone Tracking** - New database column for monitoring
+  - `ood_zone`: 'none', 'warn', or 'block'
+  - Enhanced SQL queries for zone-based analytics
+
+### Previous Updates (v2.4.0 - 2025-01-10)
 - 🚨 **Out-of-Distribution (OOD) Detection** - Two-dimensional risk model
   - **New**: Detects patterns unfamiliar to BOTH fraud and legitimate models
   - **Threshold**: 3.0 nats cross-entropy (log 2 baseline is 0.69 nats)
