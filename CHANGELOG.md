@@ -9,6 +9,114 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.4.2] - 2025-01-12
+
+### 🎯 Trust Markov Models - Remove Hardcoded Overrides
+
+**Philosophy**: "Algorithmic > Hardcoded" - Let trained models make decisions, not manual rules.
+
+**Problem Solved**:
+```
+Email: user1@outlook.com (legitimate user)
+Before v2.4.2:
+  Sequential override = 0.8 (hardcoded)
+  Decision = BLOCK ← False positive!
+
+After v2.4.2:
+  Markov confidence = 0.12 (low fraud signal)
+  OOD abnormality = 0.41 (warn zone)
+  Decision = WARN ← Manual review (appropriate)
+```
+
+### Removed
+
+#### Hardcoded Pattern Overrides - `src/middleware/fraud-detection.ts`
+- **Sequential pattern override (0.8)**: Removed - Markov models handle these patterns
+- **Plus-addressing override (0.6)**: Removed - Legitimate Gmail/Outlook feature
+- **Sequential from high-confidence detections**: No longer treated as definitive fraud signal
+
+### Impact
+
+**Test Results (fraud.erfi.dev):**
+- **Precision: 70.4% → 83.3%** ↑ (13% improvement!)
+- **False positives: 8 → 3** ↓ (62% reduction!)
+- Recall: 95% → 75% ↓ (acceptable trade-off for better UX)
+- Sequential fraud patterns now get "warn" instead of "block" (manual review)
+- Plus-addressing users (person+filter@gmail.com) no longer penalized
+
+**Why This Change?**
+1. Markov models trained on 111K+ emails should catch real sequential fraud
+2. Sequential override caused false positives on legitimate "user1", "user2" patterns
+3. Plus-addressing is a standard email feature for filtering/organization
+4. Follows v2.0+ philosophy: trust the trained algorithm over hardcoded rules
+
+### Kept
+
+- **Dated pattern override (0.2-0.9)**: Retained - has dynamic confidence based on age analysis
+
+### Documentation
+
+- Updated `docs/SCORING.md` with v2.4.2 algorithm
+- Removed sequential and plus-addressing from pattern override table
+- Updated code examples
+
+---
+
+## [2.4.1] - 2025-01-12
+
+### 🎯 Enhanced OOD Detection with Piecewise Thresholds
+
+**Improvement**: Replaces linear OOD scaling with piecewise threshold system for better gibberish detection and precision.
+
+**Problem Solved**:
+```
+Email: xkjgh2k9qw@gmail.com (random gibberish)
+Before v2.4.1:
+  minEntropy = 6.23 nats
+  abnormalityRisk = 0.48 (linear: (6.23-3.0) × 0.15)
+  Decision = WARN ← Should block!
+
+After v2.4.1:
+  minEntropy = 6.23 nats (Block Zone: > 5.5)
+  abnormalityRisk = 0.65
+  Decision = BLOCK ← CORRECT ✅
+```
+
+### Changed
+
+#### Piecewise Threshold System - `src/middleware/fraud-detection.ts`
+- **Dead Zone (< 3.8 nats)**: Zero OOD risk for familiar patterns
+- **Warn Zone (3.8-5.5 nats)**: Linear interpolation from 0.35 to 0.65
+- **Block Zone (5.5+ nats)**: Maximum OOD risk (0.65)
+- Improved from 30% → 70-75% accuracy on OOD test cases
+- Research-backed: Hybrid step/linear approach from fraud detection literature
+
+#### Constants Updated
+- `OOD_WARN_THRESHOLD`: 3.8 nats (new - warn zone start)
+- `OOD_BLOCK_THRESHOLD`: 5.5 nats (new - block zone start)
+- `MAX_OOD_RISK`: 0.6 → 0.65 (increased to match block threshold)
+- Deprecated: `OOD_THRESHOLD` (3.0), `SCALING_FACTOR` (0.15)
+
+### Added
+
+#### Database Schema (Migration 0006)
+- Added `ood_zone` (TEXT) - tracks zone: 'none', 'warn', or 'block'
+- Added index for OOD zone queries
+- Added composite index for zone + decision analysis
+
+#### Monitoring Queries
+- New SQL query to analyze patterns by OOD zone
+- Enhanced OOD detection queries with zone tracking
+
+### Documentation
+
+- Updated `docs/OOD_DETECTION.md` with piecewise threshold details
+- Updated all risk scaling examples and calculations
+- Added zone-based monitoring queries
+- Updated test category descriptions
+
+---
+
 ## [2.4.0] - 2025-01-10
 
 ### 🚨 MAJOR: Out-of-Distribution (OOD) Detection

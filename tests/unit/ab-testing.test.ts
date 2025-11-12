@@ -130,11 +130,8 @@ describe('A/B Testing Framework', () => {
 					patternRisk: 0.5,
 				},
 				riskWeights: {
-					entropy: 0.05,
-					domainReputation: 0.15,
-					tldRisk: 0.15,
-					patternDetection: 0.30,
-					markovChain: 0.35,
+					domainReputation: 0.2,
+					tldRisk: 0.3,
 				},
 				features: {
 					enableMxCheck: false,
@@ -177,6 +174,19 @@ describe('A/B Testing Framework', () => {
 					minTrainingExamples: 100,
 					retrainIntervalDays: 7,
 				},
+				adjustments: {
+					professionalEmailFactor: 0.5,
+					professionalDomainFactor: 0.5,
+				},
+				ensemble: {
+					boostMultiplier: 0.3,
+					maxBoost: 0.3,
+					tldAgreementThreshold: 0.5,
+				},
+				ood: {
+					maxRisk: 0.65,
+					warnZoneMin: 0.35,
+				},
 			};
 
 			const abConfig: ABTestConfig = {
@@ -188,12 +198,8 @@ describe('A/B Testing Framework', () => {
 						weight: 10,
 						config: {
 							riskWeights: {
-								entropy: 0.05,
 								domainReputation: 0.15,
 								tldRisk: 0.15,
-								patternDetection: 0.29,
-								markovChain: 0.35,
-								// Adding botRisk: 0.01 in treatment
 							},
 						},
 					},
@@ -205,9 +211,10 @@ describe('A/B Testing Framework', () => {
 
 			const treatmentConfig = getVariantConfig('treatment', abConfig, baseConfig);
 
-			// Treatment config should have merged weights
-			expect(treatmentConfig.riskWeights.patternDetection).toBe(0.29);
-			// Other configs should remain unchanged
+			// Treatment config should have overridden weights (0.15 from variant config)
+			expect(treatmentConfig.riskWeights.domainReputation).toBe(0.15);
+			expect(treatmentConfig.riskWeights.tldRisk).toBe(0.15);
+			// Other configs should remain unchanged (from base config)
 			expect(treatmentConfig.riskThresholds.block).toBe(0.6);
 			expect(treatmentConfig.features.enablePatternCheck).toBe(true);
 		});
@@ -229,11 +236,8 @@ describe('A/B Testing Framework', () => {
 					patternRisk: 0.5,
 				},
 				riskWeights: {
-					entropy: 0.05,
-					domainReputation: 0.15,
-					tldRisk: 0.15,
-					patternDetection: 0.30,
-					markovChain: 0.35,
+					domainReputation: 0.2,
+					tldRisk: 0.3,
 				},
 				features: {
 					enableMxCheck: false,
@@ -275,6 +279,19 @@ describe('A/B Testing Framework', () => {
 					adaptationRate: 0.5,
 					minTrainingExamples: 100,
 					retrainIntervalDays: 7,
+				},
+				adjustments: {
+					professionalEmailFactor: 0.5,
+					professionalDomainFactor: 0.5,
+				},
+				ensemble: {
+					boostMultiplier: 0.3,
+					maxBoost: 0.3,
+					tldAgreementThreshold: 0.5,
+				},
+				ood: {
+					maxRisk: 0.65,
+					warnZoneMin: 0.35,
 				},
 			};
 

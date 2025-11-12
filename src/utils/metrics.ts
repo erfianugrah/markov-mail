@@ -52,6 +52,8 @@ export interface ValidationMetric {
   abnormalityScore?: number;        // How far above OOD threshold
   abnormalityRisk?: number;         // Risk contribution from abnormality (0.0-0.6)
   oodDetected?: boolean;            // Whether OOD was detected
+  // OOD Zone (v2.4.1+)
+  oodZone?: string;                 // Zone: 'none' (<3.8), 'warn' (3.8-5.5), 'block' (5.5+)
   // Phase 8: Online Learning data (NEW)
   clientIp?: string;            // For fraud pattern analysis
   userAgent?: string;           // For bot detection

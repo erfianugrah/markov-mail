@@ -37,6 +37,7 @@ export async function writeValidationMetricToD1(
           markov_cross_entropy_legit, markov_cross_entropy_fraud,
           ensemble_reasoning, model_2gram_prediction, model_3gram_prediction,
           min_entropy, abnormality_score, abnormality_risk, ood_detected,
+          ood_zone,
           client_ip, user_agent, model_version,
           exclude_from_training, ip_reputation_score,
           experiment_id, variant, bucket,
@@ -54,11 +55,12 @@ export async function writeValidationMetricToD1(
           ?22, ?23,
           ?24, ?25, ?26,
           ?27, ?28, ?29, ?30,
-          ?31, ?32, ?33,
-          ?34, ?35, ?36,
-          ?37, ?38,
-          ?39, ?40, ?41,
-          ?42
+          ?31,
+          ?32, ?33, ?34,
+          ?35, ?36, ?37,
+          ?38, ?39,
+          ?40, ?41, ?42,
+          ?43
         )
       `)
       .bind(
@@ -100,6 +102,8 @@ export async function writeValidationMetricToD1(
         metric.abnormalityScore ?? null,
         metric.abnormalityRisk ?? null,
         metric.oodDetected ? 1 : 0,
+        // OOD Zone (v2.4.1+)
+        metric.oodZone || null,
         // Online Learning
         metric.clientIp || null,
         metric.userAgent || null,

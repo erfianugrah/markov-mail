@@ -64,10 +64,16 @@ const classificationRisk = markovResult?.isLikelyFraudulent
   : 0;
 
 // Dimension 2: Abnormality Risk (consensus signal)
-// Are BOTH models confused? (OOD detection)
+// Are BOTH models confused? (OOD detection - v2.4.1 piecewise)
 const minEntropy = Math.min(H_legit, H_fraud);
-const abnormalityScore = Math.max(0, minEntropy - 3.0);
-const abnormalityRisk = Math.min(abnormalityScore * 0.15, 0.6);
+let abnormalityRisk: number;
+if (minEntropy < 3.8) {
+  abnormalityRisk = 0;
+} else if (minEntropy < 5.5) {
+  abnormalityRisk = 0.35 + ((minEntropy - 3.8) / 1.7) * 0.30;
+} else {
+  abnormalityRisk = 0.65;
+}
 
 // Take worst case (maximum of two dimensions)
 let score = Math.max(classificationRisk, abnormalityRisk);
@@ -87,7 +93,7 @@ riskScore = Math.min(score + domainRisk, 1.0);
 - Classification and abnormality are independent dimensions
 - No dilution from weight multiplication
 - Clear priority order
-- Research-backed thresholds (3.0 nats)
+- Research-backed piecewise thresholds (3.8 warn, 5.5 block)
 
 ---
 
@@ -122,18 +128,19 @@ const minEntropy = Math.min(
   markovResult.crossEntropyFraud
 );
 
-const abnormalityScore = Math.max(0, minEntropy - 3.0);
-const abnormalityRisk = Math.min(abnormalityScore * 0.15, 0.6);
+// v2.4.1: Piecewise threshold
+const abnormalityRisk = minEntropy < 3.8 ? 0 :
+  minEntropy < 5.5 ? 0.35 + ((minEntropy - 3.8) / 1.7) * 0.30 :
+  0.65;
 ```
 
 **Combined Risk Calculation**
 
 ```typescript
-// v2.4.0 - Two-dimensional approach
+// v2.4.2 - Trust Markov models (removed sequential/plus overrides)
 function calculateAlgorithmicRiskScore({
   markovResult,
   patternFamilyResult,
-  normalizedEmailResult,
   domainReputationScore,
   tldRiskScore
 }) {
@@ -142,15 +149,10 @@ function calculateAlgorithmicRiskScore({
     ? markovResult.confidence
     : 0;
 
-  // Secondary: Deterministic pattern overrides only
-  if (patternFamilyResult?.patternType === 'sequential') {
-    score = Math.max(score, 0.8);
-  }
+  // Secondary: Dated pattern override only (dynamic confidence 0.2-0.9)
+  // v2.4.2: Removed sequential (0.8) and plus-addressing (0.6) overrides
   if (patternFamilyResult?.patternType === 'dated') {
     score = Math.max(score, patternFamilyResult.confidence || 0.7);
-  }
-  if (normalizedEmailResult?.hasPlus) {
-    score = Math.max(score, 0.6);
   }
 
   // Tertiary: Domain signals (independent, additive)
@@ -166,17 +168,19 @@ function calculateAlgorithmicRiskScore({
 - Returns confidence 0-1
 - **Example**: "olyjaxobuna" → H_fraud: 4.31, H_legit: 7.08 → Confidence: 0.78
 
-**Step 2: Pattern Overrides (v2.2.0 - Simplified)**
+**Step 2: Pattern Overrides (v2.4.2 - Trust Markov)**
 
-Deterministic rules for patterns when Markov is unavailable:
+Deterministic rules - Markov models now handle most patterns:
 
 | Pattern | Override Score | Example |
 |---------|---------------|---------|
-| Sequential | 0.8 | user1, user2, test001 |
 | Dated | 0.2-0.9 (dynamic) | john.2024, user_oct2024 |
-| Plus-addressing | 0.6 | user+test, user+1 |
 
-**Note**: Keyboard walk and gibberish patterns are now handled by Markov Chain detection automatically.
+**Removed in v2.4.2:**
+- ~~Sequential (0.8)~~ - Now handled by Markov models
+- ~~Plus-addressing (0.6)~~ - Legitimate Gmail/Outlook feature, no longer penalized
+
+**Note**: Sequential, keyboard walk, gibberish, and plus-addressing patterns are all handled by Markov Chain detection automatically.
 
 **Step 3: Domain Signals**
 

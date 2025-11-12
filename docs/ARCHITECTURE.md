@@ -474,32 +474,47 @@ const classificationRisk = markovResult.isLikelyFraudulent
   ? markovResult.confidence
   : 0;
 
-// Dimension 2: Abnormality Risk (consensus signal)
+// Dimension 2: Abnormality Risk (consensus signal - v2.4.1 piecewise)
 // Are BOTH models confused by this pattern?
 const minEntropy = Math.min(H_legit, H_fraud);
-const abnormalityScore = Math.max(0, minEntropy - 3.0);
-const abnormalityRisk = Math.min(abnormalityScore * 0.15, 0.6);
+let abnormalityRisk: number;
+if (minEntropy < 3.8) {
+  abnormalityRisk = 0;
+} else if (minEntropy < 5.5) {
+  abnormalityRisk = 0.35 + ((minEntropy - 3.8) / 1.7) * 0.30;
+} else {
+  abnormalityRisk = 0.65;
+}
 
 // Final Risk: Take the maximum (worst case)
 const finalRisk = Math.max(classificationRisk, abnormalityRisk) + domainRisk;
 ```
 
-**Threshold: 3.0 nats**
+**Piecewise Thresholds (v2.4.1)**
 - **Baseline**: log₂ = 0.69 nats (random guessing)
 - **Good predictions**: < 0.2 nats
 - **Poor predictions**: > 1.0 nats
-- **OOD threshold**: > 3.0 nats (severely confused)
+- **Dead zone**: < 3.8 nats (familiar patterns, no OOD risk)
+- **Warn zone**: 3.8-5.5 nats (unusual patterns)
+- **Block zone**: > 5.5 nats (gibberish, maximum risk)
 
-**Risk Scaling**:
+**Risk Scaling (v2.4.1)**:
 ```typescript
-// Linear scaling from threshold to max
-abnormalityRisk = min((minEntropy - 3.0) × 0.15, 0.6)
+// Piecewise linear function
+if (minEntropy < 3.8) {
+  abnormalityRisk = 0;
+} else if (minEntropy < 5.5) {
+  abnormalityRisk = 0.35 + ((minEntropy - 3.8) / 1.7) * 0.30;
+} else {
+  abnormalityRisk = 0.65;
+}
 
 // Examples:
-minEntropy = 3.0  → abnormalityRisk = 0.00
-minEntropy = 4.0  → abnormalityRisk = 0.15
-minEntropy = 5.0  → abnormalityRisk = 0.30
-minEntropy = 7.0  → abnormalityRisk = 0.60 (capped)
+minEntropy = 3.0  → abnormalityRisk = 0.00 (dead zone)
+minEntropy = 3.8  → abnormalityRisk = 0.35 (warn zone start)
+minEntropy = 4.5  → abnormalityRisk = 0.47 (warn zone)
+minEntropy = 5.5  → abnormalityRisk = 0.65 (block zone)
+minEntropy = 7.0  → abnormalityRisk = 0.65 (block zone)
 ```
 
 **Example Cases**:
@@ -507,19 +522,20 @@ minEntropy = 7.0  → abnormalityRisk = 0.60 (capped)
 *Email 1*: `inearkstioarsitm2mst@gmail.com` (anagram shuffle)
 ```
 H_legit = 4.45, H_fraud = 4.68
-minEntropy = 4.45
-abnormalityScore = 1.45
-abnormalityRisk = 0.22
+minEntropy = 4.45 (warn zone: 3.8-5.5)
+progress = (4.45 - 3.8) / 1.7 = 0.38
+abnormalityRisk = 0.35 + 0.38 × 0.30 = 0.46
 Decision: WARN (suspicious_abnormal_pattern)
+v2.4.0: 0.22 → v2.4.1: 0.46 ✅ Improved
 ```
 
 *Email 2*: `person1@gmail.com` (familiar pattern)
 ```
 H_legit = 2.1, H_fraud = 3.8
-minEntropy = 2.1
-abnormalityScore = 0 (below threshold)
+minEntropy = 2.1 (dead zone: < 3.8)
 abnormalityRisk = 0
 Decision: ALLOW (no OOD)
+v2.4.0: 0 → v2.4.1: 0 (unchanged)
 ```
 
 **Database Tracking**:

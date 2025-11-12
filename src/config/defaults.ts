@@ -60,16 +60,11 @@ export interface FraudDetectionConfig {
 	// Action Override
 	actionOverride?: 'allow' | 'warn' | 'block' | null; // Override decision logic (null = no override)
 
-	// Risk Scoring Weights (DEPRECATED in v2.0+)
-	// These are kept for backwards compatibility but NOT used in scoring
-	// v2.0+ uses pure algorithmic scoring (Markov confidence directly)
-	// See docs/SCORING.md for current approach
+	// Risk Scoring Weights (v2.4.2+)
+	// Reintroduced with new meaning for tunable domain signal weights
 	riskWeights: {
-		entropy: number; // DEPRECATED - Not used
-		domainReputation: number; // DEPRECATED - Now fixed at 0.2
-		tldRisk: number; // DEPRECATED - Now fixed at 0.1
-		patternDetection: number; // DEPRECATED - Not used
-		markovChain: number; // DEPRECATED - Confidence used directly
+		domainReputation: number; // Weight for domain reputation signal (default 0.2)
+		tldRisk: number;          // Weight for TLD risk signal (default 0.3)
 	};
 
 	// Pattern Detection Thresholds
@@ -99,6 +94,29 @@ export interface FraudDetectionConfig {
 		adaptationRate: number; // Training adaptation rate (0-1, default 0.5)
 		minTrainingExamples: number; // Minimum examples to train (default 100)
 		retrainIntervalDays: number; // Days between retraining (default 7)
+	};
+
+	// Risk Adjustments (v2.4.2+)
+	// Tunable factors for professional email leniency
+	adjustments: {
+		professionalEmailFactor: number;  // Classification risk reduction for professional emails (default 0.5)
+		professionalDomainFactor: number; // Domain risk reduction for professional emails (default 0.5)
+	};
+
+	// Ensemble Configuration (v2.4.2+)
+	// Boost scoring when multiple signals agree
+	ensemble: {
+		boostMultiplier: number;       // Boost when Markov + TLD agree (default 0.3)
+		maxBoost: number;              // Max ensemble boost cap (default 0.3)
+		tldAgreementThreshold: number; // TLD score threshold for agreement (default 0.5)
+	};
+
+	// OOD (Out-of-Distribution) Detection (v2.4.2+)
+	// Tunable parameters for abnormality risk calculation
+	ood: {
+		maxRisk: number;     // Maximum abnormality risk contribution (default 0.65)
+		warnZoneMin: number; // Starting risk in warn zone (default 0.35)
+		// Note: OOD thresholds (3.8, 5.5) remain hardcoded (research-backed)
 	};
 }
 
@@ -158,20 +176,12 @@ export const DEFAULT_CONFIG: FraudDetectionConfig = {
 	// No action override by default (null = enforcement mode)
 	actionOverride: null,
 
-	// Risk weights (DEPRECATED in v2.0+, kept for backwards compatibility only)
-	// v2.0+ uses pure algorithmic scoring - Markov confidence directly, no multiplication
-	// These values are ignored in current scoring logic
-	// See calculateAlgorithmicRiskScore() in fraud-detection.ts for actual implementation
-	// Current approach:
-	// - Primary: Markov confidence (0-1) used directly
-	// - Secondary: Pattern overrides (keyboard: 0.9, sequential: 0.8, dated: 0.7)
-	// - Tertiary: Domain signals (reputation * 0.2 + TLD * 0.1)
+	// Risk weights (v2.4.2+)
+	// Reintroduced with new meaning for tunable domain signal weights
+	// v2.4.2: Used for domain reputation and TLD risk signal weights
 	riskWeights: {
-		entropy: 0.05, // DEPRECATED - Not used in v2.0+
-		domainReputation: 0.10, // DEPRECATED - Now fixed at 0.2
-		tldRisk: 0.10, // DEPRECATED - Now fixed at 0.1
-		patternDetection: 0.50, // DEPRECATED - Pattern overrides used instead
-		markovChain: 0.25, // DEPRECATED - Confidence used directly (no multiplication)
+		domainReputation: 0.2, // Weight for domain reputation signal (was hardcoded at 0.2)
+		tldRisk: 0.3,          // Weight for TLD risk signal (was hardcoded at 0.3)
 	},
 
 	// Pattern confidence thresholds
@@ -201,6 +211,30 @@ export const DEFAULT_CONFIG: FraudDetectionConfig = {
 		adaptationRate: 0.5, // Skip examples within 0.5 std dev (saves ~40% memory)
 		minTrainingExamples: 100, // Minimum examples needed for reliable model
 		retrainIntervalDays: 7, // Retrain weekly to capture new patterns
+	},
+
+	// Risk Adjustments (v2.4.2+)
+	// Professional emails (info@, support@, admin@) get reduced risk scoring
+	adjustments: {
+		professionalEmailFactor: 0.5,  // Multiply classification risk by 0.5 for professional emails
+		professionalDomainFactor: 0.5, // Multiply domain risk by 0.5 for professional emails
+	},
+
+	// Ensemble Configuration (v2.4.2+)
+	// When Markov classification and TLD risk both signal fraud, boost confidence
+	ensemble: {
+		boostMultiplier: 0.3,       // Boost amount: classificationRisk * tldRiskScore * 0.3
+		maxBoost: 0.3,              // Maximum boost cap (prevents over-confidence)
+		tldAgreementThreshold: 0.5, // TLD score must exceed this to count as agreement
+	},
+
+	// OOD (Out-of-Distribution) Detection (v2.4.2+)
+	// Detects patterns unfamiliar to both legitimate and fraudulent models
+	ood: {
+		maxRisk: 0.65,     // Maximum abnormality risk (was hardcoded, now tunable)
+		warnZoneMin: 0.35, // Starting risk value in warn zone (3.8-5.5 nats)
+		// Formula: abnormalityRisk = warnZoneMin + progress * (maxRisk - warnZoneMin)
+		// Where progress = (minEntropy - 3.8) / (5.5 - 3.8)
 	},
 };
 
@@ -236,17 +270,49 @@ export function validateConfig(config: Partial<FraudDetectionConfig>): {
 		}
 	}
 
-	// Validate risk weights sum to ~1.0 (allow small floating point error)
+	// Validate risk weights (v2.4.2+)
 	if (config.riskWeights) {
-		const sum =
-			config.riskWeights.entropy +
-			config.riskWeights.domainReputation +
-			config.riskWeights.tldRisk +
-			config.riskWeights.patternDetection +
-			(config.riskWeights.markovChain || 0);
+		if (config.riskWeights.domainReputation < 0 || config.riskWeights.domainReputation > 1) {
+			errors.push('riskWeights.domainReputation must be between 0 and 1');
+		}
+		if (config.riskWeights.tldRisk < 0 || config.riskWeights.tldRisk > 1) {
+			errors.push('riskWeights.tldRisk must be between 0 and 1');
+		}
+	}
 
-		if (Math.abs(sum - 1.0) > 0.01) {
-			errors.push(`riskWeights must sum to 1.0 (currently ${sum.toFixed(2)})`);
+	// Validate adjustments (v2.4.2+)
+	if (config.adjustments) {
+		if (config.adjustments.professionalEmailFactor < 0 || config.adjustments.professionalEmailFactor > 1) {
+			errors.push('adjustments.professionalEmailFactor must be between 0 and 1');
+		}
+		if (config.adjustments.professionalDomainFactor < 0 || config.adjustments.professionalDomainFactor > 1) {
+			errors.push('adjustments.professionalDomainFactor must be between 0 and 1');
+		}
+	}
+
+	// Validate ensemble (v2.4.2+)
+	if (config.ensemble) {
+		if (config.ensemble.boostMultiplier < 0 || config.ensemble.boostMultiplier > 1) {
+			errors.push('ensemble.boostMultiplier must be between 0 and 1');
+		}
+		if (config.ensemble.maxBoost < 0 || config.ensemble.maxBoost > 1) {
+			errors.push('ensemble.maxBoost must be between 0 and 1');
+		}
+		if (config.ensemble.tldAgreementThreshold < 0 || config.ensemble.tldAgreementThreshold > 1) {
+			errors.push('ensemble.tldAgreementThreshold must be between 0 and 1');
+		}
+	}
+
+	// Validate OOD (v2.4.2+)
+	if (config.ood) {
+		if (config.ood.maxRisk < 0 || config.ood.maxRisk > 1) {
+			errors.push('ood.maxRisk must be between 0 and 1');
+		}
+		if (config.ood.warnZoneMin < 0 || config.ood.warnZoneMin > 1) {
+			errors.push('ood.warnZoneMin must be between 0 and 1');
+		}
+		if (config.ood.warnZoneMin >= config.ood.maxRisk) {
+			errors.push('ood.warnZoneMin must be less than ood.maxRisk');
 		}
 	}
 

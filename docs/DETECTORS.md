@@ -467,9 +467,17 @@ New behavior: abnormalityRisk = 0.20 → WARN
 const minEntropy = Math.min(H_legit, H_fraud);
 ```
 
-**Step 2: Check OOD Threshold (3.0 nats)**
+**Step 2: Check OOD Thresholds (v2.4.1 Piecewise)**
 ```typescript
-const abnormalityScore = Math.max(0, minEntropy - 3.0);
+// Three zones: dead (<3.8), warn (3.8-5.5), block (5.5+)
+let abnormalityRisk: number;
+if (minEntropy < 3.8) {
+  abnormalityRisk = 0;
+} else if (minEntropy < 5.5) {
+  abnormalityRisk = 0.35 + ((minEntropy - 3.8) / 1.7) * 0.30;
+} else {
+  abnormalityRisk = 0.65;
+}
 ```
 
 **Step 3: Scale to Risk**
@@ -504,9 +512,10 @@ From information theory:
 - **0.69 nats**: log₂ baseline (random guessing)
 - **< 0.2 nats**: good predictions
 - **> 1.0 nats**: poor predictions
-- **> 3.0 nats**: severe confusion (out-of-distribution)
+- **> 3.8 nats**: warn zone (unusual patterns)
+- **> 5.5 nats**: block zone (gibberish)
 
-The 3.0 threshold means the pattern requires ~8× more bits to encode than expected (2^3 = 8).
+The piecewise system (v2.4.1) provides better precision with a dead zone (<3.8) and improved gibberish detection with a block zone (5.5+).
 
 ### Examples
 
@@ -645,18 +654,24 @@ if (riskScore > 0.6) {
 ### Block Reason Priority
 
 ```typescript
-// High-confidence detections (first match wins)
+// v2.4.2: High-confidence detections (first match wins)
 if (markovRiskScore > 0.6) return 'markov_chain_fraud';
-else if (sequential) return 'sequential_pattern';
+// Removed: sequential_pattern (now handled by Markov)
 
 // Risk-based messaging
 else if (riskScore >= 0.6) {
+    if (abnormalityRisk > 0.4) return 'high_abnormality';
     if (tldRisk > 0.5) return 'high_risk_tld';
     if (domainRisk > 0.5) return 'domain_reputation';
     if (dated) return 'dated_pattern';
     return 'high_risk_multiple_signals';
 }
-else return 'entropy_threshold';
+else if (riskScore >= 0.4) {
+    if (abnormalityRisk > 0.2) return 'suspicious_abnormal_pattern';
+    if (dated) return 'suspicious_dated_pattern';
+    return 'medium_risk';
+}
+else return 'low_risk';
 ```
 
 ---

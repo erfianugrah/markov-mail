@@ -33,13 +33,9 @@
     "enableOriginHeaders": false,
     "originUrl": ""
   },
-  "actionOverride": "allow",
   "riskWeights": {
-    "entropy": 0.05,
-    "domainReputation": 0.10,
-    "tldRisk": 0.10,
-    "patternDetection": 0.50,
-    "markovChain": 0.25
+    "domainReputation": 0.2,
+    "tldRisk": 0.3
   },
   "patternThresholds": {
     "sequential": 0.8,
@@ -60,5 +56,18 @@
     "adaptationRate": 0.5,
     "minTrainingExamples": 100,
     "retrainIntervalDays": 7
+  },
+  "adjustments": {
+    "professionalEmailFactor": 0.5,
+    "professionalDomainFactor": 0.5
+  },
+  "ensemble": {
+    "boostMultiplier": 0.3,
+    "maxBoost": 0.3,
+    "tldAgreementThreshold": 0.5
+  },
+  "ood": {
+    "maxRisk": 0.65,
+    "warnZoneMin": 0.35
   }
 }

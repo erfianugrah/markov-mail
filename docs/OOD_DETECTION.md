@@ -1,11 +1,13 @@
 # Out-of-Distribution (OOD) Detection
 
-**Version**: 2.4.0
+**Version**: 2.4.1
 **Status**: Production
 
 ## What is OOD Detection?
 
-Out-of-Distribution (OOD) detection identifies patterns that don't match anything the models were trained on. When BOTH the legitimate and fraudulent Markov models have high cross-entropy (above 3.0 nats), it means the pattern is unfamiliar to both - this is a red flag.
+Out-of-Distribution (OOD) detection identifies patterns that don't match anything the models were trained on. When BOTH the legitimate and fraudulent Markov models have high cross-entropy, it means the pattern is unfamiliar to both - this is a red flag.
+
+**v2.4.1 Update**: Piecewise threshold system with dead zone (<3.8 nats), warn zone (3.8-5.5 nats), and block zone (5.5+ nats) for improved precision and recall.
 
 ## The Problem
 
@@ -40,9 +42,21 @@ If they're similar → low classification risk.
 This is the consensus signal - are BOTH models confused?
 
 ```typescript
+// v2.4.1: Piecewise threshold system
 const minEntropy = Math.min(H_legit, H_fraud);
-const abnormalityScore = Math.max(0, minEntropy - 3.0);
-const abnormalityRisk = Math.min(abnormalityScore * 0.15, 0.6);
+let abnormalityRisk: number;
+
+if (minEntropy < 3.8) {
+  // Dead zone: familiar patterns
+  abnormalityRisk = 0;
+} else if (minEntropy < 5.5) {
+  // Warn zone: linear interpolation from 0.35 to 0.65
+  const progress = (minEntropy - 3.8) / 1.7;
+  abnormalityRisk = 0.35 + progress * 0.30;
+} else {
+  // Block zone: maximum risk
+  abnormalityRisk = 0.65;
+}
 ```
 
 If both entropies are high → high abnormality risk.
@@ -55,39 +69,57 @@ finalRisk = Math.max(classificationRisk, abnormalityRisk) + domainRisk;
 
 We take the WORST case between classification and abnormality, then add domain risk signals.
 
-## Threshold: 3.0 Nats
+## Two-Tier Thresholds (v2.4.1)
 
-**Why 3.0?**
+**Why piecewise thresholds?**
 
 Cross-entropy thresholds from information theory:
 - **0.69 nats**: log₂ baseline (random guessing)
 - **< 0.2 nats**: good predictions
 - **> 1.0 nats**: poor predictions
-- **> 3.0 nats**: severely confused (out of distribution)
+- **> 3.0 nats**: severely confused (potentially out of distribution)
 
-The 3.0 threshold means the model needs ~8× more bits to encode the pattern than it expects (2^3 = 8). This indicates the pattern structure is fundamentally different from training data.
+**v2.4.1 introduces three zones**:
+- **Dead Zone (< 3.8 nats)**: Familiar patterns, no OOD risk
+- **Warn Zone (3.8-5.5 nats)**: Unusual patterns, progressive risk scaling
+- **Block Zone (5.5+ nats)**: Gibberish/extreme patterns, maximum risk
 
-## Risk Scaling
+The dead zone protects legitimate patterns from false positives. The warn zone provides smooth transitions. The block zone catches extreme gibberish that previous systems missed.
+
+## Risk Scaling (v2.4.1)
+
+**Piecewise Linear Function**:
 
 ```typescript
-abnormalityRisk = min((minEntropy - 3.0) × 0.15, 0.6)
+if (minEntropy < 3.8) {
+  abnormalityRisk = 0;  // Dead zone
+} else if (minEntropy < 5.5) {
+  // Warn zone: linear from 0.35 to 0.65
+  abnormalityRisk = 0.35 + ((minEntropy - 3.8) / 1.7) × 0.30;
+} else {
+  abnormalityRisk = 0.65;  // Block zone
+}
 ```
 
-Scaling factor: **0.15** risk per nat above threshold
-Maximum: **0.6** (block threshold)
+### Decision Thresholds:
+- **ALLOW**: risk < 0.35
+- **WARN**: 0.35 ≤ risk < 0.65
+- **BLOCK**: risk ≥ 0.65
 
 ### Examples:
 
-| minEntropy | abnormalityScore | abnormalityRisk | Likely Decision |
-|-----------|------------------|-----------------|-----------------|
-| 2.1 | 0.00 | 0.00 | ALLOW |
-| 3.0 | 0.00 | 0.00 | ALLOW |
-| 3.5 | 0.50 | 0.07 | ALLOW |
-| 4.0 | 1.00 | 0.15 | ALLOW/WARN |
-| 4.5 | 1.50 | 0.22 | WARN |
-| 5.0 | 2.00 | 0.30 | WARN |
-| 6.0 | 3.00 | 0.45 | WARN/BLOCK |
-| 7.0+ | 4.00+ | 0.60 | BLOCK |
+| minEntropy | Zone | abnormalityRisk | Likely Decision |
+|-----------|------|-----------------|-----------------|
+| 2.1 | Below | 0.00 | ALLOW |
+| 3.0 | Below | 0.00 | ALLOW |
+| 3.5 | Below | 0.00 | ALLOW |
+| 3.8 | Warn | 0.35 | WARN |
+| 4.0 | Warn | 0.39 | WARN |
+| 4.5 | Warn | 0.47 | WARN |
+| 5.0 | Warn | 0.56 | WARN |
+| 5.5 | Block | 0.65 | BLOCK |
+| 6.0 | Block | 0.65 | BLOCK |
+| 7.0+ | Block | 0.65 | BLOCK |
 
 ## Real Examples
 
@@ -104,14 +136,16 @@ H_fraud = 4.68 nats
 - confidence = 0.05 (very low)
 - classificationRisk = 0 (models agree it's not fraud)
 
-**Abnormality Analysis:**
+**Abnormality Analysis (v2.4.1):**
 - minEntropy = 4.45 nats
-- abnormalityScore = 4.45 - 3.0 = 1.45
-- abnormalityRisk = 1.45 × 0.15 = 0.22
+- Zone: **Warn** (3.8 < 4.45 < 5.5)
+- progress = (4.45 - 3.8) / 1.7 = 0.38
+- abnormalityRisk = 0.35 + 0.38 × 0.30 = **0.46**
 
 **Final Risk:**
-- finalRisk = max(0, 0.22) + 0.08 (domain) = 0.30
+- finalRisk = max(0, 0.46) + 0.08 (domain) = **0.54**
 - Decision: **WARN** (suspicious_abnormal_pattern)
+- **v2.4.0**: 0.30 (allow) → **v2.4.1**: 0.54 (warn) ✅ Improved
 
 ### Case 2: Moderate OOD
 
@@ -121,12 +155,14 @@ H_legit = 3.99 nats
 H_fraud = 4.17 nats
 ```
 
-**Analysis:**
+**Analysis (v2.4.1):**
 - minEntropy = 3.99 nats
-- abnormalityScore = 0.99
-- abnormalityRisk = 0.15
-- finalRisk = 0.23
-- Decision: **ALLOW** (below 0.25 threshold)
+- Zone: **Warn** (3.8 < 3.99 < 5.5)
+- progress = (3.99 - 3.8) / 1.7 = 0.11
+- abnormalityRisk = 0.35 + 0.11 × 0.30 = **0.38**
+- finalRisk = **0.46**
+- Decision: **WARN**
+- **v2.4.0**: 0.23 (allow) → **v2.4.1**: 0.46 (warn) ✅ Improved
 
 ### Case 3: Normal Pattern (No OOD)
 
@@ -136,22 +172,31 @@ H_legit = 2.1 nats
 H_fraud = 3.8 nats
 ```
 
-**Analysis:**
-- minEntropy = 2.1 nats (below 3.0)
+**Analysis (v2.4.1):**
+- minEntropy = 2.1 nats
+- Zone: **Dead Zone** (< 3.8)
 - abnormalityScore = 0
-- abnormalityRisk = 0
+- abnormalityRisk = **0**
 - oodDetected = false
 - Decision: **ALLOW**
+- **v2.4.0**: 0 → **v2.4.1**: 0 (unchanged) ✅
 
 ## Database Schema
 
-Migration `0005_add_ood_detection.sql` added:
+Migration `0005_add_ood_detection.sql` (v2.4.0) added:
 
 ```sql
 ALTER TABLE validations ADD COLUMN min_entropy REAL;
 ALTER TABLE validations ADD COLUMN abnormality_score REAL;
 ALTER TABLE validations ADD COLUMN abnormality_risk REAL;
 ALTER TABLE validations ADD COLUMN ood_detected INTEGER DEFAULT 0;
+```
+
+Migration `0006_add_ood_zone_tracking.sql` (v2.4.1) added:
+
+```sql
+ALTER TABLE validations ADD COLUMN ood_zone TEXT;
+-- Possible values: 'none' (<3.8), 'warn' (3.8-5.5), 'block' (5.5+)
 ```
 
 ### Querying OOD Data
@@ -165,7 +210,8 @@ SELECT
   risk_score,
   min_entropy,
   abnormality_score,
-  abnormality_risk
+  abnormality_risk,
+  ood_zone
 FROM validations
 WHERE ood_detected = 1
 ORDER BY min_entropy DESC
@@ -187,12 +233,28 @@ SELECT
   email_local_part,
   min_entropy,
   abnormality_risk,
+  ood_zone,
   decision,
   block_reason
 FROM validations
 WHERE ood_detected = 1
 ORDER BY abnormality_risk DESC
 LIMIT 20;
+```
+
+**OOD patterns by zone (v2.4.1+):**
+```sql
+SELECT
+  ood_zone,
+  decision,
+  COUNT(*) as count,
+  AVG(min_entropy) as avg_entropy,
+  AVG(abnormality_risk) as avg_risk
+FROM validations
+WHERE timestamp >= datetime('now', '-24 hours')
+  AND ood_zone IS NOT NULL
+GROUP BY ood_zone, decision
+ORDER BY ood_zone, decision;
 ```
 
 ## API Response Fields
@@ -224,12 +286,13 @@ New block reasons related to OOD:
 Test suite: `cli/commands/test-live.ts`
 
 OOD-specific test categories:
-- `ood-severe`: Very high entropy (> 4.0 nats)
-- `ood-moderate`: Above threshold (3.0-4.0 nats)
-- `ood-near-threshold`: Just above 3.0 nats
+- `ood-severe`: Very high entropy (> 4.5 nats, warn zone)
+- `ood-moderate`: Above warn threshold (3.8-4.5 nats)
+- `ood-near-threshold`: Just above warn threshold (3.8-4.0 nats)
+- `ood-extreme`: Block zone (> 5.5 nats)
 - `ood-cross-language`: Unicode mixing patterns
 - `ood-novel-bot`: New bot patterns not in training
-- `ood-low-entropy`: Should NOT trigger OOD
+- `ood-low-entropy`: Should NOT trigger OOD (< 3.8 nats)
 
 Run tests:
 ```bash
