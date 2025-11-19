@@ -13,8 +13,8 @@ export async function generateFingerprint(request: Request): Promise<Fingerprint
   const ja3 = headers.get('cf-ja3-hash') || cf.botManagement?.ja3Hash || '';
   const userAgent = headers.get('user-agent') || '';
   const country = headers.get('cf-ipcountry') || cf.country || '';
-  const asn = cf.asn || 0;
-  const asOrg = cf.asOrganization || '';
+  const asn = cf.asn || (headers.get('cf-asn') ? parseInt(headers.get('cf-asn')!) : 0);
+  const asOrg = cf.asOrganization || headers.get('cf-as-organization') || '';
   const botScore = parseInt(headers.get('cf-bot-score') || '0') || cf.botManagement?.score || 0;
   const deviceType = headers.get('cf-device-type') || cf.deviceType || '';
 

@@ -909,22 +909,32 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     latitude: cf.latitude || headers.get('cf-iplatitude') || undefined,
     longitude: cf.longitude || headers.get('cf-iplongitude') || undefined,
     continent: cf.continent || headers.get('cf-ipcontinent') || undefined,
-    isEuCountry: cf.isEUCountry,
+    isEuCountry: cf.isEUCountry || headers.get('cf-is-eu-country') || undefined,
     // Network
-    asOrganization: cf.asOrganization,
-    colo: cf.colo,
-    httpProtocol: cf.httpProtocol,
-    tlsVersion: cf.tlsVersion,
-    tlsCipher: cf.tlsCipher,
+    asOrganization: cf.asOrganization || headers.get('cf-as-organization') || undefined,
+    colo: cf.colo || headers.get('cf-colo') || undefined,
+    httpProtocol: cf.httpProtocol || headers.get('cf-http-protocol') || undefined,
+    tlsVersion: cf.tlsVersion || headers.get('cf-tls-version') || undefined,
+    tlsCipher: cf.tlsCipher || headers.get('cf-tls-cipher') || undefined,
     // Bot Detection (Enhanced)
-    clientTrustScore: cf.clientTrustScore,
+    clientTrustScore: cf.clientTrustScore || (headers.get('cf-client-trust-score') ? parseInt(headers.get('cf-client-trust-score')!) : undefined),
     verifiedBot: cf.botManagement?.verifiedBot || headers.get('cf-verified-bot') === 'true',
-    jsDetectionPassed: (cf.botManagement as any)?.jsDetection?.passed,
-    detectionIds: (cf.botManagement as any)?.detectionIds,
+    jsDetectionPassed: (cf.botManagement as any)?.jsDetection?.passed || headers.get('cf-js-detection-passed') === 'true',
+    detectionIds: (cf.botManagement as any)?.detectionIds || (() => {
+      try {
+        const detectionIdsHeader = headers.get('cf-detection-ids');
+        return detectionIdsHeader ? JSON.parse(detectionIdsHeader) : undefined;
+      } catch { return undefined; }
+    })(),
     // Fingerprints (Enhanced) - JA3/JA4 already in fingerprint.ts but add signals
     ja3Hash: cf.botManagement?.ja3Hash || headers.get('cf-ja3-hash') || undefined,
     ja4: (cf.botManagement as any)?.ja4 || headers.get('cf-ja4') || undefined,
-    ja4Signals: (cf.botManagement as any)?.ja4Signals,
+    ja4Signals: (cf.botManagement as any)?.ja4Signals || (() => {
+      try {
+        const ja4SignalsHeader = headers.get('cf-ja4-signals');
+        return ja4SignalsHeader ? JSON.parse(ja4SignalsHeader) : undefined;
+      } catch { return undefined; }
+    })(),
   });
 
   // Store validation result in context for downstream handlers
