@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 import { query } from '@/lib/api'
-import { Search, Download, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw } from 'lucide-react'
+import { Search, Download, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw, Calendar } from 'lucide-react'
 
 const VIEWS = {
   recent: {
@@ -191,26 +192,56 @@ export function DataExplorer() {
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [refreshInterval, setRefreshInterval] = useState('30')
   const intervalRef = useRef<number | null>(null)
+  const [customStartDate, setCustomStartDate] = useState('')
+  const [customEndDate, setCustomEndDate] = useState('')
+
+  // Initialize custom dates with last 7 days as default
+  useEffect(() => {
+    const now = new Date()
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    setCustomEndDate(now.toISOString().slice(0, 16))
+    setCustomStartDate(weekAgo.toISOString().slice(0, 16))
+  }, [])
 
   const explore = async () => {
     try {
       setLoading(true)
       setError(null)
 
-      const hours = Math.ceil(parseInt(timeMinutes) / 60)
       const selectedView = VIEWS[view]
       let sql = selectedView.sql.replace('{limit}', limit)
 
       // Add time filter if not in comprehensive view
       if (view !== 'comprehensive') {
+        let timeFilter = ''
+
+        if (timeMinutes === 'custom') {
+          // Custom date range
+          if (!customStartDate || !customEndDate) {
+            throw new Error('Please select both start and end dates')
+          }
+
+          // Convert to ISO format for SQLite
+          const startISO = new Date(customStartDate).toISOString()
+          const endISO = new Date(customEndDate).toISOString()
+
+          timeFilter = `timestamp >= '${startISO}' AND timestamp <= '${endISO}'`
+        } else {
+          // Preset time range
+          const hours = Math.ceil(parseInt(timeMinutes) / 60)
+          timeFilter = `timestamp >= datetime('now', '-${hours} hours')`
+        }
+
         // Check if query already has WHERE clause
         if (sql.includes('WHERE')) {
-          sql = sql.replace('WHERE', `WHERE timestamp >= datetime('now', '-${hours} hours') AND`)
+          sql = sql.replace('WHERE', `WHERE ${timeFilter} AND`)
         } else {
-          sql = sql.replace('FROM validations', `FROM validations WHERE timestamp >= datetime('now', '-${hours} hours')`)
+          sql = sql.replace('FROM validations', `FROM validations WHERE ${timeFilter}`)
         }
       }
 
+      // Pass hours for API call (use 24 as default for custom ranges)
+      const hours = timeMinutes === 'custom' ? 24 : Math.ceil(parseInt(timeMinutes) / 60)
       const response = await query(sql, hours)
       setResult(response.data || [])
     } catch (err) {
@@ -352,6 +383,12 @@ export function DataExplorer() {
               <SelectItem value="60">Last 1 hour</SelectItem>
               <SelectItem value="360">Last 6 hours</SelectItem>
               <SelectItem value="1440">Last 24 hours</SelectItem>
+              <SelectItem value="custom">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-3 w-3" />
+                  Custom Range
+                </div>
+              </SelectItem>
             </SelectContent>
           </Select>
 
@@ -389,6 +426,62 @@ export function DataExplorer() {
             </>
           )}
         </div>
+
+        {timeMinutes === 'custom' && (
+          <div className="flex gap-3 items-center p-4 bg-muted/30 rounded-md border">
+            <Calendar className="h-5 w-5 text-muted-foreground" />
+            <div className="flex gap-3 items-center flex-wrap">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">Start Date & Time</label>
+                <Input
+                  type="datetime-local"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="w-[220px]"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">End Date & Time</label>
+                <Input
+                  type="datetime-local"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="w-[220px]"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-transparent">.</label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const now = new Date()
+                    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+                    setCustomEndDate(now.toISOString().slice(0, 16))
+                    setCustomStartDate(weekAgo.toISOString().slice(0, 16))
+                  }}
+                >
+                  Last 7 Days
+                </Button>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-transparent">.</label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const now = new Date()
+                    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+                    setCustomEndDate(now.toISOString().slice(0, 16))
+                    setCustomStartDate(monthAgo.toISOString().slice(0, 16))
+                  }}
+                >
+                  Last 30 Days
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {result.length > 0 && (
           <div className="flex gap-3 items-center p-3 bg-muted/30 rounded-md border">

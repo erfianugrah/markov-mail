@@ -113,10 +113,32 @@ function App() {
   const [decisionsFullscreen, setDecisionsFullscreen] = useState(false)
   const [riskFullscreen, setRiskFullscreen] = useState(false)
   const [timelineFullscreen, setTimelineFullscreen] = useState(false)
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState(() => {
+    // Initialize from URL hash, fallback to overview
+    const hash = window.location.hash.slice(1)
+    return ['overview', 'query', 'explorer', 'management'].includes(hash) ? hash : 'overview'
+  })
 
   // Get computed chart colors for bars (CSS variables don't work in Recharts)
   const barChartColor = useChartColor('--color-chart-1', darkMode)
+
+  // Sync activeTab with URL hash
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.slice(1)
+      if (['overview', 'query', 'explorer', 'management'].includes(hash)) {
+        setActiveTab(hash)
+      }
+    }
+
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [])
+
+  // Update URL hash when tab changes
+  useEffect(() => {
+    window.location.hash = activeTab
+  }, [activeTab])
 
   // Check for existing API key on mount
   useEffect(() => {
@@ -405,7 +427,7 @@ function App() {
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="overview" className="space-y-6" onValueChange={setActiveTab}>
+        <Tabs value={activeTab} className="space-y-6" onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="query">Query Builder</TabsTrigger>
