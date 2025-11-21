@@ -384,10 +384,14 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
   // Try to extract email from request body
   let email: string | undefined;
   let requestBody: any;
+  let consumer: string | undefined;
+  let flow: string | undefined;
 
   try {
     requestBody = await c.req.json();
     email = requestBody.email;
+    consumer = requestBody.consumer;
+    flow = requestBody.flow;
 
     // Store body for downstream handlers
     c.set('requestBody', requestBody);
@@ -862,7 +866,8 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
   const cf = (c.req.raw as any).cf || {};
   const headers = c.req.raw.headers;
 
-  writeValidationMetric(c.env.DB, {
+  // Write validation metric asynchronously (ensures completion even for RPC calls)
+  c.executionCtx.waitUntil(writeValidationMetric(c.env.DB, {
     decision,
     riskScore,
     entropyScore: emailValidation.signals.entropyScore,
@@ -872,6 +877,8 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     blockReason: decision === 'block' ? blockReason : undefined,
     fingerprintHash: fingerprint.hash,
     latency: Date.now() - startTime,
+    clientIp: fingerprint.ip,
+    userAgent: fingerprint.userAgent,
     emailLocalPart: localPart,
     domain: domain,
     tld: tld,
@@ -935,7 +942,10 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
         return ja4SignalsHeader ? JSON.parse(ja4SignalsHeader) : undefined;
       } catch { return undefined; }
     })(),
-  });
+    // RPC Metadata (v2.5.1+)
+    consumer: consumer,
+    flow: flow,
+  }));
 
   // Store validation result in context for downstream handlers
   c.set('fraudDetection', {

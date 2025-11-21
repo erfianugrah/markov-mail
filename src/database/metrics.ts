@@ -46,7 +46,8 @@ export async function writeValidationMetricToD1(
           region, city, postal_code, timezone, latitude, longitude, continent, is_eu_country,
           as_organization, colo, http_protocol, tls_version, tls_cipher,
           client_trust_score, verified_bot, js_detection_passed, detection_ids,
-          ja3_hash, ja4, ja4_signals
+          ja3_hash, ja4, ja4_signals,
+          consumer, flow
         ) VALUES (
           ?1, ?2, ?3,
           ?4, ?5, ?6, ?7,
@@ -68,7 +69,8 @@ export async function writeValidationMetricToD1(
           ?44, ?45, ?46, ?47, ?48, ?49, ?50, ?51,
           ?52, ?53, ?54, ?55, ?56,
           ?57, ?58, ?59, ?60,
-          ?61, ?62, ?63
+          ?61, ?62, ?63,
+          ?64, ?65
         )
       `)
       .bind(
@@ -153,7 +155,10 @@ export async function writeValidationMetricToD1(
         // Fingerprints
         metric.ja3Hash || null,
         metric.ja4 || null,
-        metric.ja4Signals ? JSON.stringify(metric.ja4Signals) : null
+        metric.ja4Signals ? JSON.stringify(metric.ja4Signals) : null,
+        // RPC Metadata
+        metric.consumer || null,
+        metric.flow || null
       )
       .run();
   } catch (error) {

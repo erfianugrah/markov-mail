@@ -91,6 +91,9 @@ export interface ValidationMetric {
   ja3Hash?: string;             // JA3 TLS fingerprint
   ja4?: string;                 // JA4 fingerprint string
   ja4Signals?: Record<string, number>;  // JA4 signal scores
+  // RPC Metadata (v2.5.1+)
+  consumer?: string;            // Consumer service name (e.g., "FORMINATOR")
+  flow?: string;                // Request flow type (e.g., "REGISTRATION", "LOGIN")
 }
 
 /**
@@ -99,8 +102,8 @@ export interface ValidationMetric {
 export function writeValidationMetric(
   db: D1Database | undefined,
   metric: ValidationMetric
-) {
-  writeValidationMetricToD1(db, metric);
+): Promise<void> {
+  return writeValidationMetricToD1(db, metric);
 }
 
 // ============================================================================
