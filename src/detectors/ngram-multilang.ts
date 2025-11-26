@@ -233,92 +233,51 @@ export const LANGUAGE_TRIGRAMS: Record<Language, Set<string>> = {
  */
 export function detectLanguage(text: string): Language {
 	const lower = text.toLowerCase();
+	const romanizedPatterns = [
+		/(ov|ova|ovich|ev|eva|enko|sky|ski|ashvili|adze|dze)$/i,
+		/(ullah|rahman|hossain|hussein)$/i,
+		/^(abd|abu|ibn|bin)/i,
+		/(putra|putri|wati|wana|wan|budi|sri|dra|tya)$/i,
+		/(kumar|singh|raj|deep|esh|ish)$/i,
+		/(nguyen|quang|thuy|phuong|trung|trong)$/i,
+		/(kim|park|choi|yoon|kang|lee)$/i,
+		/(zhang|xiang|sheng|huang|xiao|qian)$/i,
+	];
 
-	// Russian romanization patterns
-	if (
-		/ov(a|ich|na|sky|ski)?$/.test(lower) ||
-		/ev(a|ich|na|sky|ski)?$/.test(lower) ||
-		/enko$/.test(lower) ||
-		/(sh|zh|kh|ts|ch)/.test(lower)
-	) {
+	if (romanizedPatterns.some((pattern) => pattern.test(lower))) {
 		return 'romanized';
 	}
 
-	// Chinese Pinyin patterns (character combinations unique to Pinyin)
-	if (/(zh|qi|xi|zhi|chi|shi|ong|ang|eng)/.test(lower)) {
-		return 'romanized';
-	}
-
-	// Japanese Romaji patterns
-	if (
-		/(tsu|shi|chi|kya|kyu|kyo|sha|shu|sho)/.test(lower) ||
-		/(ka|ki|ku|ke|ko)(ta|chi|tsu|te|to)/.test(lower)
-	) {
-		return 'romanized';
-	}
-
-	// Arabic transliteration patterns
-	if (/^(al|el|abd|abu|ibn|bin)/.test(lower) || /(ullah|rahman)$/.test(lower)) {
-		return 'romanized';
-	}
-
-	// Indonesian/Malay/Southeast Asian patterns
-	if (
-		/(anu|grah|budi|putra|putri|wati|wan|dra|tya|sri)/.test(lower) ||
-		/(rah|wan|man|nto|nti)$/.test(lower)
-	) {
-		return 'romanized';
-	}
-
-	// Korean patterns
-	if (/(eo|ae|oe|ui|gw|kw|hw)/.test(lower) || /(kim|park|lee|choi|jung|kang|shin|yoon)/.test(lower)) {
-		return 'romanized';
-	}
-
-	// Vietnamese patterns
-	if (/(ng|nh|ph|th|gh|qu|uy|oa|oi|uyen|thuy|phu|huy|thi|van)/.test(lower)) {
-		return 'romanized';
-	}
-
-	// Hindi/South Asian patterns
-	if (/(kumar|singh|raj|pra|deep|kri|esh|ish|dha|bha|sha|ndr|rya)/.test(lower)) {
-		return 'romanized';
-	}
-
-	// German patterns (umlauts, specific endings)
-	if (
-		/(ae|oe|ue)/.test(lower) ||
-		/(mann|berg|stein|feld|wald)$/.test(lower) ||
-		/(sch|ck|tz)/.test(lower)
-	) {
-		return 'de';
-	}
-
-	// Spanish patterns
-	if (/(ez|ñ|gue|gui)/.test(lower) || /(nez|lez|rez|dez|vez)$/.test(lower)) {
+	const spanishSuffixes = ['ez', 'iz', 'oz', 'az'];
+	if (lower.includes('ñ') || spanishSuffixes.some((suffix) => lower.endsWith(suffix))) {
 		return 'es';
 	}
 
-	// French patterns
-	if (
-		/(eau|aux|eux|oux)/.test(lower) ||
-		/(oi|ai|ei|ui)/.test(lower) ||
-		/(elle|ette|ille)$/.test(lower)
-	) {
+	const frenchSuffixes = ['eau', 'eaux', 'eux', 'ette', 'elle', 'ille', 'ois', 'oit'];
+	if (frenchSuffixes.some((suffix) => lower.endsWith(suffix))) {
 		return 'fr';
 	}
 
-	// Italian patterns (double consonants, specific endings)
-	if (
-		/(zz|ll|rr|cc|gg)/.test(lower) ||
-		/(cci|ggi|zzi)/.test(lower) ||
-		/(ino|ina|etto|etta|zione)$/.test(lower)
-	) {
+	const germanPatterns = [
+		/(mann|berg|stein|stadt|hardt)$/i,
+		/(ae|oe|ue)/i,
+		/(sch|tz|pf)/i,
+	];
+	if (germanPatterns.some((pattern) => pattern.test(lower))) {
+		return 'de';
+	}
+
+	const italianSuffixes = ['ini', 'lli', 'tti', 'cci', 'gia', 'gio', 'zio', 'zzi', 'azzi', 'etti'];
+	if (italianSuffixes.some((suffix) => lower.endsWith(suffix))) {
 		return 'it';
 	}
 
-	// Portuguese patterns
-	if (/(ão|õe|ãe|nh|lh)/.test(lower) || /(inho|inha|cao|sao)$/.test(lower)) {
+	const portuguesePatterns = [
+		/(ão|õe|ãe)$/i,
+		/(inho|inha|lh|nh)$/i,
+		/(cao|sao)$/i,
+	];
+	if (portuguesePatterns.some((pattern) => pattern.test(lower))) {
 		return 'pt';
 	}
 

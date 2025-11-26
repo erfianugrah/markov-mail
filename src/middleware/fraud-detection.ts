@@ -45,7 +45,8 @@ import { validateDomain, getDomainReputationScore } from '../validators/domain';
 import {
   extractPatternFamily,
   normalizeEmail,
-  analyzeTLDRisk
+  analyzeTLDRisk,
+  getPlusAddressingRiskScore
 } from '../detectors';
 // REMOVED (2025-11-08): detectKeyboardWalk, detectKeyboardMashing, detectGibberish
 // Replaced with Markov-only detection for higher accuracy (83% vs 67%) and zero false positives
@@ -492,15 +493,12 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 
   if (emailValidation.valid && config.features.enablePatternCheck) {
     logger.info({ event: 'pattern_detection_starting' }, 'Starting pattern detection');
-    // Normalize email FIRST (plus-addressing detection)
-    // This ensures pattern detectors don't flag john+test1@ as sequential
+    // Normalize once so we can share results between detectors
     normalizedEmailResult = normalizeEmail(email);
-    const emailForPatternDetection = normalizedEmailResult.normalized;
 
     // Extract pattern family (for signals/observability only)
-    // Use normalized email to avoid false positives on plus-addressed emails
     logger.info({ event: 'pattern_family_starting' }, 'Extracting pattern family');
-    patternFamilyResult = await extractPatternFamily(emailForPatternDetection);
+    patternFamilyResult = await extractPatternFamily(email, normalizedEmailResult);
     logger.info({ event: 'pattern_family_done', family: patternFamilyResult?.family }, 'Pattern family extracted');
 
     // REMOVED (2025-11-08): Keyboard walk, keyboard mashing, gibberish detectors
@@ -562,6 +560,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
   let classificationRisk = 0;
   let domainRisk = 0;
   let ensembleBoost = 0;
+  let plusRisk = 0;
 
   // Priority 1: Hard blockers (immediate block)
   if (!emailValidation.valid) {
@@ -600,6 +599,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     classificationRisk = riskCalculation.classificationRisk;
     domainRisk = riskCalculation.domainRisk;
     ensembleBoost = riskCalculation.ensembleBoost;
+    plusRisk = riskCalculation.plusRisk;
 
     blockReason = determineBlockReason({
       riskScore,
@@ -608,7 +608,8 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       patternFamilyResult,
       domainReputationScore,
       tldRiskScore,
-      config
+      config,
+      plusRisk
     });
 
     logger.info({
@@ -657,7 +658,13 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     domainReputationScore: number;
     tldRiskScore: number;
     normalizedEmailResult: any;
-  }): { score: number; classificationRisk: number; domainRisk: number; ensembleBoost: number } {
+  }): {
+    score: number;
+    classificationRisk: number;
+    domainRisk: number;
+    ensembleBoost: number;
+    plusRisk: number;
+  } {
     const { email, markovResult, patternFamilyResult, domainReputationScore, tldRiskScore, normalizedEmailResult } = params;
 
     // Check if this is a professional email
@@ -677,12 +684,20 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     let score = Math.max(classificationRisk, abnormalityRisk);
 
     // Secondary: Deterministic pattern overrides
-    // v2.4.2: Removed sequential and plus-addressing overrides - Markov handles these
     // Keep dated pattern override as it has dynamic confidence based on age analysis
 
     // Dated patterns use confidence from age-aware algorithm (0.2 for birth years, 0.9 for fraud)
     if (patternFamilyResult?.patternType === 'dated') {
       score = Math.max(score, patternFamilyResult?.confidence || 0.7);
+    }
+
+    // Plus-addressing abuse contributes its own deterministic signal
+    let plusRisk = 0;
+    if (normalizedEmailResult) {
+      plusRisk = getPlusAddressingRiskScore(email);
+      if (plusRisk > 0) {
+        score = Math.max(score, plusRisk);
+      }
     }
 
     // Tertiary: Domain signals (disposable domains, TLD risk)
@@ -716,6 +731,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       classificationRisk,
       domainRisk,
       ensembleBoost,
+      plusRisk,
     };
   }
 
@@ -738,8 +754,18 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     domainReputationScore: number;
     tldRiskScore: number;
     config: any;
+    plusRisk: number;
   }): string {
-    const { riskScore, email, markovResult, patternFamilyResult, domainReputationScore, tldRiskScore, config } = params;
+    const {
+      riskScore,
+      email,
+      markovResult,
+      patternFamilyResult,
+      domainReputationScore,
+      tldRiskScore,
+      config,
+      plusRisk,
+    } = params;
 
     // TIER 1: HIGH CONFIDENCE DETECTIONS (any risk level)
     // These are definitive fraud signals that override risk-based messaging
@@ -752,6 +778,10 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       {
         condition: markovResult?.abnormalityScore && markovResult.abnormalityScore > 1.5,
         reason: 'out_of_distribution'
+      },
+      {
+        condition: plusRisk >= config.patternThresholds.plusAddressing,
+        reason: 'plus_addressing_abuse'
       },
     ];
 
@@ -770,6 +800,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       if (tldRiskScore > 0.5) return 'high_risk_tld';
       if (domainReputationScore > 0.5) return 'domain_reputation';
       if (patternFamilyResult?.patternType === 'dated') return 'dated_pattern';
+      if (plusRisk >= config.patternThresholds.plusAddressing) return 'high_risk_plus_addressing';
       return 'high_risk_multiple_signals';
     } else if (riskScore >= config.riskThresholds.warn) {
       // MEDIUM RISK (0.3-0.6): Descriptive warnings
@@ -777,6 +808,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       if (patternFamilyResult?.patternType === 'dated') return 'suspicious_dated_pattern';
       if (tldRiskScore > 0.3) return 'suspicious_tld';
       if (domainReputationScore > 0.3) return 'suspicious_domain';
+      if (plusRisk >= config.patternThresholds.plusAddressing * 0.8) return 'suspicious_plus_addressing';
       return 'medium_risk';
     } else {
       // LOW RISK (<0.3): Legitimate descriptions
@@ -994,6 +1026,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
         classificationRisk: Math.round(classificationRisk * 100) / 100,
         domainRisk: Math.round(domainRisk * 100) / 100,
         ensembleBoost: Math.round(ensembleBoost * 100) / 100,
+        plusAddressingRisk: Math.round(plusRisk * 100) / 100,
       }),
     },
   });

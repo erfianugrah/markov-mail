@@ -15,7 +15,7 @@
 
 import { detectSequentialPattern, getSequentialPatternFamily } from './sequential';
 import { detectDatedPattern, getDatedPatternFamily } from './dated';
-import { normalizeEmail } from './plus-addressing';
+import { normalizeEmail, type NormalizedEmailResult } from './plus-addressing';
 import { analyzeNGramNaturalness } from './ngram-analysis';
 // DEPRECATED (v2.2.0): keyboard-walk and keyboard-mashing detectors removed
 // import { detectKeyboardWalk } from './keyboard-walk';
@@ -50,13 +50,18 @@ export interface PatternFamilyResult {
 /**
  * Extract the pattern family for an email address
  */
-export async function extractPatternFamily(email: string): Promise<PatternFamilyResult> {
-  const normalized = normalizeEmail(email);
-  const [localPart, domain] = normalized.normalized.split('@');
+export async function extractPatternFamily(
+  email: string,
+  normalizedOverride?: NormalizedEmailResult
+): Promise<PatternFamilyResult> {
+  const normalized = normalizedOverride ?? normalizeEmail(email);
+  const normalizedEmail = normalized.normalized;
+  const providerNormalizedEmail = normalized.providerNormalized;
+  const [localPart, domain] = normalizedEmail.split('@');
 
   // Run all detectors
-  const sequentialResult = detectSequentialPattern(email);
-  const datedResult = detectDatedPattern(email);
+  const sequentialResult = detectSequentialPattern(providerNormalizedEmail);
+  const datedResult = detectDatedPattern(providerNormalizedEmail);
   // DEPRECATED (v2.2.0): keyboard detectors removed - Markov detects these patterns
   // const keyboardWalkResult = detectKeyboardWalk(email);
   // const keyboardMashingResult = detectKeyboardMashing(email);
@@ -95,7 +100,7 @@ export async function extractPatternFamily(email: string): Promise<PatternFamily
     patternType = 'plus-addressing';
     confidence = normalized.metadata?.suspiciousTag ? 0.7 : 0.5;
 
-    const baseStructure = analyzeStructure(normalized.normalized.split('@')[0]);
+    const baseStructure = analyzeStructure(normalizedEmail.split('@')[0]);
     familyString = `${baseStructure}+TAG@${domain}`;
   }
   // Priority 6: Analyze structure
@@ -134,7 +139,7 @@ export async function extractPatternFamily(email: string): Promise<PatternFamily
     patternType,
     confidence,
     metadata: {
-      normalizedEmail: normalized.normalized,
+      normalizedEmail,
       hasSequential: sequentialResult.isSequential,
       hasDated: datedResult.hasDatedPattern,
       hasPlusAddressing: normalized.hasPlus,

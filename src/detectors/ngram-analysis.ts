@@ -256,26 +256,27 @@ export function detectGibberish(
   if (options?.legitMarkovModel) {
     try {
       const crossEntropy = options.legitMarkovModel.crossEntropy(localPart);
-      const perplexity = Math.exp(crossEntropy);
+      const perplexity = Math.pow(2, crossEntropy);
 
       // Adaptive threshold based on string length
       // Longer strings: stricter (can have lower perplexity)
       // Shorter strings: more lenient (naturally higher perplexity)
       const lengthFactor = Math.min(localPart.length / 10, 2.0);
-      const baseThreshold = 60.0; // Empirical threshold
-      const threshold = baseThreshold * Math.max(1.0, 1.5 - lengthFactor * 0.3);
+      const baseThreshold = 60.0; // Empirical threshold (perplexity scale)
+      const perplexityThreshold = baseThreshold * Math.max(1.0, 1.5 - lengthFactor * 0.3);
+      const crossEntropyThreshold = Math.log2(perplexityThreshold);
 
-      const isGibberish = perplexity > threshold;
+      const isGibberish = crossEntropy > crossEntropyThreshold;
 
       // Confidence scales with distance from threshold
       let confidence = 0;
       if (isGibberish) {
         // How much higher than threshold (0-1 scale)
-        const excess = (perplexity - threshold) / threshold;
+        const excess = (crossEntropy - crossEntropyThreshold) / Math.max(crossEntropyThreshold, 1);
         confidence = Math.min(excess, 1.0);
       } else {
         // How much lower than threshold (inverted for non-gibberish)
-        const margin = (threshold - perplexity) / threshold;
+        const margin = (crossEntropyThreshold - crossEntropy) / Math.max(crossEntropyThreshold, 1);
         confidence = Math.min(margin * 0.5, 0.3); // Lower confidence for "not gibberish"
       }
 
