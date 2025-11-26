@@ -1,7 +1,7 @@
 {
   "riskThresholds": {
-    "block": 0.5,
-    "warn": 0.25
+    "block": 0.55,
+    "warn": 0.3
   },
   "baseRiskScores": {
     "invalidFormat": 0.9,
@@ -21,7 +21,7 @@
   },
   "logging": {
     "logAllValidations": true,
-    "logLevel": "info",
+    "logLevel": "debug",
     "logBlocks": true
   },
   "headers": {
@@ -29,14 +29,14 @@
     "enableOriginHeaders": false,
     "originUrl": ""
   },
-  "actionOverride": "block",
+  "actionOverride": null,
   "riskWeights": {
     "domainReputation": 0.25,
-    "tldRisk": 0.25
+    "tldRisk": 0.35
   },
   "patternThresholds": {
-    "sequential": 0.7,
-    "dated": 0.6,
+    "sequential": 0.55,
+    "dated": 0.55,
     "plusAddressing": 0.5,
     "keyboardWalk": 0.7,
     "gibberish": 0.8
@@ -53,5 +53,20 @@
     "adaptationRate": 0.5,
     "minTrainingExamples": 100,
     "retrainIntervalDays": 7
-  }
+  },
+  "adjustments": {
+    "professionalEmailFactor": 0.6,
+    "professionalDomainFactor": 0.6,
+    "professionalAbnormalityFactor": 0.7
+  },
+  "ensemble": {
+    "boostMultiplier": 0.4,
+    "maxBoost": 0.4,
+    "tldAgreementThreshold": 0.4
+  },
+  "ood": {
+    "maxRisk": 0.75,
+    "warnZoneMin": 0.4
+  },
+  "calibration": null
 }

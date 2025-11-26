@@ -1,17 +1,17 @@
 {
   "riskThresholds": {
-    "block": 0.6,
-    "warn": 0.3
+    "block": 0.62,
+    "warn": 0.32
   },
   "baseRiskScores": {
     "invalidFormat": 0.8,
-    "disposableDomain": 0.5,
+    "disposableDomain": 0.7,
     "highEntropy": 0.7
   },
   "confidenceThresholds": {
-    "markovFraud": 0.7,
+    "markovFraud": 0.72,
     "markovRisk": 0.6,
-    "patternRisk": 0.5
+    "patternRisk": 0.45
   },
   "features": {
     "enableDisposableCheck": false,
@@ -29,17 +29,17 @@
     "enableOriginHeaders": false,
     "originUrl": ""
   },
-  "actionOverride": "allow",
+  "actionOverride": null,
   "riskWeights": {
-    "domainReputation": 0.05,
+    "domainReputation": 0.1,
     "tldRisk": 0.05
   },
   "patternThresholds": {
-    "sequential": 0.75,
-    "dated": 0.65,
+    "sequential": 0.6,
+    "dated": 0.6,
     "plusAddressing": 0.55,
-    "keyboardWalk": 0.75,
-    "gibberish": 0.85
+    "keyboardWalk": 0.8,
+    "gibberish": 0.8
   },
   "rateLimiting": {
     "enabled": false,
@@ -53,5 +53,20 @@
     "adaptationRate": 0.5,
     "minTrainingExamples": 100,
     "retrainIntervalDays": 7
-  }
+  },
+  "adjustments": {
+    "professionalEmailFactor": 0.5,
+    "professionalDomainFactor": 0.5,
+    "professionalAbnormalityFactor": 0.6
+  },
+  "ensemble": {
+    "boostMultiplier": 0.25,
+    "maxBoost": 0.3,
+    "tldAgreementThreshold": 0.5
+  },
+  "ood": {
+    "maxRisk": 0.6,
+    "warnZoneMin": 0.3
+  },
+  "calibration": null
 }
