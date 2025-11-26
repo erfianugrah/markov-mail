@@ -18,6 +18,7 @@ describe('Config Loading v2.4.2', () => {
 			expect(DEFAULT_CONFIG.adjustments).toBeDefined();
 			expect(DEFAULT_CONFIG.adjustments.professionalEmailFactor).toBe(0.5);
 			expect(DEFAULT_CONFIG.adjustments.professionalDomainFactor).toBe(0.5);
+			expect(DEFAULT_CONFIG.adjustments.professionalAbnormalityFactor).toBe(0.6);
 
 			// Verify ensemble
 			expect(DEFAULT_CONFIG.ensemble).toBeDefined();
@@ -43,6 +44,8 @@ describe('Config Loading v2.4.2', () => {
 			expect(DEFAULT_CONFIG.adjustments.professionalEmailFactor).toBeLessThanOrEqual(1);
 			expect(DEFAULT_CONFIG.adjustments.professionalDomainFactor).toBeGreaterThanOrEqual(0);
 			expect(DEFAULT_CONFIG.adjustments.professionalDomainFactor).toBeLessThanOrEqual(1);
+			expect(DEFAULT_CONFIG.adjustments.professionalAbnormalityFactor).toBeGreaterThanOrEqual(0);
+			expect(DEFAULT_CONFIG.adjustments.professionalAbnormalityFactor).toBeLessThanOrEqual(1);
 
 			// Ensemble should be 0-1
 			expect(DEFAULT_CONFIG.ensemble.boostMultiplier).toBeGreaterThanOrEqual(0);
@@ -73,6 +76,7 @@ describe('Config Loading v2.4.2', () => {
 				adjustments: {
 					professionalEmailFactor: 0.6,
 					professionalDomainFactor: 0.7,
+					professionalAbnormalityFactor: 0.8,
 				},
 				ensemble: {
 					boostMultiplier: 0.4,
@@ -119,12 +123,21 @@ describe('Config Loading v2.4.2', () => {
 					adjustments: {
 						professionalEmailFactor: -0.1, // negative
 						professionalDomainFactor: 0.5,
+						professionalAbnormalityFactor: 0.6,
 					},
 				},
 				{
 					adjustments: {
 						professionalEmailFactor: 0.5,
 						professionalDomainFactor: 1.5, // > 1
+						professionalAbnormalityFactor: 0.6,
+					},
+				},
+				{
+					adjustments: {
+						professionalEmailFactor: 0.5,
+						professionalDomainFactor: 0.5,
+						professionalAbnormalityFactor: 1.2, // > 1
 					},
 				},
 			];
@@ -259,6 +272,7 @@ describe('Config Loading v2.4.2', () => {
 			// Professional email factors should reduce risk, not amplify it
 			expect(DEFAULT_CONFIG.adjustments.professionalEmailFactor).toBeLessThanOrEqual(1);
 			expect(DEFAULT_CONFIG.adjustments.professionalDomainFactor).toBeLessThanOrEqual(1);
+			expect(DEFAULT_CONFIG.adjustments.professionalAbnormalityFactor).toBeLessThanOrEqual(1);
 		});
 	});
 
@@ -269,6 +283,7 @@ describe('Config Loading v2.4.2', () => {
 			expect(DEFAULT_CONFIG.riskWeights.tldRisk).toBe(0.3); // was hardcoded as * 0.3
 			expect(DEFAULT_CONFIG.adjustments.professionalEmailFactor).toBe(0.5); // was hardcoded as * 0.5
 			expect(DEFAULT_CONFIG.adjustments.professionalDomainFactor).toBe(0.5); // was hardcoded as * 0.5
+			expect(DEFAULT_CONFIG.adjustments.professionalAbnormalityFactor).toBe(0.6);
 			expect(DEFAULT_CONFIG.ensemble.boostMultiplier).toBe(0.3); // was hardcoded as * 0.3
 			expect(DEFAULT_CONFIG.ensemble.maxBoost).toBe(0.3); // was hardcoded cap at 0.3
 			expect(DEFAULT_CONFIG.ensemble.tldAgreementThreshold).toBe(0.5); // was hardcoded as > 0.5

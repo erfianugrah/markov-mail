@@ -254,7 +254,7 @@ describe('Config Application Verification v2.4.2', () => {
 			const OOD_WARN_THRESHOLD = 3.8;
 			const OOD_BLOCK_THRESHOLD = 5.5;
 			const progress = (minEntropy - OOD_WARN_THRESHOLD) / (OOD_BLOCK_THRESHOLD - OOD_WARN_THRESHOLD);
-			const abnormalityRisk =
+			let abnormalityRisk =
 				DEFAULT_CONFIG.ood.warnZoneMin +
 				progress * (DEFAULT_CONFIG.ood.maxRisk - DEFAULT_CONFIG.ood.warnZoneMin);
 
@@ -312,9 +312,12 @@ describe('Config Application Verification v2.4.2', () => {
 			const OOD_WARN_THRESHOLD = 3.8;
 			const OOD_BLOCK_THRESHOLD = 5.5;
 			const progress = (minEntropy - OOD_WARN_THRESHOLD) / (OOD_BLOCK_THRESHOLD - OOD_WARN_THRESHOLD);
-			const abnormalityRisk =
+			let abnormalityRisk =
 				DEFAULT_CONFIG.ood.warnZoneMin +
 				progress * (DEFAULT_CONFIG.ood.maxRisk - DEFAULT_CONFIG.ood.warnZoneMin);
+			if (isProfessional) {
+				abnormalityRisk = abnormalityRisk * DEFAULT_CONFIG.adjustments.professionalAbnormalityFactor;
+			}
 
 			// 4. Base Score
 			let score = domainRisk + classificationRisk + abnormalityRisk;
@@ -333,17 +336,16 @@ describe('Config Application Verification v2.4.2', () => {
 			expect(classificationRisk).toBeCloseTo(0.325, 3); // 0.65 * 0.5
 
 			// Final score should be lower than non-professional case
-			// ~0.14 + 0.325 + 0.474 + (0.325*0.6*0.3) = ~0.997
-			expect(score).toBeCloseTo(0.997, 2);
+			// ~0.14 + 0.325 + 0.284 + (0.325*0.6*0.3) = ~0.81
+			expect(score).toBeCloseTo(0.81, 2);
 
 			// Verify professional emails get lower risk than non-professional (1.58 vs 0.997)
-			// Note: Still high due to OOD abnormality risk (0.474) which is not affected by professional adjustment
 			const nonProfessionalScore = 1.58; // From previous test
 			expect(score).toBeLessThan(nonProfessionalScore);
 
-			// The reduction is significant: (1.58 - 0.997) / 1.58 ≈ 37% reduction
+			// The reduction is significant: (1.58 - 0.81) / 1.58 ≈ 49% reduction
 			const reduction = (nonProfessionalScore - score) / nonProfessionalScore;
-			expect(reduction).toBeGreaterThan(0.35); // At least 35% reduction
+			expect(reduction).toBeGreaterThan(0.45); // At least 45% reduction
 		});
 	});
 });

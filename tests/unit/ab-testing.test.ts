@@ -173,6 +173,7 @@ describe('A/B Testing Framework', () => {
 				adjustments: {
 					professionalEmailFactor: 0.5,
 					professionalDomainFactor: 0.5,
+					professionalAbnormalityFactor: 0.6,
 				},
 				ensemble: {
 					boostMultiplier: 0.3,
@@ -275,6 +276,7 @@ describe('A/B Testing Framework', () => {
 				adjustments: {
 					professionalEmailFactor: 0.5,
 					professionalDomainFactor: 0.5,
+					professionalAbnormalityFactor: 0.6,
 				},
 				ensemble: {
 					boostMultiplier: 0.3,

@@ -4,8 +4,8 @@ import type { EmailValidationResult } from '../types';
  * Basic email format validation using RFC 5322 simplified regex
  */
 export function validateEmailFormat(email: string): boolean {
-  // Basic RFC 5322 regex (simplified but covers most cases)
-  const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+  // RFC 6531-compatible pattern (allows UTF-8 in local part and domain labels)
+  const emailRegex = /^[\p{L}\p{N}!#$%&'*+/=?^_`{|}~.-]+@[\p{L}\p{N}](?:[\p{L}\p{N}-]{0,61}[\p{L}\p{N}])?(?:\.[\p{L}\p{N}](?:[\p{L}\p{N}-]{0,61}[\p{L}\p{N}])?)*$/u;
 
   if (!emailRegex.test(email)) {
     return false;

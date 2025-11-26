@@ -119,6 +119,9 @@ export default async function trainMarkov(args: string[]) {
 Trains separate Markov Chain models for legitimate and fraudulent
 email address patterns from labeled CSV datasets.
 
+Tip: run \`npm run cli train:dataset\` to build a compiled training CSV
+that merges the production labels and curated abuse cases.
+
 USAGE
   npm run cli train:markov [options]
 

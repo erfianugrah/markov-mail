@@ -306,14 +306,9 @@ export function getPlusAddressingRiskScore(email: string, relatedEmails?: string
 
   let risk = 0.0;
 
-  // Factor 1: Has plus-addressing
-  if (result.hasPlus) {
-    risk += 0.2;
-  }
-
-  // Factor 2: Suspicious plus tag
-  if (result.metadata?.suspiciousTag) {
-    risk += 0.3;
+  // Factor 1: Suspicious plus tag keywords or numeric-only tags
+  if (result.hasPlus && result.metadata?.suspiciousTag) {
+    risk += 0.25;
   }
 
   // Factor 3: Multiple related emails using same base

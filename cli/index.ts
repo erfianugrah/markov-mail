@@ -20,6 +20,16 @@ const COMMANDS = {
     file: 'commands/train/markov.ts',
     usage: 'train:markov [--dataset <path>] [--output <path>]'
   },
+  'train:dataset': {
+    description: 'Combine base + curated datasets into a training CSV',
+    file: 'commands/train/dataset-build.ts',
+    usage: 'train:dataset [--base <paths>] [--augment <paths>] [--output <path>]'
+  },
+  'train:calibrate': {
+    description: 'Fit logistic calibration layer on top of Markov outputs',
+    file: 'commands/train/calibrate.ts',
+    usage: 'train:calibrate [--dataset <path>] [--models <dir>] [--output <path>]'
+  },
   'train:validate': {
     description: 'Validate training dataset quality',
     file: 'commands/train/validate.ts',

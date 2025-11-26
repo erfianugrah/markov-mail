@@ -1,3 +1,5 @@
+import type { CalibrationCoefficients } from '../utils/calibration';
+
 /**
  * Default Configuration for Bogus Email Pattern Recognition
  *
@@ -97,6 +99,7 @@ export interface FraudDetectionConfig {
 	adjustments: {
 		professionalEmailFactor: number;  // Classification risk reduction for professional emails (default 0.5)
 		professionalDomainFactor: number; // Domain risk reduction for professional emails (default 0.5)
+		professionalAbnormalityFactor: number; // OOD risk reduction for professional/corporate senders
 	};
 
 	// Ensemble Configuration (v2.4.2+)
@@ -114,6 +117,8 @@ export interface FraudDetectionConfig {
 		warnZoneMin: number; // Starting risk in warn zone (default 0.35)
 		// Note: OOD thresholds (3.8, 5.5) remain hardcoded (research-backed)
 	};
+
+	calibration?: CalibrationCoefficients | null;
 }
 
 /**
@@ -179,7 +184,7 @@ export const DEFAULT_CONFIG: FraudDetectionConfig = {
 	// Pattern confidence thresholds
 	// Updated 2025-11-07: Tuned to reduce false positives on legitimate patterns
 	patternThresholds: {
-		sequential: 0.8, // High confidence for sequential
+		sequential: 0.6, // Override kicks in earlier for obvious sequences
 		dated: 0.75, // Medium-high for dated patterns (increased from 0.7)
 		plusAddressing: 0.7, // Medium confidence (increased from 0.6 - Gmail power users)
 		keyboardWalk: 0.85, // High confidence for keyboard walks (increased from 0.8)
@@ -210,6 +215,7 @@ export const DEFAULT_CONFIG: FraudDetectionConfig = {
 	adjustments: {
 		professionalEmailFactor: 0.5,  // Multiply classification risk by 0.5 for professional emails
 		professionalDomainFactor: 0.5, // Multiply domain risk by 0.5 for professional emails
+		professionalAbnormalityFactor: 0.6, // Reduce abnormality risk for trusted senders
 	},
 
 	// Ensemble Configuration (v2.4.2+)
@@ -228,6 +234,8 @@ export const DEFAULT_CONFIG: FraudDetectionConfig = {
 		// Formula: abnormalityRisk = warnZoneMin + progress * (maxRisk - warnZoneMin)
 		// Where progress = (minEntropy - 3.8) / (5.5 - 3.8)
 	},
+
+	calibration: null,
 };
 
 /**
@@ -313,6 +321,30 @@ export function validateConfig(config: Partial<FraudDetectionConfig>): {
 		for (const [key, value] of Object.entries(config.patternThresholds)) {
 			if (value < 0 || value > 1) {
 				errors.push(`patternThresholds.${key} must be between 0 and 1`);
+			}
+		}
+	}
+
+	if (config.calibration) {
+		if (typeof config.calibration.bias !== 'number') {
+			errors.push('calibration.bias must be a number');
+		}
+		if (!Array.isArray(config.calibration.features) || config.calibration.features.length === 0) {
+			errors.push('calibration.features must be a non-empty array');
+		} else {
+			for (const feature of config.calibration.features) {
+				if (!feature.name) {
+					errors.push('calibration.features[].name is required');
+				}
+				if (typeof feature.weight !== 'number') {
+					errors.push(`calibration.features[${feature.name}].weight must be a number`);
+				}
+				if (typeof feature.mean !== 'number') {
+					errors.push(`calibration.features[${feature.name}].mean must be a number`);
+				}
+				if (typeof feature.std !== 'number' || feature.std < 0) {
+					errors.push(`calibration.features[${feature.name}].std must be a non-negative number`);
+				}
 			}
 		}
 	}

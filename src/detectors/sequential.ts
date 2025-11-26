@@ -9,6 +9,25 @@
  * These patterns are common in automated account creation.
  */
 
+const COMMON_SEQUENTIAL_BASES = [
+  'test',
+  'user',
+  'account',
+  'email',
+  'temp',
+  'demo',
+  'admin',
+  'guest',
+  'trial',
+  'sample',
+  'hello',
+  'service',
+  'team',
+  'info',
+  'support',
+  'member'
+];
+
 export interface SequentialPatternResult {
   isSequential: boolean;
   basePattern: string;    // "user" from "user123"
@@ -87,14 +106,10 @@ export function detectSequentialPattern(email: string): SequentialPatternResult 
     // UNLESS they have leading zeros (001, 007) or common sequential bases (user, test)
     const hasLeadingZeros = numberStr.length > 1 && numberStr[0] === '0';
 
-    if (numberStr.length <= 3 && base.length >= 4 && !hasLeadingZeros) {
-      // Check if base contains common sequential patterns
-      const commonBases = [
-        'test', 'user', 'account', 'email', 'temp', 'demo', 'admin', 'guest',
-        'trial', 'sample', 'hello', 'service', 'team'
-      ];
-      const hasCommonBase = commonBases.some(common => base.includes(common));
+    const baseLower = base.toLowerCase();
+    const hasCommonBase = COMMON_SEQUENTIAL_BASES.some(common => baseLower.includes(common));
 
+    if (numberStr.length <= 2 && base.length >= 4 && !hasLeadingZeros) {
       // If it's a normal name + small number (no leading zeros), likely memorable/personal
       if (!hasCommonBase) {
         return {
@@ -151,12 +166,13 @@ export function detectSequentialPattern(email: string): SequentialPatternResult 
     // Factor 5: Common sequential patterns in base
     // test, user, account, email, trial, etc.
     // Enhanced list and higher score for these patterns
-    const commonBases = [
-      'test', 'user', 'account', 'email', 'temp', 'demo', 'admin', 'guest',
-      'trial', 'sample', 'hello', 'service', 'team', 'info', 'support'
-    ];
-    if (commonBases.some(common => base.includes(common))) {
+    if (hasCommonBase) {
       confidence += 0.25; // Increased from 0.15
+
+      // Short sequences combined with common bot bases are far more suspicious
+      if (sequenceLength <= 2) {
+        confidence += 0.1;
+      }
     }
 
     // Factor 6: Single-letter bases (user_a, test_b)
