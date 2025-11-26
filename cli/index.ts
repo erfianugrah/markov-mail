@@ -198,6 +198,11 @@ const COMMANDS = {
     file: 'commands/config/manage.ts',
     usage: 'config:list'
   },
+  'config:upload': {
+    description: 'Overwrite config.json with a local file',
+    file: 'commands/config/manage.ts',
+    usage: 'config:upload <path>'
+  },
   'config:sync': {
     description: 'Sync local config to KV',
     file: 'commands/config/manage.ts',

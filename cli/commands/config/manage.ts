@@ -5,6 +5,7 @@
 import { logger } from '../../utils/logger.ts';
 import { parseArgs, getOption, hasFlag } from '../../utils/args.ts';
 import { $ } from 'bun';
+import { resolve } from 'path';
 
 export default async function config(args: string[]) {
   const parsed = parseArgs(args);
@@ -26,6 +27,7 @@ COMMANDS
   config:get <key>           Get configuration value
   config:set <key> <value>   Set configuration value
   config:list                List all configuration
+  config:upload <path>       Overwrite config.json with local file
   config:sync                Sync local config to KV (not implemented)
 
 OPTIONS
@@ -149,6 +151,21 @@ EXAMPLES
       console.log(JSON.stringify(configData, null, 2));
     } catch (error) {
       logger.error(`❌ Failed to list config: ${error}`);
+    }
+  } else if (command?.includes('config:upload')) {
+    const filePath = parsed.positional[0];
+    if (!filePath) {
+      logger.error('❌ File path is required');
+      logger.info('Usage: npm run cli config:upload <path-to-json>');
+      return;
+    }
+
+    try {
+      const resolvedPath = resolve(filePath);
+      await $`npx wrangler kv key put config.json --path=${resolvedPath} --binding=${binding} --remote`;
+      logger.success(`✅ Uploaded ${filePath} to config.json`);
+    } catch (error) {
+      logger.error(`❌ Failed to upload config: ${error}`);
     }
   } else if (command?.includes('config:sync')) {
     logger.info('Syncing configuration to KV');

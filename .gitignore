@@ -192,3 +192,4 @@ validations_*.json
 deduped_*.json
 d1-validations.json
 **/exports/*.json
+calibration.json
