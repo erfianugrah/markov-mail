@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **A/B Experiments** – Middleware now applies treatment overrides, writes experiment metadata to D1/response headers, exposes `/admin/ab-test/status`, and surfaces experiment status inside the dashboard.
+- **D1-first CLI** – `training:extract`, `analytics:*`, and `ab:analyze` now talk to D1 (either via wrangler or `/admin/analytics`) so no Cloudflare Analytics Engine credentials are required.
+
 ---
 
 ## [2.4.2] - 2025-01-12
@@ -28,11 +32,11 @@ After v2.4.2:
   Decision = WARN ← Manual review (appropriate)
 ```
 
-### Removed
+### Updated
 
 #### Hardcoded Pattern Overrides - `src/middleware/fraud-detection.ts`
-- **Sequential pattern override (0.8)**: Removed - Markov models handle these patterns
-- **Plus-addressing override (0.6)**: Removed - Legitimate Gmail/Outlook feature
+- **Sequential pattern override (0.8)**: Removed - Markov models handle these patterns; detector remains for telemetry only.
+- **Plus-addressing scoring**: Converted from a fixed 0.6 override to the current normalized risk helper (`getPlusAddressingRiskScore`). Abuse still contributes 0.2‑0.9 risk when detected.
 - **Sequential from high-confidence detections**: No longer treated as definitive fraud signal
 
 ### Impact
@@ -47,7 +51,7 @@ After v2.4.2:
 **Why This Change?**
 1. Markov models trained on 111K+ emails should catch real sequential fraud
 2. Sequential override caused false positives on legitimate "user1", "user2" patterns
-3. Plus-addressing is a standard email feature for filtering/organization
+3. Plus-addressing is a standard email feature, so the override now scores proportional to suspicious tags/volume instead of blindly adding 0.6
 4. Follows v2.0+ philosophy: trust the trained algorithm over hardcoded rules
 
 ### Kept
@@ -433,7 +437,7 @@ The following detectors are marked deprecated for scoring (kept for metrics/logg
 1. **Synthetic Training Data**
    - Short generic words ("info", "support") may be flagged
    - Single-character addresses flagged as fraud
-   - **Solution**: Collect 50k+ real fraud patterns from Analytics Engine
+  - **Solution**: Collect 50k+ real fraud patterns from D1 (`validations` table)
 
 2. **Edge Cases**
    - "info@company.com" blocked (0.83 risk) - Working as designed with synthetic data
@@ -563,10 +567,10 @@ This release includes comprehensive optimization through Quick Wins and Priority
 ### Added
 - **Online Learning Pipeline**: Automated training pipeline
   - Runs every 6 hours
-  - Extracts data from Analytics Engine
+  - Extracts data from D1 (validations table)
   - Model validation and promotion system
   - Anomaly detection
-- **Analytics Engine Integration**: Enhanced metrics collection
+- **Analytics Integration**: Enhanced D1 metrics + dashboard
   - 22 pre-built visualizations
   - Custom SQL query builder
   - Real-time dashboard at `/analytics.html`
@@ -749,7 +753,7 @@ This release includes comprehensive optimization through Quick Wins and Priority
   - ASN (Autonomous System Number)
   - Bot score integration
   - Composite fingerprint generation (SHA-256)
-- **Analytics Integration**: Cloudflare Analytics Engine
+- **Analytics Integration**: Cloudflare D1
   - Time-series data collection
   - Email validation event tracking
   - Pattern detection metrics

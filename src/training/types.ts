@@ -3,7 +3,7 @@
  */
 
 /**
- * Raw validation result from Analytics Engine
+ * Raw validation row pulled from D1
  */
 export interface ValidationRecord {
 	email: string;

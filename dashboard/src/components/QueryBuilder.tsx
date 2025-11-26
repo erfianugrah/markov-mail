@@ -79,14 +79,14 @@ export function QueryBuilder() {
       <CardHeader>
         <CardTitle>Custom SQL Query</CardTitle>
         <CardDescription>
-          Write SQL queries against the ANALYTICS table. View{' '}
+          Run parameterized SQL against your D1 database. Need help? See{' '}
           <a
-            href="https://developers.cloudflare.com/analytics/analytics-engine/sql-api/"
+            href="https://developers.cloudflare.com/d1/"
             target="_blank"
             rel="noopener noreferrer"
             className="text-primary underline"
           >
-            Analytics Engine SQL documentation
+            Cloudflare D1 documentation
           </a>
         </CardDescription>
       </CardHeader>

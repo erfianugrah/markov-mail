@@ -32,7 +32,7 @@ describe('Admin Training Endpoints', () => {
 			expect(data).toHaveProperty('error');
 		});
 
-		it('should return 503 if Analytics Engine not configured', async () => {
+		it('should return 503 if D1 database not configured', async () => {
 			const response = await worker.fetch('/admin/markov/train', {
 				method: 'POST',
 				headers: {
@@ -40,10 +40,9 @@ describe('Admin Training Endpoints', () => {
 				},
 			});
 
-			// Without CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN secrets
 			expect(response.status).toBe(503);
 			const data = await response.json() as { error: string };
-			expect(data.error).toContain('Analytics Engine not configured');
+			expect(data.error).toContain('D1 database not configured');
 		});
 
 		it('should accept training request with valid API key', async () => {

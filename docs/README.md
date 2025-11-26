@@ -19,7 +19,7 @@
 | **[Configuration](CONFIGURATION.md)** | Configuration management via KV | DevOps |
 | **[CLI Reference](../cli/README.md)** | Command-line interface for all operations | Developers, DevOps |
 | **[Logging Standards](LOGGING_STANDARDS.md)** | Structured logging with Pino.js, event naming | Developers, DevOps |
-| **[Analytics](ANALYTICS.md)** | Analytics Engine and dashboard | Analysts |
+| **[Analytics](ANALYTICS.md)** | D1 metrics + dashboard queries | Analysts |
 | **[Integration Guide](INTEGRATION_GUIDE.md)** | Integration examples | Developers |
 | **[Testing](TESTING.md)** | Test suite and coverage | QA |
 | **[System Status](SYSTEM_STATUS.md)** | Current deployment status | All |
@@ -30,18 +30,20 @@
 
 **Production**: ✅ **Live at https://your-worker.workers.dev**
 
-**Version**: 2.2.0 (2025-11-08)
+**Version**: 2.4.2 (2025-01-12)
 
-**Active Detectors**: **5 core** ✅
-- **Active**: Markov Chain (PRIMARY), Pattern Classification, TLD Risk, Plus-Addressing, Benford's Law
-- **Deprecated**: Keyboard Walk, Keyboard Mashing, N-Gram Gibberish (replaced by Markov)
+**Detection Stack**:
+- **Primary**: Markov Chain ensemble (2-gram + 3-gram) with OOD detection
+- **Deterministic**: Pattern classification (sequential/dates for telemetry, dated patterns for scoring), plus-addressing risk scorer
+- **Domain Signals**: TLD risk profiles + disposable domain reputation
+- **Batch**: Benford's Law (offline/batch analysis)
+- **Deprecated**: Keyboard Walk, Keyboard Mashing, N-Gram Gibberish remain disabled
 
-**Training Data**: 111K+ legit + 105K fraud emails (Markov models)
-**Relabeled Dataset**: 50,000 unique emails for future training
+**Training Data**: 91K+ legit + 41K+ fraud samples (latest Markov models)
 
 **Performance**:
 - Latency: ~35ms average
-- Throughput: 14,000+ emails/second
+- Storage: Cloudflare D1 (validations, admin, training, AB tests)
 - Uptime: 99.9%
 
 ---
@@ -100,33 +102,34 @@ docs/
 
 ## 🔧 Key System Components
 
-### Pattern Detectors (8 Active)
+### Detection Stack (v2.4.2)
 
-✅ **All detectors operational**:
-- **Markov Chain (N-grams)** - PRIMARY: Trained on 91K emails with 2-gram & 3-gram models
-- **Keyboard Walk** - Sequential keyboard keys across 8 layouts (QWERTY, Dvorak, Colemak, etc.)
-- **Keyboard Mashing** - Region clustering detection (NEW in v2.1.1)
-- **Pattern Classification** - Detects sequential, dated, and pattern families
-- **N-Gram Analysis** - Gibberish detection with multi-language support
-- **TLD Risk Scoring** - 143 TLDs categorized by fraud risk
-- **Plus-Addressing** - Email normalization and plus-tag detection
-- **Benford's Law** - Statistical batch anomaly detection
+- **Markov Chain (2-gram + 3-gram)** – Primary scoring, cross-entropy, and OOD detection
+- **Pattern Classification** – Extracts sequential/dated/simple families for observability (only dated feeds scoring)
+- **Plus-Addressing Risk Scorer** – Normalizes aliases and assigns 0.2‑0.9 risk when abuse is detected
+- **Disposable/TLD Signals** – KV-backed disposable list + TLD risk profiles
+- **Benford's Law** – Optional batch analysis for large datasets
+- **Deprecated** – Keyboard walk/mashing + standalone gibberish detectors remain disabled (Markov covers them)
+- **A/B Experiments** – KV-driven overrides for treatment variants without redeploying
 
-See [Detectors Guide](DETECTORS.md) for complete technical details
+See [Detectors Guide](DETECTORS.md) for complete technical details.
+
+### Experiment Controls
+
+- Create/stop experiments via CLI (`npm run cli ab:create`, `ab:status`, `ab:stop`)
+- Worker middleware applies variant overrides automatically and logs `experiment_id`, `variant`, and `bucket` to D1
+- Dashboard overview + explorer fetch experiment status from `/admin/ab-test/status`
+- Programmatic status: `curl -H "X-API-Key:..." https://your-worker.dev/admin/ab-test/status`
 
 ### Risk Scoring Strategy
 
-**Markov-First Approach**:
-1. **PRIMARY**: Markov model confidence (trained on 91K emails)
-2. **OVERRIDES**: Deterministic pattern detections
-   - Keyboard walk: 0.9
-   - Keyboard mashing: 0.85
-   - Sequential: 0.8
-   - Plus-addressing: 0.6
-3. **DOMAIN SIGNALS**: Disposable (0.95), Reputation (+0.2), TLD (+0.1)
-4. **SUPPORTING**: Gibberish detection applied when Markov agrees
+**Two-Dimensional Markov Approach (v2.4.x)**:
+1. **Classification Risk** – Fraud vs legit cross-entropy difference
+2. **Abnormality Risk** – OOD detection using min(H_legit, H_fraud) with piecewise thresholds (3.8 warn / 5.5 block)
+3. **Deterministic Signals** – Dated patterns (0.2‑0.9) + plus-addressing risk helper (0.2 base + suspicious tag/group boosts)
+4. **Domain Signals** – `riskWeights.domainReputation` (default 0.2) + `riskWeights.tldRisk` (0.3)
 
-**Key Principle**: Trained models take precedence over heuristic detectors.
+Final score = `max(classificationRisk, abnormalityRisk)` + domain signals (+ ensemble boost when Markov + TLD agree). See [SCORING.md](SCORING.md) for full details.
 
 ---
 
@@ -142,7 +145,7 @@ npm run cli
 
 # Training & Online Learning
 npm run cli train:markov              # Train Markov models from CSV
-npm run cli training:extract          # Extract data from Analytics Engine
+npm run cli training:extract          # Pull validations from D1 for offline training
 npm run cli training:train            # Train from production data
 npm run cli training:validate         # Validate before deployment
 
@@ -150,11 +153,11 @@ npm run cli training:validate         # Validate before deployment
 npm run cli deploy --minify           # Deploy to Cloudflare
 npm run cli deploy:status             # Check deployment status
 
-# Data Management (KV & Analytics)
+# Data Management (KV & D1)
 npm run cli kv:list --binding CONFIG  # List KV keys
 npm run cli kv:get <key>              # Get KV value
-npm run cli analytics:query <sql>     # SQL queries
-npm run cli analytics:stats --last 24 # Show statistics
+npm run cli analytics:query <sql>     # Run D1 SQL via /admin/analytics
+npm run cli analytics:stats --last 24 # Built-in analytics summaries
 
 # Testing
 npm run cli test:api <email>          # Test API endpoint
@@ -177,24 +180,20 @@ npm run cli config:sync --remote      # Sync to production
 
 ## 📈 Detection Capabilities
 
-**Fraud Patterns Detected** (8 active):
-- ✅ Sequential numbering patterns
-- ✅ Dated email patterns
-- ✅ Keyboard walk patterns
-- ✅ Gibberish strings (multi-language)
-- ✅ Plus-addressing abuse
-- ✅ Disposable domains (170+ services)
-- ✅ High-risk TLDs (154 TLDs)
-- ✅ Statistical anomalies (Benford's Law)
-- ✅ Character transition patterns (Markov Chain)
+**Fraud Patterns Detected**:
+- ✅ Markov ensemble (2-gram + 3-gram) with OOD detection
+- ✅ Dated pattern overrides (0.2‑0.9 confidence)
+- ✅ Plus-addressing alias abuse (0.2‑0.9 risk)
+- ✅ Disposable domains (71K+ services) and domain reputation scoring
+- ✅ TLD risk profiling (143+ TLD categories)
+- ✅ Benford's Law (batch analysis)
+- ⚠️ Sequential/keyboard/gibberish heuristics are telemetry-only (Markov handles scoring)
 
-**Whitelist Patterns** (reduces false positives):
-- Business employee emails (`employee1@company.com`)
-- Birth year patterns (`person1.person2@gmail.com`)
-- Dev/test accounts (`dev1@company.com`)
-- Semantic plus-addressing (`user+newsletter@gmail.com`)
-- International name patterns
-- Custom patterns (configurable via KV)
+**False-Positive Guardrails**:
+- Professional mailbox detection (info@, support@, admin@, etc.)
+- Birth-year awareness inside sequential detector
+- Professional-domain risk dampening factors
+- Configurable action overrides (`allow`, `warn`, `block`)
 
 ---
 
@@ -225,16 +224,13 @@ See [Analytics Documentation](ANALYTICS.md)
 
 ## 📅 Version History
 
-**Current Version**: 2.2.0 (2025-11-08)
+**Current Version**: 2.4.2 (2025-01-12)
 
-**Major Updates**:
-- **2.2.0** (2025-11-08): Markov-only detection, deprecated heuristic detectors, 83% accuracy (0% false positives)
-- **2.1.1** (2025-01-07): Keyboard mashing detector, 8 keyboard layouts, detector architecture cleanup
-- **2.1.0** (2025-11-06): Pattern-based training (91K emails), Markov-educated gibberish detection
-- **2.0.5** (2025-11-05): Trigram models, birth year protection, false positive reduction
-- **2.0.4** (2025-11-05): Architecture mismatch fixes, detector hierarchy
-- **1.4.0** (2025-11-02): Multi-language support, whitelist system
-- **1.0.0** (2025-10-31): Initial production release
+**Recent Highlights**:
+- **2.4.2** (2025-01-12): Two-dimensional scoring clarifications, plus-addressing risk helper, tunable domain weights, D1-only metrics
+- **2.4.1** (2025-01-12): Piecewise OOD thresholds (3.8/5.5 nats) + ood_zone analytics
+- **2.4.0** (2025-01-10): Two-dimensional risk model + abnormality tracking columns
+- **2.3.x**: Ensemble (2-gram + 3-gram) Markov models, enhanced telemetry
 
 ---
 
@@ -248,10 +244,10 @@ See [Analytics Documentation](ANALYTICS.md)
 
 **External Resources**:
 - [Cloudflare Workers](https://developers.cloudflare.com/workers/)
-- [Analytics Engine](https://developers.cloudflare.com/analytics/analytics-engine/)
+- [Cloudflare D1](https://developers.cloudflare.com/d1/)
 - [RFC 5322 - Email Format](https://tools.ietf.org/html/rfc5322)
 
 ---
 
 **Production URL**: https://your-worker.workers.dev
-**Last Updated**: 2025-01-07
+**Last Updated**: 2025-01-12

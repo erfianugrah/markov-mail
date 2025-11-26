@@ -99,7 +99,7 @@ graph TB
     subgraph "Storage & Analytics"
         I1[(KV Storage<br/>Markov Models)]
         I2[(D1 Database<br/>Analytics)]
-        I3[Analytics Engine<br/>Metrics]
+        I3[D1<br/>Metrics]
     end
 
     subgraph "Training Pipeline"
@@ -181,7 +181,7 @@ sequenceDiagram
     participant Worker as Cloudflare Worker
     participant KV as KV Storage
     participant Models as Markov Models
-    participant Analytics as Analytics Engine
+    participant Analytics as D1 Database
     participant D1 as D1 Database
 
     Client->>Worker: POST /validate<br/>{email: "user@example.com"}
@@ -299,7 +299,7 @@ The sequence diagram uses color-coded phases matching the semantic design system
 graph TB
     subgraph "Data Sources"
         A1[CSV Datasets<br/>111K legit + 105K fraud]
-        A2[Analytics Engine<br/>Production Data]
+        A2[D1<br/>Production Data]
         A3[Manual Labels<br/>Human-verified]
     end
 
@@ -921,7 +921,7 @@ graph LR
     end
 
     subgraph "Real-time Storage"
-        E -->|allow/warn/block| F[(Analytics Engine<br/>Time-series Data)]
+        E -->|allow/warn/block| F[(D1<br/>Time-series Data)]
         E --> G[(D1 Database<br/>Validations Table)]
         C --> H[Structured Logs<br/>Pino.js]
     end

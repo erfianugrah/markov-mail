@@ -12,7 +12,8 @@ import {
   loadPatternFamilies, loadDisposableDomains, loadFreeProviders, loadPlusAddressing,
   loadEntropyScores, loadBotScores,
   loadLatencyDistribution, loadASNs, loadTLDRiskScores, loadDomainReputation,
-  loadPatternConfidence, getApiKey, setApiKey, clearApiKey, type Stats
+  loadPatternConfidence, loadExperimentStatus,
+  getApiKey, setApiKey, clearApiKey, type Stats, type ExperimentStatus
 } from '@/lib/api'
 import { Activity, Shield, AlertTriangle, CheckCircle, Clock, Key, LogOut, Target, Moon, Sun, RefreshCw, Maximize2, Minimize2 } from 'lucide-react'
 import { SimpleBarChart } from '@/components/SimpleBarChart'
@@ -90,6 +91,7 @@ function App() {
   const [tldRiskScores, setTLDRiskScores] = useState<any[]>([])
   const [domainReputation, setDomainReputation] = useState<any[]>([])
   const [patternConfidence, setPatternConfidence] = useState<any[]>([])
+  const [experimentStatus, setExperimentStatus] = useState<ExperimentStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [apiKeyInput, setApiKeyInput] = useState('')
@@ -184,7 +186,8 @@ function App() {
           countriesData, patternTypesData, blockReasonsData, domainsData, tldsData,
           patternFamiliesData, disposableDomainsData, freeProvidersData, plusAddressingData,
           entropyScoresData, botScoresData,
-          latencyDistData, asnsData, tldRiskScoresData, domainReputationData, patternConfidenceData
+          latencyDistData, asnsData, tldRiskScoresData, domainReputationData, patternConfidenceData,
+          experimentStatusData,
         ] = await Promise.all([
           loadStats(timeRange),
           loadDecisions(timeRange),
@@ -206,6 +209,7 @@ function App() {
           loadTLDRiskScores(timeRange),
           loadDomainReputation(timeRange),
           loadPatternConfidence(timeRange),
+          loadExperimentStatus(),
         ])
 
         setStats(statsData)
@@ -228,6 +232,7 @@ function App() {
         setTLDRiskScores(tldRiskScoresData)
         setDomainReputation(domainReputationData)
         setPatternConfidence(patternConfidenceData)
+        setExperimentStatus(experimentStatusData)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load data')
       } finally {
@@ -406,7 +411,8 @@ function App() {
                 asns,
                 tldRiskScores,
                 domainReputation,
-                patternConfidence
+                patternConfidence,
+                experimentStatus
               }}
               filename={`fraud-detection-${new Date().toISOString().split('T')[0]}`}
             />
@@ -498,6 +504,34 @@ function App() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats.avgLatency.toFixed(0)}ms</div>
+              </CardContent>
+            </Card>
+
+            <Card className="md:col-span-2 lg:col-span-2">
+              <CardHeader className="space-y-1">
+                <CardTitle className="text-sm font-medium">A/B Experiment</CardTitle>
+                <CardDescription>
+                  {experimentStatus?.hasExperiment
+                    ? experimentStatus.isActive
+                      ? 'Active experiment in progress'
+                      : 'Experiment configured but inactive'
+                    : 'No experiment configured'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {experimentStatus?.hasExperiment && experimentStatus.config ? (
+                  <div className="space-y-2 text-sm">
+                    <div className="text-2xl font-bold">{experimentStatus.config.experimentId}</div>
+                    <div className="text-muted-foreground">
+                      {experimentStatus.config.variants.control.weight}% control · {experimentStatus.config.variants.treatment.weight}% treatment
+                    </div>
+                    <div className="text-muted-foreground">
+                      {new Date(experimentStatus.config.startDate).toLocaleDateString()} – {new Date(experimentStatus.config.endDate).toLocaleDateString()}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Deploy an experiment with <code>npm run cli ab:create</code>.</p>
+                )}
               </CardContent>
             </Card>
           </div>

@@ -157,18 +157,14 @@ The configuration system includes:
 - `warn`: 0.3 (emails with risk 0.3-0.6 get warning)
 
 **Feature Flags:**
-- `enableDisposableCheck`: true (checks 170+ disposable domains)
-- `enablePatternCheck`: true (sequential, dated, plus-addressing, keyboard walks)
-- `enableNGramAnalysis`: true (gibberish detection)
-- `enableTLDRiskProfiling`: true (TLD risk scoring)
-- `enableKeyboardWalkDetection`: true (keyboard pattern detection)
-- `enableBenfordsLaw`: true (statistical batch detection)
+- `enableDisposableCheck`: true (KV-backed disposable domain list)
+- `enablePatternCheck`: true (pattern-family extraction for telemetry + dated scoring)
+- `enableTLDRiskProfiling`: true (TLD risk profiles)
+- `enableMarkovChainDetection`: true (Markov ensemble + OOD)
 
-**Risk Weights** (must sum to 1.0):
-- `entropy`: 0.20 (random string detection)
-- `domainReputation`: 0.10 (disposable/free providers)
-- `tldRisk`: 0.10 (TLD risk profiling)
-- `patternDetection`: 0.50 (pattern-based detection)
+**Risk Weights:**
+- `domainReputation`: 0.20 (weight applied to domain reputation score)
+- `tldRisk`: 0.30 (weight applied to TLD risk score)
 
 **Logging:**
 - `logAllValidations`: true (log every validation)
@@ -452,21 +448,19 @@ curl -X POST https://your-worker-name.workers.dev/validate \
   -d '{"email":"test@example.com"}'
 ```
 
-### Step 4: Monitor Analytics
+### Step 4: Monitor Analytics (D1)
 
-Visit Cloudflare Dashboard:
-1. Go to **Workers & Pages**
-2. Select your worker
-3. Click **Analytics** tab
-4. Query Analytics Engine:
+1. Bind a D1 database (see `wrangler.jsonc` / `schema.sql`)
+2. Query via the Admin API or wrangler:
 
-```sql
-SELECT
-  blob1 as decision,
-  COUNT(*) as count
-FROM email_validations
-WHERE timestamp >= NOW() - INTERVAL '1' HOUR
-GROUP BY decision
+```bash
+# Summary via admin API (requires X-API-Key)
+curl "https://your-worker.workers.dev/admin/analytics?type=summary&hours=1" \
+  -H "X-API-Key: $X_API_KEY"
+
+# Ad-hoc SQL via wrangler d1
+npx wrangler d1 execute ANALYTICS --remote --command \
+  "SELECT decision, COUNT(*) FROM validations WHERE timestamp >= datetime('now','-1 hour') GROUP BY decision"
 ```
 
 ---
@@ -703,8 +697,8 @@ export default {
    - Must be globally unique
 
 3. **Binding issues**:
-   - Verify Analytics Engine dataset exists
-   - Check Cloudflare dashboard for bindings
+   - Verify D1 databases (e.g., `ANALYTICS`, `DB`) are bound in `wrangler.jsonc`
+   - Check Cloudflare dashboard for missing KV/D1 bindings
 
 ### Issue 4: High Latency
 
@@ -722,8 +716,8 @@ export default {
 2. **Pattern detection is fast and should remain enabled**
 
 3. **Monitor Analytics**:
-   - Check p95 latency in dashboard
-   - Most requests should be < 5ms
+   - Use `/admin/analytics?type=performance` (requires API key)
+   - Or run `npx wrangler d1 execute ANALYTICS --remote --command "SELECT AVG(latency) FROM validations WHERE timestamp >= datetime('now','-1 hour')"`
 
 ### Issue 5: False Positives
 

@@ -34,10 +34,10 @@ OPTIONS
 
 EXAMPLES
   # Get a configuration value
-  npm run cli config:get riskWeights.patternDetection
+  npm run cli config:get riskWeights.domainReputation
 
   # Set a configuration value
-  npm run cli config:set riskWeights.patternDetection 0.50
+  npm run cli config:set riskWeights.domainReputation 0.25
 
   # List all configuration
   npm run cli config:list
@@ -69,7 +69,7 @@ EXAMPLES
         return;
       }
 
-      // Navigate to nested key (e.g., "riskWeights.patternDetection")
+      // Navigate to nested key (e.g., "riskWeights.domainReputation")
       const keyParts = key.split('.');
       let value: any = configData;
       for (const part of keyParts) {
@@ -92,7 +92,7 @@ EXAMPLES
     if (!key || valueStr === undefined) {
       logger.error('❌ Key and value are required');
       logger.info('Usage: npm run cli -- config:set <key> <value>');
-      logger.info('Example: npm run cli -- config:set riskWeights.patternDetection 0.50');
+      logger.info('Example: npm run cli -- config:set riskWeights.domainReputation 0.25');
       return;
     }
 

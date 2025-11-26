@@ -36,9 +36,9 @@ const COMMANDS = {
     usage: 'training:validate --version <version>'
   },
   'training:extract': {
-    description: 'Extract training data from Analytics Engine',
+    description: 'Extract training data from D1 validations table',
     file: 'commands/training/extract.ts',
-    usage: 'training:extract [--days <n>] [--min-confidence <n>]'
+    usage: 'training:extract [--days <n>] [--min-confidence <n>] [--remote]'
   },
   'training:train': {
     description: 'Train models from extracted datasets',
@@ -80,14 +80,14 @@ const COMMANDS = {
     usage: 'kv:delete <key> [--binding <name>]'
   },
   'analytics:query': {
-    description: 'Query Analytics Engine',
+    description: 'Query D1 analytics via /admin/analytics',
     file: 'commands/data/analytics.ts',
-    usage: 'analytics:query <sql> [--format <json|table>]'
+    usage: 'analytics:query <sql> [--hours <n>] [--format <json|table>] [--url <base>] [--api-key <key>]'
   },
   'analytics:stats': {
-    description: 'Show analytics statistics',
+    description: 'Show analytics statistics (summary/block reasons/etc.)',
     file: 'commands/data/analytics.ts',
-    usage: 'analytics:stats [--last <hours>]'
+    usage: 'analytics:stats [--last <hours>] [--url <base>] [--api-key <key>]'
   },
   'domains:update': {
     description: 'Update disposable domains from external sources',
@@ -229,7 +229,8 @@ Usage: npm run cli <command> [options]
   train:relabel             Re-label dataset (pattern-based, not content)
   train:markov              Train Markov Chain models
   train:validate            Validate dataset quality
-  training:extract          Extract training data from Analytics
+  training:extract          Extract training data from D1
+ (??)
   training:train            Train models from extracted datasets
   training:validate         Validate trained models before deployment
 
@@ -242,8 +243,8 @@ Usage: npm run cli <command> [options]
   kv:get <key>              Get KV value
   kv:put <key> <value>      Put KV value
   kv:delete <key>           Delete KV key
-  analytics:query <sql>     Query Analytics Engine
-  analytics:stats           Show analytics statistics
+  analytics:query <sql>     Run D1 SQL via /admin/analytics
+  analytics:stats           Show analytics summaries
   domains:update            Update disposable domains list
   domains:metadata          Show domains metadata
   domains:cache:clear       Clear domains cache
@@ -280,7 +281,7 @@ EXAMPLES
   npm run cli train:markov --dataset ./dataset
   npm run cli deploy --minify
   npm run cli kv:list --binding MARKOV_MODEL
-  npm run cli analytics:query "SELECT COUNT(*) FROM ANALYTICS_DATASET"
+  FRAUD_API_KEY=your-key npm run cli analytics:query "SELECT COUNT(*) FROM validations"
   npm run cli test:generate --count 100 --patterns sequential,dated
 
 For detailed command help: npm run cli <command> --help

@@ -55,7 +55,7 @@ riskScore = Math.max(markovRisk, patternRisk, entropyRisk) + domainRisk;
 - Entropy and pattern detection overlap with Markov
 - Manual tuning required
 
-**Current Approach (v2.4.0)** - Two-Dimensional Risk:
+**Current Approach (v2.4.x)** - Two-Dimensional Risk:
 ```typescript
 // Dimension 1: Classification Risk (differential signal)
 // Which model fits better: fraud vs legit?
@@ -64,27 +64,34 @@ const classificationRisk = markovResult?.isLikelyFraudulent
   : 0;
 
 // Dimension 2: Abnormality Risk (consensus signal)
-// Are BOTH models confused? (OOD detection - v2.4.1 piecewise)
 const minEntropy = Math.min(H_legit, H_fraud);
-let abnormalityRisk: number;
-if (minEntropy < 3.8) {
-  abnormalityRisk = 0;
-} else if (minEntropy < 5.5) {
+let abnormalityRisk = 0;
+if (minEntropy >= 3.8 && minEntropy < 5.5) {
   abnormalityRisk = 0.35 + ((minEntropy - 3.8) / 1.7) * 0.30;
-} else {
+} else if (minEntropy >= 5.5) {
   abnormalityRisk = 0.65;
 }
 
-// Take worst case (maximum of two dimensions)
+// Combine dimensions
 let score = Math.max(classificationRisk, abnormalityRisk);
 
-// Pattern overrides (deterministic)
-if (sequential) score = Math.max(score, 0.8);
-if (dated) score = Math.max(score, patternConfidence);
-if (hasPlus) score = Math.max(score, 0.6);
+// Deterministic overrides
+if (patternFamilyResult?.patternType === 'dated') {
+  score = Math.max(score, patternFamilyResult?.confidence ?? 0.7);
+}
 
-// Add domain risk (additive)
-const domainRisk = domainReputationScore * 0.2 + tldRiskScore * 0.3;
+const plusRisk = normalizedEmailResult
+  ? getPlusAddressingRiskScore(email, relatedEmails)
+  : 0;
+if (plusRisk > 0) {
+  score = Math.max(score, plusRisk);
+}
+
+// Domain signals are additive (configurable weights)
+const domainRisk =
+  domainReputationScore * riskWeights.domainReputation +
+  tldRiskScore * riskWeights.tldRisk;
+
 riskScore = Math.min(score + domainRisk, 1.0);
 ```
 
@@ -137,26 +144,43 @@ const abnormalityRisk = minEntropy < 3.8 ? 0 :
 **Combined Risk Calculation**
 
 ```typescript
-// v2.4.2 - Trust Markov models (removed sequential/plus overrides)
 function calculateAlgorithmicRiskScore({
+  email,
   markovResult,
   patternFamilyResult,
   domainReputationScore,
-  tldRiskScore
+  tldRiskScore,
+  normalizedEmailResult,
+  config
 }) {
-  // Primary: Markov Chain cross-entropy (trained on 111K+ emails)
-  let score = markovResult?.isLikelyFraudulent
+  // Dimension 1: Classification risk (fraud vs legit)
+  const classificationRisk = markovResult?.isLikelyFraudulent
     ? markovResult.confidence
     : 0;
 
-  // Secondary: Dated pattern override only (dynamic confidence 0.2-0.9)
-  // v2.4.2: Removed sequential (0.8) and plus-addressing (0.6) overrides
+  // Dimension 2: Abnormality risk (OOD)
+  const abnormalityRisk = markovResult?.abnormalityRisk ?? 0;
+
+  let score = Math.max(classificationRisk, abnormalityRisk);
+
+  // Dated patterns (deterministic override)
   if (patternFamilyResult?.patternType === 'dated') {
-    score = Math.max(score, patternFamilyResult.confidence || 0.7);
+    score = Math.max(score, patternFamilyResult.confidence ?? 0.7);
   }
 
-  // Tertiary: Domain signals (independent, additive)
-  const domainRisk = domainReputationScore * 0.2 + tldRiskScore * 0.3;
+  // Plus-addressing abuse contributes independent risk (0.2-0.9)
+  let plusRisk = 0;
+  if (normalizedEmailResult) {
+    plusRisk = getPlusAddressingRiskScore(email);
+    if (plusRisk > 0) {
+      score = Math.max(score, plusRisk);
+    }
+  }
+
+  // Domain signals (additive weights)
+  const domainRisk =
+    domainReputationScore * config.riskWeights.domainReputation +
+    tldRiskScore * config.riskWeights.tldRisk;
 
   return Math.min(score + domainRisk, 1.0);
 }
@@ -170,26 +194,23 @@ function calculateAlgorithmicRiskScore({
 
 **Step 2: Pattern Overrides (v2.4.2 - Trust Markov)**
 
-Deterministic rules - Markov models now handle most patterns:
+Deterministic rules layered on top of Markov signals:
 
 | Pattern | Override Score | Example |
 |---------|---------------|---------|
 | Dated | 0.2-0.9 (dynamic) | john.2024, user_oct2024 |
+| Plus-Addressing | 0.2 base + 0.3 (suspicious tag) + 0.4 (multi-alias) | user+1@gmail.com, user+spam@gmail.com |
 
-**Removed in v2.4.2:**
-- ~~Sequential (0.8)~~ - Now handled by Markov models
-- ~~Plus-addressing (0.6)~~ - Legitimate Gmail/Outlook feature, no longer penalized
-
-**Note**: Sequential, keyboard walk, gibberish, and plus-addressing patterns are all handled by Markov Chain detection automatically.
+**Note**: Sequential/keyboard/gibberish detectors are observability-only. Markov/OOD scoring handles those cases.
 
 **Step 3: Domain Signals**
 
 Independent signals added to final score:
 
-| Signal | Weight | Range |
-|--------|--------|-------|
+| Signal | Weight (default) | Range |
+|--------|------------------|-------|
 | Domain Reputation | 0.2 | 0-1 |
-| TLD Risk | 0.1 | 0-1 |
+| TLD Risk | 0.3 | 0-1 |
 
 ---
 
@@ -383,7 +404,7 @@ function determineBlockReason({
 
 1. **Synthetic Training Data**
    - Short generic words ("info", "support") may score high
-   - **Solution**: Retrain with 50k+ real production data from Analytics Engine
+   - **Solution**: Retrain with 50k+ real production data exported from D1 (see `docs/DATASETS.md`)
 
 2. **Single-Character Addresses**
    - Very short emails (1-2 chars) flagged as suspicious
@@ -396,7 +417,7 @@ function determineBlockReason({
 ### Breaking Changes
 
 **Removed**:
-- All `riskWeights` config multiplication
+- Legacy entropy/pattern `riskWeights` (domain/TLD weights remain)
 - Entropy pre-check (lines 259-261)
 - Math.max() detector competition
 - Nested if-else scoring chains

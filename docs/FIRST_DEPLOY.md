@@ -257,8 +257,10 @@ You have two options:
 # We don't include datasets in the repo due to size
 # You'll need to collect your own or wait for production data
 
-# After collecting data from Analytics Engine:
-npm run cli training:extract
+# After collecting data from D1/Analytics API:
+npx wrangler d1 execute ANALYTICS --remote --command \
+  "SELECT email_local_part || '@' || domain AS email, decision FROM validations WHERE decision IN ('block','allow') LIMIT 5000" > dataset.json
+npm run cli training:extract --days 1 --remote
 npm run cli training:train
 ```
 

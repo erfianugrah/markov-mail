@@ -48,6 +48,13 @@ import {
   analyzeTLDRisk,
   getPlusAddressingRiskScore
 } from '../detectors';
+import {
+  loadABTestConfig,
+  getAssignment as getABAssignment,
+  getVariantConfig as getABVariantConfig,
+  type ABTestAssignment,
+  type ABTestConfig
+} from '../ab-testing';
 // REMOVED (2025-11-08): detectKeyboardWalk, detectKeyboardMashing, detectGibberish
 // Replaced with Markov-only detection for higher accuracy (83% vs 67%) and zero false positives
 import { NGramMarkovChain, type NGramMarkovResult } from '../detectors/ngram-markov';
@@ -64,6 +71,27 @@ let markovFraudModel2gram: NGramMarkovChain | null = null;
 let markovLegitModel3gram: NGramMarkovChain | null = null;
 let markovFraudModel3gram: NGramMarkovChain | null = null;
 let markovModelsLoaded = false;
+
+// Cache AB test configuration to avoid KV reads on every request
+let cachedABTestConfig: ABTestConfig | null = null;
+let abConfigCacheTimestamp = 0;
+const AB_CONFIG_CACHE_TTL = 60000; // 1 minute
+
+async function getActiveABTestConfig(kv: KVNamespace | undefined): Promise<ABTestConfig | null> {
+	if (!kv) {
+		return null;
+	}
+
+	const now = Date.now();
+	if (cachedABTestConfig && now - abConfigCacheTimestamp < AB_CONFIG_CACHE_TTL) {
+		return cachedABTestConfig;
+	}
+
+	const config = await loadABTestConfig(kv);
+	cachedABTestConfig = config;
+	abConfigCacheTimestamp = now;
+	return config;
+}
 
 // Ensemble configuration thresholds
 const ENSEMBLE_THRESHOLDS = {
@@ -420,13 +448,30 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
   try {
 
   // Load configuration
-  const config = await getConfig(c.env.CONFIG, {
+  const baseConfig = await getConfig(c.env.CONFIG, {
     'X-API-KEY': c.env['X-API-KEY'],
     ORIGIN_URL: c.env.ORIGIN_URL,
   });
 
   // Generate fingerprint
   const fingerprint = await generateFingerprint(c.req.raw);
+
+  // Apply active A/B experiment overrides (if any)
+  let config = baseConfig;
+  let abAssignment: ABTestAssignment | null = null;
+  if (c.env.CONFIG) {
+    const abConfig = await getActiveABTestConfig(c.env.CONFIG);
+    if (abConfig) {
+      abAssignment = getABAssignment(fingerprint.hash, abConfig);
+      config = getABVariantConfig(abAssignment.variant, abConfig, baseConfig);
+      logger.info({
+        event: 'ab_variant_assigned',
+        experimentId: abAssignment.experimentId,
+        variant: abAssignment.variant,
+        bucket: abAssignment.bucket,
+      }, 'Applied A/B experiment variant overrides');
+    }
+  }
 
   // Validate email format and entropy
   const emailValidation = validateEmail(email);
@@ -875,6 +920,8 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     overrideApplied: config.actionOverride ? true : false,
     override: config.actionOverride,
     email: email.substring(0, 3) + '***',
+    experimentId: abAssignment?.experimentId,
+    experimentVariant: abAssignment?.variant,
     latency: Date.now() - startTime,
   }, `Decision: ${decision} (score: ${riskScore.toFixed(2)}, reason: ${blockReason})`);
 
@@ -909,6 +956,9 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     blockReason: decision === 'block' ? blockReason : undefined,
     fingerprintHash: fingerprint.hash,
     latency: Date.now() - startTime,
+    experimentId: abAssignment?.experimentId,
+    variant: abAssignment?.variant,
+    bucket: abAssignment?.bucket,
     clientIp: fingerprint.ip,
     userAgent: fingerprint.userAgent,
     emailLocalPart: localPart,
@@ -992,6 +1042,11 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       isDisposableDomain: domainValidation?.isDisposable || false,
       isFreeProvider: domainValidation?.isFreeProvider || false,
       domainReputationScore: Math.round(domainReputationScore * 100) / 100,
+      ...(abAssignment && {
+        experimentId: abAssignment.experimentId,
+        experimentVariant: abAssignment.variant,
+        experimentBucket: abAssignment.bucket,
+      }),
       ...(config.features.enablePatternCheck && patternFamilyResult && {
         patternFamily: patternFamilyResult.family,
         patternType: patternFamilyResult.patternType,
@@ -1042,6 +1097,10 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       blockReason,
       latency: Date.now() - startTime,
     }, `[MONITOR] Fraud detection: ${decision} (risk: ${riskScore.toFixed(2)})`);
+    if (abAssignment) {
+      c.header('X-Experiment-Id', abAssignment.experimentId);
+      c.header('X-Experiment-Variant', abAssignment.variant);
+    }
     return next(); // Always continue
   }
 
@@ -1058,6 +1117,10 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     response.headers.set('X-Fraud-Reason', blockReason);
     response.headers.set('X-Fraud-Risk-Score', riskScore.toFixed(2));
     response.headers.set('X-Fraud-Fingerprint', fingerprint.hash.substring(0, 16)); // First 16 chars
+    if (abAssignment) {
+      response.headers.set('X-Experiment-Id', abAssignment.experimentId);
+      response.headers.set('X-Experiment-Variant', abAssignment.variant);
+    }
 
     return response;
   }
@@ -1066,6 +1129,10 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
   // This allows downstream routes to see the fraud check happened
   c.header('X-Fraud-Decision', decision);
   c.header('X-Fraud-Risk-Score', riskScore.toFixed(2));
+  if (abAssignment) {
+    c.header('X-Experiment-Id', abAssignment.experimentId);
+    c.header('X-Experiment-Variant', abAssignment.variant);
+  }
 
   // Continue to next handler
   return next();

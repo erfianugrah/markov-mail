@@ -162,8 +162,8 @@ export async function monitorAndPromoteIfReady(
 		experiment_id: abTestConfig.experimentId,
 	}, 'Monitoring A/B Test for Auto-Promotion');
 
-	// Load experiment results from Analytics Engine
-	// Note: This would query Analytics Engine for actual metrics
+	// Load experiment results from D1
+	// Note: This would query /admin/analytics for actual metrics
 	// For now, we'll use a placeholder
 
 	const results = await fetchExperimentResults(kv, abTestConfig.experimentId);
@@ -223,7 +223,7 @@ export async function monitorAndPromoteIfReady(
 }
 
 /**
- * Fetch experiment results from Analytics Engine
+ * Fetch experiment results from D1
  */
 async function fetchExperimentResults(
 	kv: KVNamespace,
@@ -233,7 +233,7 @@ async function fetchExperimentResults(
 	treatment: { sampleSize: number; accuracy: number };
 	pValue: number;
 } | null> {
-	// This is a placeholder - in production would query Analytics Engine
+	// This is a placeholder - in production would query D1 via /admin/analytics
 	// For now, return null to indicate no results yet
 	return null;
 }

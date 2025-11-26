@@ -14,12 +14,21 @@ npm run cli train:markov
 # Deploy to production
 npm run cli deploy --minify
 
-# Query analytics
-npm run cli analytics:query "SELECT COUNT(*) FROM ANALYTICS_DATASET"
+# Query analytics via /admin/analytics (requires FRAUD_API_KEY)
+FRAUD_API_KEY=your-key npm run cli analytics:query "SELECT COUNT(*) AS total FROM validations"
 
 # List KV keys
 npm run cli kv:list --binding MARKOV_MODEL --remote
 ```
+
+### Environment Variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `FRAUD_API_URL` | Base URL for admin API calls (analytics/a-b analyze) | `http://localhost:8787` |
+| `FRAUD_API_KEY` | Admin API key used for analytics + experiment commands | _(required)_ |
+
+Set them in `.dev.vars`, your shell, or pass `--url` / `--api-key` flags per command.
 
 ## Command Categories
 
@@ -27,7 +36,7 @@ npm run cli kv:list --binding MARKOV_MODEL --remote
 
 **Note:** Scheduled training is currently disabled (as of 2025-01-06) to prevent circular reasoning issues. Manual training commands below are the **recommended** approach. You can also trigger online training via the admin API endpoint if needed (see [TRAINING.md](../docs/TRAINING.md) for details).
 
-**`training:extract`** - [Optional] Extract training data from Analytics Engine
+**`training:extract`** - [Optional] Extract training data from D1 validations
 
 ```bash
 # Extract last 24 hours (saves to JSON file for offline analysis)
@@ -36,7 +45,7 @@ npm run cli training:extract
 # Extract last 7 days with 90% confidence threshold
 npm run cli training:extract --days 7 --min-confidence 0.9
 
-# Extract from production Analytics Engine
+# Extract from production (requires authenticated wrangler)
 npm run cli training:extract --days 1 --remote
 ```
 
@@ -393,7 +402,7 @@ npm run cli ab:create \
   --description "Test ensemble Markov models" \
   --treatment-weight 10 \
   --duration 7 \
-  --treatment-config '{"riskWeights":{"markovChain":0.40,"patternDetection":0.25}}'
+  --treatment-config '{"riskWeights":{"domainReputation":0.25,"tldRisk":0.45}}'
 
 # Deploy to production KV
 npm run cli ab:create \
@@ -416,7 +425,7 @@ npm run cli ab:status --remote
 
 **`ab:analyze`** - Analyze A/B test results
 
-Analyzes experiment results from Analytics Engine with statistical significance testing.
+Queries `/admin/analytics` (D1) and compares control vs treatment metrics. Requires `FRAUD_API_KEY` (or pass `--api-key`).
 
 ```bash
 # Analyze last 7 days (default)
@@ -597,7 +606,7 @@ export default async function myCommand(args: string[]) {
 - **[API Reference](../docs/API.md)** - HTTP API endpoints and usage
 - **[Training Guide](../docs/TRAINING.md)** - Model training and pattern-based re-labeling
 - **[Configuration](../docs/CONFIGURATION.md)** - Configuration management
-- **[Analytics](../docs/ANALYTICS.md)** - Analytics Engine and dashboard
+- **[Analytics](../docs/ANALYTICS.md)** - D1 metrics and dashboard
 - **[Testing](../docs/TESTING.md)** - Test suite documentation
 - **[Architecture](../docs/ARCHITECTURE.md)** - System design and algorithms
 

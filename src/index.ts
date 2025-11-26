@@ -194,6 +194,18 @@ app.post('/validate', async (c) => {
 		// Fail silently - version metadata is non-critical
 	}
 
+	const metadata: Record<string, any> = {
+		version: pkg.version,
+		modelVersion,
+		modelTrainingCount,
+	};
+
+	if (fraud?.signals?.experimentId) {
+		metadata.experimentId = fraud.signals.experimentId;
+		metadata.experimentVariant = fraud.signals.experimentVariant;
+		metadata.experimentBucket = fraud.signals.experimentBucket;
+	}
+
 	// Return validation result with version metadata
 	const response = c.json({
 		valid: fraud.valid,
@@ -207,17 +219,19 @@ app.post('/validate', async (c) => {
 			asn: fingerprint.asn,
 			botScore: fingerprint.botScore,
 		},
-		metadata: {
-			version: pkg.version,
-			modelVersion,
-			modelTrainingCount,
-		},
+		metadata,
 	});
 
 	// Add version headers
 	response.headers.set('X-Worker-Version', pkg.version);
 	response.headers.set('X-Model-Version', modelVersion);
 	response.headers.set('X-Model-Training-Count', modelTrainingCount.toString());
+	if (fraud?.signals?.experimentId) {
+		response.headers.set('X-Experiment-Id', fraud.signals.experimentId);
+		if (fraud.signals.experimentVariant) {
+			response.headers.set('X-Experiment-Variant', fraud.signals.experimentVariant);
+		}
+	}
 
 	return response;
 });

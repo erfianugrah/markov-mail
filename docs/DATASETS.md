@@ -165,13 +165,17 @@ Pros: Real-world data from your users, highest accuracy for your use case
 
 Cons: Requires existing production system, privacy considerations
 
-### Source 2: Analytics Engine (After Deployment)
+### Source 2: D1 Validations (After Deployment)
 
-Once deployed, collect data from the worker's Analytics Engine:
+Once deployed, collect high-confidence samples from the D1 `validations` table:
 
 ```bash
-# Extract validated emails
-npm run cli training:extract
+# Extract validated emails (pulls directly from D1)
+npm run cli training:extract --days 1 --remote
+
+# Alternative: run ad-hoc D1 query
+npx wrangler d1 execute ANALYTICS --remote --command \
+  "SELECT email_local_part || '@' || domain AS email, decision, risk_score FROM validations WHERE decision = 'block' AND risk_score >= 0.8"
 
 # Train from extracted data
 npm run cli training:train
@@ -179,8 +183,6 @@ npm run cli training:train
 # Validate and deploy
 npm run cli training:validate
 ```
-
-This is **automatic online learning** - the system improves over time!
 
 ### Source 3: Manual Collection
 

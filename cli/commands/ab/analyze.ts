@@ -1,17 +1,40 @@
 /**
  * A/B Test Analysis Command
  *
- * Analyzes experiment results from Analytics Engine
+ * Analyzes experiment results via /admin/analytics (D1)
  */
 
 import { parseArgs } from 'util';
-import { execSync } from 'child_process';
+import { logger } from '../../utils/logger.ts';
 
 interface AnalyzeOptions {
 	experimentId: string;
 	hours: number;
 	format: 'table' | 'json';
-	accountId?: string;
+	url: string;
+	apiKey: string;
+}
+
+function normalizeBaseUrl(url: string): string {
+	return url.endsWith('/') ? url.slice(0, -1) : url;
+}
+
+function resolveApiConfig(values: any): { url: string; apiKey: string } {
+	const url =
+		(values.url as string | undefined) ||
+		process.env.FRAUD_API_URL ||
+		'http://localhost:8787';
+
+	const apiKey =
+		(values['api-key'] as string | undefined) ||
+		process.env.FRAUD_API_KEY;
+
+	if (!apiKey) {
+		logger.error('Missing API key. Set FRAUD_API_KEY or pass --api-key.');
+		process.exit(1);
+	}
+
+	return { url: normalizeBaseUrl(url), apiKey };
 }
 
 export async function analyzeExperiment(args: string[]) {
@@ -22,7 +45,8 @@ export async function analyzeExperiment(args: string[]) {
 			'experiment-id': { type: 'string' },
 			hours: { type: 'string' },
 			format: { type: 'string' },
-			'account-id': { type: 'string' },
+			url: { type: 'string' },
+			'api-key': { type: 'string' },
 			help: { type: 'boolean', short: 'h' },
 		},
 		allowPositionals: true,
@@ -32,13 +56,14 @@ export async function analyzeExperiment(args: string[]) {
 		console.log(`
 Usage: npm run cli ab:analyze [options]
 
-Analyze A/B test experiment results from Analytics Engine
+Analyze A/B test experiment results via /admin/analytics
 
 Options:
   --experiment-id <id>    Experiment ID to analyze (required)
   --hours <n>             Hours of data to analyze (default: 168 = 7 days)
   --format <type>         Output format: table|json (default: table)
-  --account-id <id>       Cloudflare account ID (from env: CLOUDFLARE_ACCOUNT_ID)
+  --url <base>            Base URL (default: FRAUD_API_URL or http://localhost:8787)
+  --api-key <key>         Admin API key (default: FRAUD_API_KEY)
   -h, --help              Show this help message
 
 Examples:
@@ -60,21 +85,14 @@ Examples:
 		process.exit(1);
 	}
 
+	const apiConfig = resolveApiConfig(values);
 	const options: AnalyzeOptions = {
 		experimentId: values['experiment-id'] as string,
-		hours: values.hours ? parseInt(values.hours as string, 10) : 168, // 7 days default
+		hours: values.hours ? parseInt(values.hours as string, 10) : 168,
 		format: (values.format as 'table' | 'json') || 'table',
-		accountId: values['account-id'] as string | undefined,
+		url: apiConfig.url,
+		apiKey: apiConfig.apiKey,
 	};
-
-	// Get account ID from env if not provided
-	if (!options.accountId) {
-		try {
-			options.accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-		} catch {
-			// Will fail later if account ID is needed
-		}
-	}
 
 	console.log('\n📊 Analyzing A/B Test Results');
 	console.log('═'.repeat(80));
@@ -84,47 +102,43 @@ Examples:
 
 	try {
 		// Build SQL query to compare variants
+		const escapedExperiment = options.experimentId.replace(/'/g, "''");
 		const sql = `
 			SELECT
-				blob17 as variant,
-				blob20 as experiment_id,
-				COUNT(*) * any(_sample_interval) as total_requests,
-				-- Decisions
-				SUM(CASE WHEN blob1 = 'block' THEN _sample_interval ELSE 0 END) as blocks,
-				SUM(CASE WHEN blob1 = 'warn' THEN _sample_interval ELSE 0 END) as warns,
-				SUM(CASE WHEN blob1 = 'allow' THEN _sample_interval ELSE 0 END) as allows,
-				-- Risk scores
-				AVG(double1) as avg_risk_score,
-				quantile(0.50)(double1) as median_risk_score,
-				quantile(0.95)(double1) as p95_risk_score,
-				-- Bot Management metrics (if applicable)
-				AVG(double3) as avg_bot_score,
-				quantile(0.50)(double3) as median_bot_score,
-				-- Performance
-				AVG(double5) as avg_latency_ms,
-				quantile(0.95)(double5) as p95_latency_ms
-			FROM ANALYTICS_DATASET
-			WHERE blob20 = '${options.experimentId}'
-				AND timestamp >= NOW() - INTERVAL '${options.hours}' HOUR
+				variant,
+				experiment_id,
+				COUNT(*) AS total_requests,
+				SUM(CASE WHEN decision = 'block' THEN 1 ELSE 0 END) AS blocks,
+				SUM(CASE WHEN decision = 'warn' THEN 1 ELSE 0 END) AS warns,
+				SUM(CASE WHEN decision = 'allow' THEN 1 ELSE 0 END) AS allows,
+				AVG(risk_score) AS avg_risk_score,
+				AVG(latency) AS avg_latency_ms,
+				AVG(bot_score) AS avg_bot_score
+			FROM validations
+			WHERE experiment_id = '${escapedExperiment}'
+			  AND timestamp >= datetime('now', '-${options.hours} hours')
 			GROUP BY variant, experiment_id
-			ORDER BY variant
+			ORDER BY variant;
 		`.trim();
 
-		// Execute query using wrangler
-		console.log('\n🔍 Querying Analytics Engine...\n');
+		console.log('\n🔍 Querying /admin/analytics...\n');
 
-		const command = `npx wrangler analytics sql --query="${sql.replace(/"/g, '\\"')}"`;
-		const output = execSync(command, { encoding: 'utf-8' });
+		const response = await fetch(`${options.url}/admin/analytics`, {
+			method: 'POST',
+			headers: {
+				'X-API-Key': options.apiKey,
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({ query: sql, hours: options.hours }),
+		});
 
-		// Parse output (wrangler returns JSON array)
-		let results: any[];
-		try {
-			results = JSON.parse(output);
-		} catch {
-			console.error('❌ Failed to parse analytics results');
-			console.error('Raw output:', output);
-			process.exit(1);
+		if (!response.ok) {
+			const text = await response.text();
+			throw new Error(`Query failed (${response.status}): ${text}`);
 		}
+
+		const payload = await response.json() as { data?: Record<string, any>[] };
+		const results = payload.data || [];
 
 		if (results.length === 0) {
 			console.log('📭 No data found for this experiment yet');
@@ -150,12 +164,7 @@ Examples:
 		}
 	} catch (error: any) {
 		console.error('\n❌ Failed to analyze experiment:');
-		if (error.message?.includes('CLOUDFLARE_ACCOUNT_ID')) {
-			console.error('Missing CLOUDFLARE_ACCOUNT_ID environment variable');
-			console.error('Set it in .dev.vars or pass with --account-id');
-		} else {
-			console.error(error.message || error);
-		}
+		console.error(error.message || error);
 		process.exit(1);
 	}
 }
@@ -177,17 +186,13 @@ function displayTableResults(results: any[], experimentId: string) {
 		console.log(`    Warn:             ${row.warns.toLocaleString()} (${warnRate.toFixed(2)}%)`);
 		console.log(`    Allow:            ${row.allows.toLocaleString()} (${allowRate.toFixed(2)}%)`);
 		console.log(`\n  Risk Scores:`);
-		console.log(`    Avg:              ${row.avg_risk_score.toFixed(3)}`);
-		console.log(`    Median:           ${row.median_risk_score.toFixed(3)}`);
-		console.log(`    P95:              ${row.p95_risk_score.toFixed(3)}`);
+		console.log(`    Avg:              ${Number(row.avg_risk_score || 0).toFixed(3)}`);
 		console.log(`\n  Performance:`);
-		console.log(`    Avg Latency:      ${row.avg_latency_ms.toFixed(1)}ms`);
-		console.log(`    P95 Latency:      ${row.p95_latency_ms.toFixed(1)}ms`);
+		console.log(`    Avg Latency:      ${Number(row.avg_latency_ms || 0).toFixed(1)}ms`);
 
-		if (row.avg_bot_score > 0) {
+		if (row.avg_bot_score) {
 			console.log(`\n  Bot Management:`);
-			console.log(`    Avg Bot Score:    ${row.avg_bot_score.toFixed(1)}/100`);
-			console.log(`    Median Bot Score: ${row.median_bot_score.toFixed(1)}/100`);
+			console.log(`    Avg Bot Score:    ${Number(row.avg_bot_score).toFixed(1)}/100`);
 		}
 	}
 }

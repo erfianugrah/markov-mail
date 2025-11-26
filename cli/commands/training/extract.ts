@@ -1,7 +1,7 @@
 /**
  * Training Data Extraction Command
  *
- * Extracts validation results from Analytics Engine and applies
+ * Extracts validation results from the D1 validations table and applies
  * heuristic labeling to create training datasets.
  */
 
@@ -27,13 +27,13 @@ export async function extractTrainingData(args: string[]) {
 	if (values.help) {
 		console.log(`
 ╔════════════════════════════════════════════════════════╗
-║        Extract Training Data from Analytics            ║
+║        Extract Training Data from D1                   ║
 ╚════════════════════════════════════════════════════════╝
 
 [OPTIONAL] Manual extraction for offline analysis and testing.
-Automated training fetches directly from Analytics Engine.
+Automated training fetches directly from D1.
 
-Extracts validation results from Analytics Engine and applies
+Extracts validation results from D1 and applies
 heuristic labeling to create training datasets saved as JSON files.
 
 USAGE
@@ -43,7 +43,7 @@ OPTIONS
   --days <n>              Days of data to extract (default: 1)
   --min-confidence <n>    Minimum confidence threshold (default: 0.8)
   --min-samples <n>       Minimum samples per class (default: 100)
-  --remote                Use production Analytics Engine
+  --remote                Use remote D1 database (production)
   --help, -h              Show this help message
 
 EXAMPLES
@@ -66,7 +66,7 @@ EXAMPLES
 		remote: values.remote,
 	};
 
-	console.log('\\n🔍 Extracting Training Data from Analytics Engine');
+	console.log('\\n🔍 Extracting Training Data from D1');
 	console.log('═'.repeat(80));
 	console.log(`Days:            ${options.days}`);
 	console.log(`Min Confidence:  ${options.minConfidence}`);
@@ -77,14 +77,14 @@ EXAMPLES
 	try {
 		const startTime = Date.now();
 
-		// Step 1: Query Analytics Engine
-		console.log('\\n📊 Step 1: Querying Analytics Engine...');
-		const records = await queryAnalytics(options.days, options.remote);
+		// Step 1: Query D1
+		console.log('\\n📊 Step 1: Querying D1 validations table...');
+		const records = await queryD1(options.days, options.remote);
 
 		console.log(`✓ Retrieved ${records.length.toLocaleString()} validation records`);
 
 		if (records.length === 0) {
-			console.log('\\n⚠️  No data found. Check if Analytics Engine has data.');
+			console.log('\\n⚠️  No data found. Make sure the D1 database has validation traffic.');
 			return;
 		}
 
@@ -178,52 +178,68 @@ EXAMPLES
 }
 
 /**
- * Query Analytics Engine for validation records
+ * Query D1 for validation records
  */
-async function queryAnalytics(days: number, remote: boolean): Promise<ValidationRecord[]> {
+async function queryD1(days: number, remote: boolean): Promise<ValidationRecord[]> {
+	const hours = days * 24;
 	const sql = `
 		SELECT
-			blob2 as email,
-			blob1 as decision,
-			double1 as risk_score,
-			double2 as confidence,
-			blob3 as pattern_family,
-			blob4 as entropy_category,
-			blob18 as markov_detected,
-			double6 as markov_confidence,
-			double3 as bot_score,
+			email_local_part || '@' || domain AS email,
+			decision,
+			risk_score,
+			COALESCE(markov_confidence, risk_score) AS confidence,
+			pattern_family,
+			CASE
+				WHEN entropy_score IS NULL THEN 'unknown'
+				WHEN entropy_score < 0.2 THEN 'very_low'
+				WHEN entropy_score < 0.4 THEN 'low'
+				WHEN entropy_score < 0.6 THEN 'medium'
+				WHEN entropy_score < 0.8 THEN 'high'
+				ELSE 'very_high'
+			END AS entropy_category,
+			markov_detected,
+			COALESCE(markov_confidence, 0) AS markov_confidence,
+			COALESCE(bot_score, 0) AS bot_score,
 			timestamp
-		FROM ANALYTICS_DATASET
-		WHERE timestamp >= NOW() - INTERVAL '${days * 24}' HOUR
-			AND decision IN ('block', 'allow', 'warn')
-			AND blob2 IS NOT NULL
+		FROM validations
+		WHERE timestamp >= datetime('now', '-${hours} hours')
+			AND email_local_part IS NOT NULL
+			AND domain IS NOT NULL
 		ORDER BY timestamp DESC
 		LIMIT 100000
 	`.trim();
 
 	console.log('  Executing query...');
 
-	const command = `npx wrangler analytics sql --query="${sql.replace(/"/g, '\\"')}"`;
+	const escapedSql = sql.replace(/"/g, '\\"');
+	const remoteFlag = remote ? '--remote' : '';
+	const command = `npx wrangler d1 execute ANALYTICS ${remoteFlag} --json --command "${escapedSql}"`;
 	const output = execSync(command, { encoding: 'utf-8' });
 
-	// Parse JSON output
-	const results = JSON.parse(output);
+	let parsed: any;
+	try {
+		parsed = JSON.parse(output);
+	} catch (error) {
+		throw new Error(`Failed to parse D1 output: ${output}`);
+	}
 
-	// Convert to ValidationRecord format
-	const records: ValidationRecord[] = results.map((row: any) => ({
+	const rows: any[] = parsed?.results || parsed?.result || parsed?.data || [];
+	if (!Array.isArray(rows)) {
+		throw new Error('Unexpected D1 response format');
+	}
+
+	return rows.map((row) => ({
 		email: row.email,
 		decision: row.decision,
-		riskScore: row.risk_score || 0,
-		confidence: row.confidence || 0,
+		riskScore: Number(row.risk_score) || 0,
+		confidence: Number(row.confidence) || 0,
 		patternFamily: row.pattern_family,
-		entropyCategory: row.entropy_category,
-		markovDetected: row.markov_detected === 'true',
-		markovConfidence: row.markov_confidence || 0,
-		botScore: row.bot_score || 0,
+		entropyCategory: row.entropy_category || 'unknown',
+		markovDetected: Boolean(row.markov_detected),
+		markovConfidence: Number(row.markov_confidence) || 0,
+		botScore: Number(row.bot_score) || 0,
 		timestamp: row.timestamp,
 	}));
-
-	return records;
 }
 
 /**

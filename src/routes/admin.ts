@@ -14,8 +14,35 @@ import { updateDisposableDomains, getDisposableDomainMetadata, clearDomainCache 
 import { updateTLDRiskProfiles, getTLDRiskMetadata, clearTLDCache, getTLDRiskProfile, updateSingleTLDProfile } from '../services/tld-risk-updater';
 import { getAllTLDProfiles, getTLDStats } from '../detectors/tld-risk';
 import { D1Queries, executeD1Query } from '../database/queries';
+import { getExperimentStatus } from '../ab-testing/config-loader';
 
 const admin = new Hono<{ Bindings: Env }>();
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function deepMergeConfigs<T extends Record<string, any>>(target: T, source: Partial<T>): T {
+	const result: Record<string, any> = Array.isArray(target) ? [...target] : { ...target };
+
+	for (const key of Object.keys(source)) {
+		const sourceValue = (source as Record<string, any>)[key];
+
+		if (sourceValue === undefined) {
+			continue;
+		}
+
+		const targetValue = (target as Record<string, any>)[key];
+
+		if (isPlainObject(targetValue) && isPlainObject(sourceValue)) {
+			result[key] = deepMergeConfigs(targetValue, sourceValue);
+		} else {
+			result[key] = sourceValue;
+		}
+	}
+
+	return result as T;
+}
 
 /**
  * Validate D1 SQL query for security
@@ -70,8 +97,13 @@ admin.use('/*', requireApiKey);
  * Get current configuration (merged from defaults + KV + secrets)
  */
 admin.get('/config', async (c) => {
+	if (!c.env.CONFIG) {
+		return c.json({ error: 'CONFIG KV namespace not configured' }, 503);
+	}
+
+	const configKV = c.env.CONFIG;
 	try {
-		const config = await getConfig(c.env.CONFIG, {
+		const config = await getConfig(configKV, {
 			'X-API-KEY': c.env['X-API-KEY'],
 			ORIGIN_URL: c.env.ORIGIN_URL,
 		});
@@ -110,6 +142,11 @@ admin.get('/config/defaults', (c) => {
  * Body: Partial<FraudDetectionConfig>
  */
 admin.put('/config', async (c) => {
+	if (!c.env.CONFIG) {
+		return c.json({ error: 'CONFIG KV namespace not configured' }, 503);
+	}
+
+	const configKV = c.env.CONFIG;
 	try {
 		const body = await c.req.json<Partial<FraudDetectionConfig>>();
 
@@ -126,7 +163,7 @@ admin.put('/config', async (c) => {
 		}
 
 		// Save to KV
-		const result = await saveConfig(c.env.CONFIG, body);
+		const result = await saveConfig(configKV, body);
 
 		if (!result.success) {
 			return c.json(
@@ -160,17 +197,22 @@ admin.put('/config', async (c) => {
  * Body: Partial<FraudDetectionConfig>
  */
 admin.patch('/config', async (c) => {
+	if (!c.env.CONFIG) {
+		return c.json({ error: 'CONFIG KV namespace not configured' }, 503);
+	}
+
+	const configKV = c.env.CONFIG;
 	try {
 		const updates = await c.req.json<Partial<FraudDetectionConfig>>();
 
 		// Load current config from KV
-		const currentConfig = await getConfig(c.env.CONFIG, {
+		const currentConfig = await getConfig(configKV, {
 			'X-API-KEY': c.env['X-API-KEY'],
 			ORIGIN_URL: c.env.ORIGIN_URL,
 		});
 
-		// Merge updates with current config
-		const mergedConfig = { ...currentConfig, ...updates };
+		// Merge updates with current config (deep merge to preserve nested settings)
+		const mergedConfig = deepMergeConfigs(currentConfig, updates);
 
 		// Validate merged configuration
 		const validation = validateConfig(mergedConfig);
@@ -185,7 +227,7 @@ admin.patch('/config', async (c) => {
 		}
 
 		// Save to KV
-		const result = await saveConfig(c.env.CONFIG, mergedConfig);
+		const result = await saveConfig(configKV, mergedConfig);
 
 		if (!result.success) {
 			return c.json(
@@ -218,9 +260,14 @@ admin.patch('/config', async (c) => {
  * Reset configuration to defaults (clears KV)
  */
 admin.post('/config/reset', async (c) => {
+	if (!c.env.CONFIG) {
+		return c.json({ error: 'CONFIG KV namespace not configured' }, 503);
+	}
+
+	const configKV = c.env.CONFIG;
 	try {
 		// Clear KV configuration
-		await c.env.CONFIG.delete('config.json');
+		await configKV.delete('config.json');
 
 		// Clear cache
 		clearConfigCache();
@@ -247,6 +294,11 @@ admin.post('/config/reset', async (c) => {
  * Body: Partial<FraudDetectionConfig>
  */
 admin.post('/config/validate', async (c) => {
+	if (!c.env.CONFIG) {
+		return c.json({ error: 'CONFIG KV namespace not configured' }, 503);
+	}
+
+	const configKV = c.env.CONFIG;
 	try {
 		const body = await c.req.json<Partial<FraudDetectionConfig>>();
 
@@ -288,6 +340,26 @@ admin.delete('/config/cache', (c) => {
 		success: true,
 		message: 'Configuration cache cleared',
 	});
+});
+
+/**
+ * GET /admin/ab-test/status
+ * Returns current A/B experiment status (if any)
+ */
+admin.get('/ab-test/status', async (c) => {
+	if (!c.env.CONFIG) {
+		return c.json(
+			{
+				hasExperiment: false,
+				isActive: false,
+				error: 'CONFIG KV namespace not configured',
+			},
+			503
+		);
+	}
+
+	const status = await getExperimentStatus(c.env.CONFIG);
+	return c.json(status);
 });
 
 /**
@@ -741,19 +813,24 @@ admin.post('/markov/train', async (c) => {
  * - Last 5 training runs (timestamps, success/failure, metrics)
  */
 admin.get('/markov/status', async (c) => {
+	if (!c.env.CONFIG) {
+		return c.json({ error: 'CONFIG KV namespace not configured' }, 503);
+	}
+
+	const configKV = c.env.CONFIG;
 	try {
 		// Get training history from CONFIG KV
-		const history = await c.env.CONFIG.get('markov_training_history', 'json') as Array<unknown> | null;
+		const history = await configKV.get('markov_training_history', 'json') as Array<unknown> | null;
 
 		// Get candidate model metadata from MARKOV_MODEL KV
 		const candidateData = c.env.MARKOV_MODEL ? await c.env.MARKOV_MODEL.getWithMetadata('markov_model_candidate') : null;
 
 		// Get production model metadata
 		// Note: Currently loading from CONFIG, but will migrate to MARKOV_MODEL in Phase 2
-		const productionData = await c.env.CONFIG.getWithMetadata('markov_legit_model');
+		const productionData = await configKV.getWithMetadata('markov_legit_model');
 
 		// Get training lock status
-		const lockStatus = await c.env.CONFIG.get('markov_training_lock');
+		const lockStatus = await configKV.get('markov_training_lock');
 
 		return c.json({
 			production: {
@@ -803,9 +880,14 @@ admin.get('/markov/status', async (c) => {
  * - Error messages (if failed)
  */
 admin.get('/markov/history', async (c) => {
+	if (!c.env.CONFIG) {
+		return c.json({ error: 'CONFIG KV namespace not configured' }, 503);
+	}
+
+	const configKV = c.env.CONFIG;
 	try {
 		// Get full training history from CONFIG KV
-		const history = await c.env.CONFIG.get('markov_training_history', 'json') as Array<unknown> | null;
+		const history = await configKV.get('markov_training_history', 'json') as Array<unknown> | null;
 
 		if (!history || history.length === 0) {
 			return c.json({

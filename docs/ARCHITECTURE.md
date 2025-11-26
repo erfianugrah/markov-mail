@@ -41,7 +41,7 @@ Framework:     Hono v4.x
 Language:      TypeScript 5.x
 Testing:       Vitest 3.2.0 + @cloudflare/vitest-pool-workers
 Logging:       Pino.js
-Analytics:     Cloudflare Analytics Engine
+Analytics:     Cloudflare D1 (validations/admin metrics)
 Deployment:    Wrangler 3.x
 ```
 
@@ -421,7 +421,7 @@ if (χ² > 15.507) {
 
 **Training Pipeline**:
 ```typescript
-- Data Source: Analytics Engine + labeled samples
+- Data Source: D1 `validations` table + labeled samples
 - Trigger: Cron job every 6 hours
 - Validation Gates:
   * minAccuracy: 0.95
@@ -697,7 +697,7 @@ logger.error()  // Errors and failures
 
 ### 8. Analytics (`src/utils/metrics.ts`)
 
-**Purpose**: Write metrics to Analytics Engine
+**Purpose**: Write metrics to D1
 
 **Data Points**:
 ```typescript
@@ -796,7 +796,7 @@ WHERE timestamp >= NOW() - INTERVAL '1' HOUR;
    ↓
 9. Side Effects (parallel)
    - Log validation (if enabled)
-   - Write Analytics Engine
+   - Write D1
    - Log blocks separately
    ↓
 10. HTTP Response
@@ -874,10 +874,10 @@ Analytics (async):   ~0.3ms (non-blocking)
 - Disposable domains
 - TLD risk (Phase 6A)
 
-**Medium Confidence, Fast** (pattern check):
-- Sequential patterns
-- Plus-addressing
-- Keyboard walks
+**Medium Confidence, Fast** (pattern telemetry):
+- Sequential/structured families (observability)
+- Plus-addressing normalization
+- Dated pattern override (0.2-0.9)
 
 **Statistical, Requires Context** (batch):
 - Benford's Law (admin endpoints)
@@ -903,52 +903,29 @@ Analytics (async):   ~0.3ms (non-blocking)
 - Zero false positives (impractical)
 - Real-time learning (requires infrastructure)
 
-### Current Weights (v1.4.0)
+### Configurable Domain Weights (v2.4.x)
+
+Only domain-related signals remain tunable:
 
 ```typescript
 riskWeights: {
-  entropy:           0.05,  // 5%  - Baseline for randomness
-  domainReputation:  0.15,  // 15% - Disposable domain detection (71,751 domains)
-  tldRisk:           0.15,  // 15% - TLD risk profiling (142 TLDs)
-  patternDetection:  0.30,  // 30% - 5 pattern detectors combined
-  markovChain:       0.35,  // 35% - Highest accuracy (98%)
+  domainReputation: 0.20,  // Disposable domains, suspicious structures
+  tldRisk:          0.30   // High-risk TLD multipliers
 }
-// Total: 1.00 (100%)
+
+const domainRisk =
+  domainReputationScore * config.riskWeights.domainReputation +
+  tldRiskScore * config.riskWeights.tldRisk;
+
+const classificationRisk = markovResult?.isLikelyFraudulent ? markovResult.confidence : 0;
+const abnormalityRisk = markovResult?.abnormalityRisk ?? 0;
+
+const score = Math.min(Math.max(classificationRisk, abnormalityRisk) + domainRisk, 1.0);
 ```
 
-### Hybrid Scoring Strategy
-
-**Key Innovation**: Prevents double-counting by using different aggregation methods:
-
-```typescript
-// Domain signals (independent) → ADDITIVE
-const domainRisk = domainReputationScore * 0.15;
-const tldRisk = tldRiskScore * 0.15;
-const domainBasedRisk = domainRisk + tldRisk;  // Can have both
-
-// Local part signals (overlapping) → MAX-BASED
-const entropyRisk = entropyScore * 0.05;
-const patternRisk = patternScore * 0.30;
-const markovRisk = markovScore * 0.35;
-const localPartRisk = Math.max(entropyRisk, patternRisk, markovRisk);  // Take highest
-
-// Combine
-riskScore = Math.min(domainBasedRisk + localPartRisk, 1.0);
-```
-
-**Why This Works**:
-- Domain + TLD analyze **different properties** → can both be high → add them
-- Pattern + Markov analyze **same data** (local part) → take highest to avoid double-counting
-
-**Example**:
-```
-Email: user123@tempmail.tk
-
-Old (additive): 0.95 (disposable) + 0.15 (TLD) + 0.27 (pattern) + 0.31 (markov) = 1.68 (capped to 1.0)
-New (hybrid):   [0.15 (disposable) + 0.15 (TLD)] + max(0.27, 0.31) = 0.30 + 0.31 = 0.61
-
-Result: More accurate, less double-counting
-```
+- Markov/OOD signals use their raw confidences (no weights)
+- Dated + plus-addressing overrides clamp the score when deterministic abuse is detected
+- Disposable/TLD contributions are additive and tunable per deployment
 
 ### Weight Rationale
 
@@ -1172,14 +1149,14 @@ The system includes a fully automated machine learning pipeline that continuousl
 1. DATA COLLECTION (Continuous)
    ┌──────────────┐
    │   Worker     │ → Validates emails
-   │ (Production) │ → Records to Analytics Engine
+   │ (Production) │ → Records to D1
    └──────┬───────┘    - Email local part (blob14)
           │            - Decision (blob1)
           │            - Risk score (double1)
           │            - Timestamp
           ▼
    ┌──────────────────────┐
-   │ Analytics Engine     │ → Time-series dataset
+   │ D1 (validations)     │ → Time-series dataset
    │ (ANALYTICS_DATASET)  │ → 5000+ validation records
    └──────────────────────┘
 
@@ -1226,11 +1203,11 @@ The system includes a fully automated machine learning pipeline that continuousl
 
 ### Training Data Flow
 
-**Direct Analytics Engine Approach** (Current):
+**Direct D1 Approach** (Current):
 ```
 Production Traffic
     ↓
-Analytics Engine (real-time writes)
+D1 (real-time writes)
     ↓
 Cron Trigger (every 6 hours)
     ↓
@@ -1248,7 +1225,7 @@ Production Models Updated
 **Optional Manual Extraction** (CLI):
 ```
 npm run cli training:extract
-    ├─ Queries Analytics Engine
+    ├─ Queries D1 validations table
     ├─ Applies heuristic labeling
     ├─ Saves to JSON file
     └─ For offline analysis/testing
@@ -1256,17 +1233,39 @@ npm run cli training:extract
 
 ### Key Components
 
-**1. Analytics Engine Schema**:
-```typescript
-{
-  blob1:   decision (allow/warn/block)
-  blob2:   email
-  blob14:  email_local_part
-  double1: risk_score
-  double2: confidence
-  double3: bot_score
-  timestamp: validation_time
-}
+**1. D1 Schema (validations excerpt)**:
+```sql
+CREATE TABLE validations (
+  id INTEGER PRIMARY KEY,
+  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+  decision TEXT,
+  risk_score REAL,
+  block_reason TEXT,
+  email_local_part TEXT,
+  domain TEXT,
+  tld TEXT,
+  fingerprint_hash TEXT,
+  pattern_type TEXT,
+  pattern_family TEXT,
+  is_disposable INTEGER,
+  has_plus_addressing INTEGER,
+  entropy_score REAL,
+  bot_score REAL,
+  tld_risk_score REAL,
+  domain_reputation_score REAL,
+  markov_detected INTEGER,
+  markov_confidence REAL,
+  min_entropy REAL,
+  abnormality_score REAL,
+  abnormality_risk REAL,
+  latency REAL,
+  region TEXT,
+  city TEXT,
+  asn INTEGER,
+  ja4 TEXT,
+  consumer TEXT,
+  flow TEXT
+);
 ```
 
 **2. Training Requirements**:

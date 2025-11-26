@@ -14,6 +14,7 @@ declare global {
 		CLOUDFLARE_API_TOKEN?: string;   // For Cloudflare API access
 
 		// KV Namespaces (defined in wrangler.jsonc)
+		CONFIG?: KVNamespace;  // Main configuration namespace
 		MARKOV_MODEL?: KVNamespace;  // Separate namespace for model storage
 		DISPOSABLE_DOMAINS_LIST?: KVNamespace;  // Namespace for disposable domain list
 		TLD_LIST?: KVNamespace;  // Namespace for TLD risk profiles

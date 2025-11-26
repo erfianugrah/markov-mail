@@ -65,3 +65,17 @@ Override the normal decision logic for specific use cases.
 
 - [Training Guide](./TRAINING.md)
 - [Architecture Overview](../README.md)
+
+## A/B Experiments
+
+Experiments live alongside configuration in the `CONFIG` KV namespace under the `ab_test_config` key.
+
+- Create/update via CLI: `npm run cli ab:create --experiment-id ...`
+- Inspect via CLI: `npm run cli ab:status` (or API: `GET /admin/ab-test/status`)
+- Disable by deleting the key: `npm run cli ab:stop`
+
+Once an experiment is active:
+
+- The worker hashes each fingerprint, assigns a control/treatment variant, and deep merges the treatment overrides into the base config
+- Each validation row in D1 records `experiment_id`, `variant`, and `bucket` so you can query lift directly
+- The dashboard overview card shows the active experiment along with traffic split and dates

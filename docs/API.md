@@ -13,7 +13,7 @@ This API provides inline email validation to prevent fake account signups by ana
 - Advanced fingerprinting (IP + JA4 + ASN + Bot Score)
 - Configurable risk thresholds
 - Structured JSON logging (Pino)
-- Analytics Engine metrics collection
+- D1 metrics collection + admin analytics endpoints
 - Sub-100ms latency (p95)
 
 ## Authentication
@@ -101,6 +101,9 @@ Validate an email address and return risk assessment.
 | `signals.formatValid` | boolean | RFC 5322 format compliance |
 | `signals.entropyScore` | number | Shannon entropy (0-1, higher = more random) |
 | `signals.localPartLength` | number | Length of local part (before @) |
+| `signals.experimentId` | string | Active experiment ID when request participates in an A/B test |
+| `signals.experimentVariant` | string | `control` or `treatment` when assigned to an experiment |
+| `signals.experimentBucket` | number | Hash bucket (0-99) used for variant assignment |
 | `decision` | string | `allow`, `warn`, or `block` |
 | `message` | string | Human-readable result message |
 | `fingerprint` | object | User fingerprint data |
@@ -109,6 +112,23 @@ Validate an email address and return risk assessment.
 | `fingerprint.asn` | number | Autonomous System Number |
 | `fingerprint.botScore` | number | Cloudflare bot score (1-99, higher = more likely human) |
 | `latency_ms` | number | Processing time in milliseconds |
+| `metadata` | object | Additional metadata about the Worker build and models |
+| `metadata.version` | string | Worker semver |
+| `metadata.modelVersion` | string | Markov model identifier |
+| `metadata.modelTrainingCount` | number | Training sample count recorded inside the model |
+| `metadata.experimentId` | string | Experiment ID (if applicable) |
+| `metadata.experimentVariant` | string | Control/treatment label (if applicable) |
+| `metadata.experimentBucket` | number | Hash bucket assignment (if applicable) |
+
+#### Response Headers
+
+Every response (including blocks) returns observability headers:
+
+- `X-Fraud-Decision`: `allow`, `warn`, or `block`
+- `X-Fraud-Risk-Score`: Normalized risk score (0.00-1.00)
+- `X-Fraud-Reason`: Block reason (only on `block`)
+- `X-Experiment-Id`: Active experiment ID (if assigned)
+- `X-Experiment-Variant`: `control` or `treatment` (if assigned)
 
 #### Decision Logic
 
@@ -654,6 +674,42 @@ curl -X DELETE https://your-worker.dev/admin/config/cache \
 }
 ```
 
+### GET /admin/ab-test/status
+
+Returns the currently configured A/B experiment (if any).
+
+```bash
+curl https://your-worker.dev/admin/ab-test/status \
+  -H "X-API-Key: your-admin-api-key"
+```
+
+**Response (active experiment):**
+```json
+{
+  "hasExperiment": true,
+  "isActive": true,
+  "config": {
+    "experimentId": "markov_tweaks",
+    "description": "Test new domain weights",
+    "startDate": "2025-01-12T00:00:00.000Z",
+    "endDate": "2025-01-19T00:00:00.000Z",
+    "variants": {
+      "control": { "weight": 90 },
+      "treatment": {
+        "weight": 10,
+        "config": { "riskWeights": { "domainReputation": 0.25, "tldRisk": 0.35 } }
+      }
+    }
+  }
+}
+```
+
+If no experiment is configured, the API returns:
+
+```json
+{ "hasExperiment": false, "isActive": false }
+```
+
 ### Admin API Error Responses
 
 **401 Unauthorized:**
@@ -686,17 +742,17 @@ When `ENABLE_RESPONSE_HEADERS` is set to `"true"`, the following headers are add
 
 | Header | Type | Description | Example |
 |--------|------|-------------|---------|
-| `X-Risk-Score` | number | Overall risk score (0.0-1.0) | `0.48` |
+| `X-Fraud-Risk-Score` | number | Overall risk score (0.00-1.00) | `0.48` |
 | `X-Fraud-Decision` | string | Decision: allow, warn, or block | `warn` |
-| `X-Fraud-Reason` | string | Primary reason for the decision | `sequential_pattern` |
+| `X-Fraud-Reason` | string | Primary reason for the decision (blocks only) | `markov_chain_fraud` |
+| `X-Experiment-Id` | string | A/B experiment ID (when assigned) | `markov_tweaks` |
+| `X-Experiment-Variant` | string | `control` or `treatment` (when assigned) | `treatment` |
 
 #### Fingerprinting Headers
 
 | Header | Type | Description | Example |
 |--------|------|-------------|---------|
-| `X-Fingerprint-Hash` | string | SHA-256 composite fingerprint | `7426dc6e...` |
-| `X-Bot-Score` | number | Bot detection score (0-100) | `99` |
-| `X-Country` | string | ISO 3166-1 alpha-2 country code | `US` |
+| `X-Fraud-Fingerprint` | string | First 16 chars of SHA-256 composite fingerprint (block responses) | `7426dc6e...` |
 
 #### Performance Headers
 
@@ -895,9 +951,7 @@ curl -X PUT https://your-worker.dev/admin/config \
     "features": {
       "enableDisposableCheck": true,
       "enablePatternCheck": true,
-      "enableNGramAnalysis": true,
       "enableTLDRiskProfiling": true,
-      "enableBenfordsLaw": true,
       "enableMarkovChainDetection": true
     },
     "logging": {
@@ -911,10 +965,8 @@ curl -X PUT https://your-worker.dev/admin/config \
       "originUrl": ""
     },
     "riskWeights": {
-      "entropy": 0.2,
-      "domainReputation": 0.1,
-      "tldRisk": 0.1,
-      "patternDetection": 0.6
+      "domainReputation": 0.2,
+      "tldRisk": 0.3
     }
   }'
 ```
@@ -1244,21 +1296,24 @@ Blocked emails are logged at WARNING level:
 }
 ```
 
-### Analytics Engine
+### D1 Analytics
 
-Metrics are written to Cloudflare Analytics Engine for dashboarding:
+Validation, admin, training, and A/B test metrics are written to Cloudflare **D1** databases. Use either:
 
-**Metrics tracked:**
-- Decision distribution (allow/warn/block)
-- Risk score histogram
-- Block reasons breakdown
-- Country distribution
-- Bot score distribution
-- Performance (P50/P95/P99 latency)
+- `/admin/analytics` (GET/POST) – runs safe predefined or validated SQL via the Worker
+- `npx wrangler d1 execute ANALYTICS --remote --command "<SQL>"` – raw SQL access
 
-**Query examples:**
+**Metrics stored (see `schema.sql`):**
+- `validations` – decision, risk score, block reason, Markov/OOD signals, geo/network metadata
+- `training_metrics`, `ab_test_metrics`, `admin_metrics`
 
-See `src/utils/metrics.ts` for predefined GraphQL queries for common dashboards.
+**Example SQL:**
+```sql
+SELECT decision, COUNT(*) AS total
+FROM validations
+WHERE timestamp >= datetime('now','-24 hours')
+GROUP BY decision;
+```
 
 ## Performance
 

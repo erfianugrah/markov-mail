@@ -99,7 +99,7 @@ export async function retrainMarkovModels(env: Env): Promise<TrainingResult> {
 		}
 
 		try {
-			// 2. Fetch training data from Analytics Engine
+			// 2. Fetch training data from D1
 			const trainingData = await fetchTrainingData(env);
 
 			if (trainingData.length < 500) {
@@ -850,19 +850,27 @@ export function generateVersionId(): string {
 	return `v${timestamp}_${random}`;
 }
 
+function getConfigKV(env: Env): KVNamespace {
+	if (!env.CONFIG) {
+		throw new Error('CONFIG KV namespace not configured');
+	}
+	return env.CONFIG;
+}
+
 /**
  * Acquire distributed lock using KV (prevents concurrent training)
  */
 async function acquireTrainingLock(env: Env): Promise<boolean> {
 	const lockKey = 'markov_training_lock';
-	const existing = await env.CONFIG.get(lockKey);
+	const configKV = getConfigKV(env);
+	const existing = await configKV.get(lockKey);
 
 	if (existing) {
 		return false;  // Lock already held
 	}
 
 	// Acquire lock with 10-minute TTL
-	await env.CONFIG.put(lockKey, 'locked', { expirationTtl: 600 });
+	await configKV.put(lockKey, 'locked', { expirationTtl: 600 });
 	return true;
 }
 
@@ -870,14 +878,16 @@ async function acquireTrainingLock(env: Env): Promise<boolean> {
  * Release distributed lock
  */
 async function releaseTrainingLock(env: Env): Promise<void> {
-	await env.CONFIG.delete('markov_training_lock');
+	const configKV = getConfigKV(env);
+	await configKV.delete('markov_training_lock');
 }
 
 /**
  * Load training history from KV
  */
 async function loadTrainingHistory(env: Env): Promise<TrainingHistory[]> {
-	const history = await env.CONFIG.get('markov_training_history', 'json');
+	const configKV = getConfigKV(env);
+	const history = await configKV.get('markov_training_history', 'json');
 	return (history as TrainingHistory[]) || [];
 }
 
@@ -901,7 +911,8 @@ async function logTrainingSuccess(
 		history.length = 20;
 	}
 
-	await env.CONFIG.put('markov_training_history', JSON.stringify(history));
+	const configKV = getConfigKV(env);
+	await configKV.put('markov_training_history', JSON.stringify(history));
 }
 
 /**
@@ -936,5 +947,6 @@ async function logTrainingFailure(
 		history.length = 20;
 	}
 
-	await env.CONFIG.put('markov_training_history', JSON.stringify(history));
+	const configKV = getConfigKV(env);
+	await configKV.put('markov_training_history', JSON.stringify(history));
 }

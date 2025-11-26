@@ -5,9 +5,7 @@
  * through model validation and storage.
  *
  * Note: These tests require:
- * - CLOUDFLARE_ACCOUNT_ID secret
- * - CLOUDFLARE_API_TOKEN secret
- * - Analytics Engine with training data
+ * - D1 database with training data
  * - KV namespaces (CONFIG, MARKOV_MODEL)
  */
 
@@ -385,7 +383,7 @@ describe('Training Pipeline - Integration Tests', () => {
 	});
 
 	describe('Error Handling and Recovery', () => {
-		it('should handle missing Analytics Engine data gracefully', () => {
+		it('should handle missing D1 data gracefully', () => {
 			const emptyData: TrainingData[] = [];
 			const { fraudSamples, legitSamples } = separateDataByLabel(emptyData);
 

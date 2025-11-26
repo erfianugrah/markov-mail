@@ -42,9 +42,9 @@ export function DataManagement() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Analytics Engine Data Management</CardTitle>
+          <CardTitle>D1 Data Management</CardTitle>
           <CardDescription>
-            Tools for managing and filtering Analytics Engine data
+            Helper snippets for managing data inside your D1 analytics database
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -52,8 +52,8 @@ export function DataManagement() {
             <div className="flex gap-2">
               <AlertCircle className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
               <div className="text-sm">
-                <strong>Important:</strong> Cloudflare Analytics Engine data is immutable and cannot be deleted directly.
-                Data is automatically retained for 6 months. Use the tools below to generate SQL filters to exclude unwanted data from queries.
+                <strong>Important:</strong> Cloudflare D1 is a relational database. Deletions are permanent, so the recommended approach is to
+                generate SQL filters and prune data deliberately rather than truncating entire tables.
               </div>
             </div>
           </div>
@@ -124,30 +124,30 @@ export function DataManagement() {
             <div className="space-y-3 text-sm">
               <div className="flex items-start gap-3">
                 <div className="font-medium min-w-[140px]">Dataset Name:</div>
-                <div className="text-muted-foreground">ANALYTICS</div>
+                <div className="text-muted-foreground">ANALYTICS (D1)</div>
               </div>
               <div className="flex items-start gap-3">
                 <div className="font-medium min-w-[140px]">Data Retention:</div>
-                <div className="text-muted-foreground">6 months (automatic)</div>
+                <div className="text-muted-foreground">Manual (use DELETE statements / VACUUM as needed)</div>
               </div>
               <div className="flex items-start gap-3">
                 <div className="font-medium min-w-[140px]">Deletion Policy:</div>
-                <div className="text-muted-foreground">Data older than 6 months is automatically deleted</div>
+                <div className="text-muted-foreground">Controlled by you – keep, archive, or delete data via SQL</div>
               </div>
               <div className="flex items-start gap-3">
                 <div className="font-medium min-w-[140px]">Manual Deletion:</div>
-                <div className="text-muted-foreground">Not available - data is immutable</div>
+                <div className="text-muted-foreground">Use SQL commands (e.g., DELETE ... WHERE timestamp &lt; datetime('now','-30 days'))</div>
               </div>
               <div className="flex items-start gap-3">
                 <div className="font-medium min-w-[140px]">Column Mapping:</div>
                 <div className="text-muted-foreground">
                   <a
-                    href="https://developers.cloudflare.com/analytics/analytics-engine/"
+                    href="https://developers.cloudflare.com/d1/"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-primary underline"
                   >
-                    View Analytics Engine documentation
+                    View D1 documentation
                   </a>
                 </div>
               </div>

@@ -10,7 +10,7 @@ The system uses **6 detection methods** with Markov Chain as the primary detecto
 |----------|---------|-------------------|---------|
 | **Markov Chain** | **ML fraud detection** | **All fraud patterns** | **0.10ms** |
 | **OOD Detection** | **Abnormality detection** | **Novel/unfamiliar patterns** | **+0ms** |
-| Sequential | Numbered accounts | user123, test001 | 0.05ms |
+| Sequential (telemetry) | Numbered accounts (observability only) | user123, test001 | 0.05ms |
 | Dated | Date-based patterns | john.2025, oct2024 | 0.05ms |
 | Plus-Addressing | Email aliasing abuse | user+1, user+spam | 0.10ms |
 | TLD Risk | Domain extension risk | .tk, .ml, .ga | 0.05ms |
@@ -20,7 +20,9 @@ The system uses **6 detection methods** with Markov Chain as the primary detecto
 
 ---
 
-## 1. Sequential Pattern Detector
+## 1. Sequential Pattern Detector (Telemetry)
+
+> **Status (v2.4.2)**: This detector still runs for observability/analytics, but its scoring hook was removed. Sequential patterns no longer contribute a fixed risk score; Markov/OOD scoring now handles these cases.
 
 **File**: `src/detectors/sequential.ts` (301 lines)
 
@@ -94,11 +96,7 @@ if (numbers.length > 0) {
 8. **Birth year detected (×0 - skip entirely)**
 
 ### Risk Contribution
-```typescript
-baseRisk = 0.4;  // If detected
-finalRisk = baseRisk + (confidence * 0.3);
-// Range: 0.4 - 0.7
-```
+Sequential detection is **observability-only**. It surfaces family information in logs/metrics, but no longer adds risk directly. Use Markov signals or dated/plus detectors for enforcement.
 
 ---
 
@@ -741,13 +739,13 @@ npm run deploy
 
 All detectors can be enabled/disabled via configuration:
 
-```typescript
+```json
 {
   "features": {
-    "enablePatternCheck": true,          // Sequential, Dated, Plus
-    "enableTLDRiskProfiling": true,      // TLD Risk
-    "enableBenfordsLaw": true,           // Benford's Law (batch only)
-    "enableMarkovChainDetection": true   // Markov Chain (PRIMARY)
+    "enablePatternCheck": true,          // Pattern telemetry + dated scoring
+    "enableTLDRiskProfiling": true,      // TLD risk weighting
+    "enableDisposableCheck": true,       // Disposable/KV hard block
+    "enableMarkovChainDetection": true   // Markov ensemble + OOD
   }
 }
 ```

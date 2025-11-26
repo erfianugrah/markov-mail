@@ -57,17 +57,17 @@ PREREQUISITES
 WHAT HAPPENS
   1. Triggers the scheduled handler (cron job)
   2. Runs disposable domain list update
-  3. Runs automated model training pipeline (direct from Analytics Engine)
+  3. Runs automated model training pipeline (fetches data from D1)
   4. Logs all events to console
 
 EXPECTED BEHAVIOR
   ✓ Cron trigger fires successfully
   ✓ Disposable domains update starts
-  ✓ Training pipeline fetches data from Analytics Engine
+  ✓ Training pipeline fetches data from D1
 
   ⚠️  Training may fail with "Insufficient samples" - this is normal!
-     Training requires 500+ samples in Analytics Engine over 7 days.
-     Generate traffic to populate Analytics Engine first.
+     Training requires 500+ samples in D1 over 7 days.
+     Generate traffic to populate the validations table first.
 
 DOCS
   https://developers.cloudflare.com/workers/configuration/cron-triggers/#test-cron-triggers-locally
@@ -137,15 +137,14 @@ DOCS
 		console.log('📊 Check your wrangler dev logs for:');
 		console.log('   ✓ "cron_triggered" event');
 		console.log('   ✓ "disposable_domains_update_started" event');
-		console.log('   ✓ "training_pipeline_started" event');
-		console.log('');
-		console.log('⚠️  Expected Error (Normal):');
-		console.log('   "Insufficient training data" - Training needs 500+ Analytics Engine samples');
-		console.log('   "Analytics Engine credentials not configured" - Missing env vars for local dev');
-		console.log('');
+  console.log('   ✓ "training_pipeline_started" event');
+  console.log('');
+  console.log('⚠️  Expected Error (Normal):');
+  console.log('   "Insufficient training data" - Training needs 500+ D1 samples');
+  console.log('');
 		console.log('🔍 Next Steps:');
 		console.log('   1. Generate validation traffic: curl -X POST http://localhost:8787/validate -H "Content-Type: application/json" -d \'{"email":"test@example.com"}\'');
-		console.log('   2. Wait for Analytics Engine to populate (production only)');
+  console.log('   2. Wait for D1 to accumulate validation data (production only)');
 		console.log('   3. Training runs automatically every 6 hours in production');
 		console.log('');
 	} catch (error) {

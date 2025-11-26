@@ -14,13 +14,9 @@
     "patternRisk": 0.5
   },
   "features": {
-    "enableMxCheck": false,
     "enableDisposableCheck": false,
     "enablePatternCheck": true,
-    "enableNGramAnalysis": true,
     "enableTLDRiskProfiling": false,
-    "enableBenfordsLaw": true,
-    "enableKeyboardWalkDetection": true,
     "enableMarkovChainDetection": true
   },
   "logging": {
@@ -35,11 +31,8 @@
   },
   "actionOverride": "allow",
   "riskWeights": {
-    "entropy": 0.10,
     "domainReputation": 0.05,
-    "tldRisk": 0.05,
-    "patternDetection": 0.40,
-    "markovChain": 0.40
+    "tldRisk": 0.05
   },
   "patternThresholds": {
     "sequential": 0.75,

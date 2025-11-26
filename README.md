@@ -25,19 +25,11 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 - ✅ Unified CLI management system
 
 ### Latest Updates (v2.4.2 - 2025-01-12)
-- 🎯 **Trust Markov Models** - Removed hardcoded pattern overrides
-  - **Removed**: Sequential pattern override (0.8 fixed score)
-  - **Removed**: Plus-addressing override (0.6 fixed score)
-  - **Why**: Markov models trained on 111K+ emails handle these patterns naturally
-  - **Plus-addressing**: No longer penalized (person+filter@gmail.com is legitimate)
-- 📈 **Improved Precision** - 70.4% → 83.3% (+13%)
-  - **False positives**: 8 → 3 (62% reduction!)
-  - **Better UX**: Fewer legitimate users blocked
-  - **Trade-off**: Recall dropped 95% → 75% (sequential fraud now gets "warn" for manual review)
-- 🧠 **Philosophy**: "Algorithmic > Hardcoded"
-  - Let trained models make decisions, not manual rules
-  - Sequential fraud detection now relies on Markov confidence
-  - Dated patterns still use dynamic confidence (0.2-0.9 based on age)
+- 🧮 **Scoring Clarifications** – Two-dimensional Markov scoring remains the source of truth. Sequential pattern detection is now observability-only, while dated patterns and plus-addressing still contribute deterministic risk (0.2‑0.9) when abuse is detected.
+- ⚙️ **Configurable Domain Signals** – `riskWeights.domainReputation` (default 0.2) and `riskWeights.tldRisk` (0.3) are runtime-tunable so you can dial domain/TLD influence without redeploying.
+- 🗄️ **D1 Metrics Backend** – All validation, training, and admin metrics write to a Cloudflare D1 database. Analytics Engine references in older docs have been removed.
+- 🧪 **A/B Experiments Everywhere** – Active experiments stored in KV are now applied at the middleware layer, logged to D1, exposed via `/admin/ab-test/status`, and rendered inside the dashboard overview.
+- 📝 **Documentation Refresh** – README + `/docs` now mirror the live codebase (plus-addressing scoring, D1 storage, deprecated detectors, and missing whitelist APIs are all documented accurately).
 
 ### Previous Updates (v2.4.1 - 2025-01-12)
 - 🎯 **Piecewise OOD Thresholds** - Enhanced two-tier threshold system
@@ -151,7 +143,7 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 | Detector | Description | Status |
 |----------|-------------|--------|
 | **Markov Chain (N-grams)** | **PRIMARY**: 2-gram & 3-gram character patterns (111K+ trained) | ✅ Active |
-| **Pattern Classification** | Detects sequential, dated, formatted, and other pattern families | ✅ Active |
+| **Pattern Classification** | Extracts sequential/dated/plus families for observability (only dated feeds scoring) | ✅ Active (observability) |
 | **TLD Risk Scoring** | 143 TLDs categorized by risk level | ✅ Active |
 | **Plus-Addressing** | Email normalization and abuse detection (user+tag) | ✅ Active |
 | **Benford's Law** | Statistical batch anomaly detection | ✅ Active |
@@ -159,7 +151,7 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 | **Keyboard Mashing** | Region clustering patterns | ⚠️ DEPRECATED v2.2.0 |
 | **N-Gram Gibberish** | Multi-language gibberish detection | ⚠️ DEPRECATED v2.2.0 |
 
-> **Note**: Keyboard walk, keyboard mashing, and gibberish detectors were deprecated in v2.2.0 due to high false positive rates (33%). These patterns are now accurately detected by the Markov Chain model.
+> **Note**: Sequential and formatted families still show up in telemetry, but only dated patterns (and plus-addressing abuse) influence scoring. Keyboard walk, keyboard mashing, and gibberish detectors were deprecated in v2.2.0—Markov now covers those signals.
 
 ### Smart Features
 - **Markov-First Detection**: Trained on 111K+ legitimate + 105K fraud emails - no hardcoded heuristics
@@ -167,6 +159,7 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 - **Multi-Language Support**: Detects names in English, Spanish, French, German, Italian, Portuguese, Romanized languages
 - **International Coverage**: 143 TLDs including major country codes and high-risk domains
 - **Pattern Families**: Groups similar abuse patterns for tracking (e.g., user1@, user2@, user3@)
+- **Live A/B Experiments**: Treatment overrides for configuration/tuning without redeploying
 
 ---
 
@@ -325,8 +318,8 @@ npm run cli test:multilang
 # Manage KV storage
 npm run cli kv:list --binding MARKOV_MODEL --remote
 
-# Query analytics
-npm run cli analytics:query "SELECT COUNT(*) FROM ANALYTICS_DATASET"
+# Query D1 analytics
+npm run cli analytics:query "SELECT COUNT(*) FROM validations"
 npm run cli analytics:stats --last 24
 
 # Test API
@@ -426,31 +419,64 @@ Update configuration without redeployment using the Admin API:
 curl https://your-worker.workers.dev/admin/config \
   -H "X-API-Key: your-admin-api-key"
 
-# Update risk weights
+# Update domain/TLD risk weights
 curl -X PUT https://your-worker.workers.dev/admin/config \
   -H "X-API-Key: your-admin-api-key" \
   -H "Content-Type: application/json" \
   -d '{
     "riskWeights": {
-      "entropy": 0.05,
-      "domainReputation": 0.15,
-      "tldRisk": 0.15,
-      "patternDetection": 0.30,
-      "markovChain": 0.35
+      "domainReputation": 0.25,
+      "tldRisk": 0.35
     }
   }'
 
-# Manage whitelist
-curl -X POST https://your-worker.workers.dev/admin/whitelist \
+# Toggle detectors
+curl -X PATCH https://your-worker.workers.dev/admin/config \
   -H "X-API-Key: your-admin-api-key" \
+  -H "Content-Type: application/json" \
   -d '{
-    "type": "domain",
-    "pattern": "mycompany.com",
-    "confidence": 0.8
+    "features": {
+      "enableDisposableCheck": true,
+      "enablePatternCheck": true,
+      "enableTLDRiskProfiling": true,
+      "enableMarkovChainDetection": true
+    }
   }'
 ```
 
 **Complete Configuration Guide**: See [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+
+## 🧪 A/B Testing
+
+Use the unified CLI to roll out configuration experiments without redeploying:
+
+```bash
+# Create experiment (writes ab_test_config to CONFIG KV)
+npm run cli ab:create \
+  --experiment-id "markov_tweaks" \
+  --description "Adjust domain weights" \
+  --treatment-weight 15 \
+  --treatment-config '{"riskWeights":{"domainReputation":0.25,"tldRisk":0.35}}'
+
+# Inspect status (CLI or dashboard uses /admin/ab-test/status)
+npm run cli ab:status --remote
+```
+
+The worker automatically:
+
+- Assigns control/treatment variants via fingerprint hashing
+- Applies treatment overrides to the loaded config
+- Logs `experiment_id`, `variant`, and `bucket` in every D1 validation row
+- Adds `experimentId`/`experimentVariant` to `/validate` responses and HTTP headers
+
+Analyze results in the dashboard’s overview card, data explorer, or via SQL:
+
+```sql
+SELECT experiment_id, variant, COUNT(*) AS samples, AVG(risk_score) AS avg_risk
+FROM validations
+WHERE experiment_id IS NOT NULL
+GROUP BY experiment_id, variant;
+```
 
 ---
 

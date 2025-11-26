@@ -16,6 +16,9 @@ export interface ValidationSignals {
   isDisposableDomain?: boolean;
   isFreeProvider?: boolean;
   domainReputationScore?: number;
+  experimentId?: string;
+  experimentVariant?: 'control' | 'treatment';
+  experimentBucket?: number;
   // Pattern detection signals
   patternFamily?: string;
   patternType?: string;

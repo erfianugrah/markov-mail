@@ -61,7 +61,7 @@ Examples:
     --description "Test Bot Management at 1% weight" \\
     --treatment-weight 10 \\
     --duration 7 \\
-    --treatment-config '{"riskWeights":{"botRisk":0.01,"patternDetection":0.29}}'
+    --treatment-config '{"riskWeights":{"domainReputation":0.15,"tldRisk":0.35}}'
 
   # Deploy to production KV
   npm run cli ab:create \\

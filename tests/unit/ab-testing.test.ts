@@ -134,13 +134,9 @@ describe('A/B Testing Framework', () => {
 					tldRisk: 0.3,
 				},
 				features: {
-					enableMxCheck: false,
 					enableDisposableCheck: true,
 					enablePatternCheck: true,
-					enableNGramAnalysis: true,
 					enableTLDRiskProfiling: true,
-					enableBenfordsLaw: true,
-					enableKeyboardWalkDetection: true,
 					enableMarkovChainDetection: true,
 				},
 				logging: {
@@ -240,13 +236,9 @@ describe('A/B Testing Framework', () => {
 					tldRisk: 0.3,
 				},
 				features: {
-					enableMxCheck: false,
 					enableDisposableCheck: true,
 					enablePatternCheck: true,
-					enableNGramAnalysis: true,
 					enableTLDRiskProfiling: true,
-					enableBenfordsLaw: true,
-					enableKeyboardWalkDetection: true,
 					enableMarkovChainDetection: true,
 				},
 				logging: {

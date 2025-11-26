@@ -76,32 +76,33 @@ These settings are **actively used** in scoring:
   },
 
   "features": {
-    "enableMarkovChainDetection": true,      // Primary detector
-    "enableKeyboardWalkDetection": true,     // Secondary override
-    "enablePatternCheck": true,              // Sequential/dated patterns
-    "enableDisposableCheck": true,           // Hard blocker
-    // ... other feature flags
+    "enableMarkovChainDetection": true,      // Primary detector + OOD
+    "enablePatternCheck": true,              // Pattern telemetry + dated scoring
+    "enableDisposableCheck": true,           // Disposable/KV blocker
+    "enableTLDRiskProfiling": true           // Domain risk add-on
   }
 }
 ```
 
-### Deprecated Settings (v2.0+)
+### Domain Weights
 
-These settings are **ignored** in v2.0+ scoring:
+Only domain-related weights are configurable; everything else is handled automatically by Markov/OOD scoring.
 
 ```json
 {
   "riskWeights": {
-    // ALL VALUES IGNORED - kept for backwards compatibility only
-    "entropy": 0.05,            // Not used
-    "domainReputation": 0.10,   // Now fixed at 0.2
-    "tldRisk": 0.10,            // Now fixed at 0.1
-    "patternDetection": 0.50,   // Pattern overrides used instead
-    "markovChain": 0.25         // Confidence used directly
+    "domainReputation": 0.20,
+    "tldRisk": 0.30
   },
 
+```
+
+### Deprecated Settings
+
+```json
+{
   "baseRiskScores": {
-    "highEntropy": 0.7  // Entropy pre-check removed in v2.0+
+    "highEntropy": 0.7  // Entropy pre-check removed
   }
 }
 ```

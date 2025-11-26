@@ -24,6 +24,21 @@ export interface QueryResult {
   rows?: number;
 }
 
+export interface ExperimentStatus {
+  hasExperiment: boolean;
+  isActive: boolean;
+  config?: {
+    experimentId: string;
+    description?: string;
+    startDate: string;
+    endDate: string;
+    variants: {
+      control: { weight: number };
+      treatment: { weight: number; config?: Record<string, unknown> };
+    };
+  };
+}
+
 // Helper to build time filter WHERE clause (D1/SQLite syntax)
 function buildTimeFilter(hours: number): string {
   // For "all time", query last 6 months
@@ -524,4 +539,27 @@ export async function loadPatternConfidence(hours: number = 24) {
   }
 
   return Array.from(buckets.entries()).map(([range, count]) => ({ range, count }));
+}
+
+export async function loadExperimentStatus(): Promise<ExperimentStatus> {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error('API key not set. Please enter your API key.');
+  }
+
+  const response = await fetch(`${API_BASE}/admin/ab-test/status`, {
+    headers: {
+      'X-API-Key': apiKey,
+    },
+  });
+
+  if (response.status === 404 || response.status === 503) {
+    return { hasExperiment: false, isActive: false };
+  }
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
 }

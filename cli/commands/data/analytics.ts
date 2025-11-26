@@ -1,125 +1,115 @@
 /**
- * Analytics Commands
+ * Analytics Commands (D1/Admin API)
  *
- * MIGRATION NOTE: These commands still use Analytics Engine REST API.
- * For D1 queries, use wrangler d1 commands instead:
- *   npx wrangler d1 execute ANALYTICS --remote --command="<SQL>"
- *
- * Or query via the admin API:
- *   curl https://your-worker.workers.dev/admin/analytics?hours=24 \
- *     -H "X-API-Key: $X_API_KEY"
- *
- * TODO: Migrate CLI to use D1 REST API or update to use admin API
+ * Runs SQL queries via /admin/analytics and prints results.
  */
 
 import { logger } from '../../utils/logger.ts';
 import { parseArgs, getOption, hasFlag } from '../../utils/args.ts';
 
-async function query(args: string[]) {
+interface ApiConfig {
+  url: string;
+  apiKey: string;
+}
+
+function normalizeBaseUrl(url: string): string {
+  return url.endsWith('/') ? url.slice(0, -1) : url;
+}
+
+function getApiConfig(parsed: ReturnType<typeof parseArgs>): ApiConfig {
+  const url =
+    (getOption(parsed, 'url') as string | undefined) ||
+    process.env.FRAUD_API_URL ||
+    'http://localhost:8787';
+
+  const apiKey =
+    (getOption(parsed, 'api-key') as string | undefined) ||
+    process.env.FRAUD_API_KEY;
+
+  if (!apiKey) {
+    logger.error('Missing API key. Set FRAUD_API_KEY or use --api-key.');
+    process.exit(1);
+  }
+
+  return { url: normalizeBaseUrl(url), apiKey };
+}
+
+async function runQuery(args: string[]) {
   const parsed = parseArgs(args);
   const sql = parsed.positional[0];
 
   if (!sql) {
     logger.error('SQL query is required');
-    console.log('\nUsage: npm run cli analytics:query "<sql>"');
+    console.log('\nUsage: npm run cli analytics:query "<sql>" [--hours <n>] [--url <base>] [--api-key <key>] [--format json|table]');
     process.exit(1);
   }
 
-  const format = getOption(parsed, 'format') || 'json';
-  const apiKey = process.env.CLOUDFLARE_API_KEY;
-  const email = process.env.CLOUDFLARE_EMAIL;
-  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-
-  if (!apiKey || !email || !accountId) {
-    logger.error('Missing environment variables:');
-    logger.info('CLOUDFLARE_API_KEY');
-    logger.info('CLOUDFLARE_EMAIL');
-    logger.info('CLOUDFLARE_ACCOUNT_ID');
-    process.exit(1);
-  }
+  const hours = parseInt(getOption(parsed, 'hours') || '24', 10);
+  const format = (getOption(parsed, 'format') as string) || 'json';
+  const { url, apiKey } = getApiConfig(parsed);
 
   logger.section('📊 Analytics Query');
-  logger.info(`SQL: ${sql}\n`);
+  logger.info(`SQL: ${sql}`);
+  logger.info(`Hours: ${hours}`);
+  logger.info(`Endpoint: ${url}/admin/analytics\n`);
 
-  try {
-    const response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${accountId}/analytics_engine/sql`,
-      {
-        method: 'POST',
-        headers: {
-          'X-Auth-Key': apiKey,
-          'X-Auth-Email': email,
-          'Content-Type': 'application/json'
-        },
-        body: sql
-      }
-    );
+  const response = await fetch(`${url}/admin/analytics`, {
+    method: 'POST',
+    headers: {
+      'X-API-Key': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ query: sql, hours }),
+  });
 
-    if (!response.ok) {
-      throw new Error(`Query failed: ${response.statusText}`);
-    }
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Query failed (${response.status}): ${text}`);
+  }
 
-    const data = await response.json() as { data: Record<string, any>[] };
+  const payload = await response.json() as { data?: Record<string, any>[] };
+  const rows = payload.data || [];
 
-    if (format === 'table') {
-      logger.table(data.data);
-    } else {
-      logger.json(data);
-    }
-  } catch (error) {
-    logger.error(`Query failed: ${error}`);
-    process.exit(1);
+  if (format === 'table') {
+    logger.table(rows);
+  } else {
+    logger.json(rows);
   }
 }
 
-async function stats(args: string[]) {
+async function runStats(args: string[]) {
   const parsed = parseArgs(args);
-  const hours = parseInt(getOption(parsed, 'last') || '24');
+  const hours = parseInt(getOption(parsed, 'last') || '24', 10);
+  const { url, apiKey } = getApiConfig(parsed);
 
   logger.section('📈 Analytics Statistics');
+  logger.info(`Hours: ${hours}`);
+  logger.info(`Endpoint: ${url}/admin/analytics\n`);
 
-  const queries = [
-    {
-      name: 'Total Validations',
-      sql: `SELECT COUNT(*) as total FROM ANALYTICS_DATASET WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR`
-    },
-    {
-      name: 'By Action',
-      sql: `SELECT action, COUNT(*) as count FROM ANALYTICS_DATASET WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR GROUP BY action ORDER BY count DESC`
-    },
-    {
-      name: 'Average Risk Score',
-      sql: `SELECT AVG(double1) as avg_risk FROM ANALYTICS_DATASET WHERE timestamp >= NOW() - INTERVAL '${hours}' HOUR`
-    }
+  const sections: Array<{ name: string; type: string }> = [
+    { name: 'Decision Summary', type: 'summary' },
+    { name: 'Top Block Reasons', type: 'blockReasons' },
+    { name: 'Risk Distribution', type: 'riskDistribution' },
+    { name: 'Disposable Domains', type: 'disposableDomains' },
+    { name: 'Pattern Families', type: 'patternFamilies' },
   ];
 
-  const apiKey = process.env.CLOUDFLARE_API_KEY;
-  const email = process.env.CLOUDFLARE_EMAIL;
-  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-
-  if (!apiKey || !email || !accountId) {
-    logger.error('Missing environment variables');
-    process.exit(1);
-  }
-
-  for (const { name, sql } of queries) {
-    logger.subsection(name);
-
+  for (const section of sections) {
+    logger.subsection(section.name);
     try {
       const response = await fetch(
-        `https://api.cloudflare.com/client/v4/accounts/${accountId}/analytics_engine/sql`,
+        `${url}/admin/analytics?type=${section.type}&hours=${hours}`,
         {
-          method: 'POST',
-          headers: {
-            'X-Auth-Key': apiKey,
-            'X-Auth-Email': email
-          },
-          body: sql
+          headers: { 'X-API-Key': apiKey },
         }
       );
 
-      const data = await response.json() as { data: Record<string, any>[] };
-      logger.table(data.data);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const payload = await response.json() as { data?: Record<string, any>[] };
+      logger.table(payload.data || []);
     } catch (error) {
       logger.error(`Failed: ${error}`);
     }
@@ -132,37 +122,29 @@ export default async function analytics(args: string[]) {
   if (hasFlag(parsed, 'help', 'h')) {
     console.log(`
 ╔════════════════════════════════════════════════════════╗
-║        DEPRECATED - Migrated to D1 Database            ║
+║        D1 Analytics (via /admin/analytics)             ║
 ╚════════════════════════════════════════════════════════╝
 
-⚠️  This CLI tool queries the old Analytics Engine.
-   Use the admin API or wrangler d1 commands instead:
+Query and analyze fraud detection analytics stored in D1.
 
-   npx wrangler d1 execute ANALYTICS --remote --command "SELECT..."
-   curl https://your-worker.workers.dev/admin/analytics?type=summary
-
-Query and analyze fraud detection analytics.
+Environment:
+  FRAUD_API_URL   Base URL (default: http://localhost:8787)
+  FRAUD_API_KEY   Admin API key (required)
 
 USAGE
-  npm run cli analytics:<command> [options]
-
-COMMANDS
-  analytics:query "<sql>"   Run SQL query
-  analytics:stats           Show statistics
+  npm run cli analytics:query "<sql>" [--hours <n>] [--format json|table]
+  npm run cli analytics:stats [--last <hours>]
 
 OPTIONS
-  --format <type>           Output format: json|table (default: json)
-  --last <hours>            Last N hours for stats (default: 24)
-  --help, -h                Show this help message
-
-ENVIRONMENT VARIABLES
-  CLOUDFLARE_API_KEY        Your Cloudflare API key
-  CLOUDFLARE_EMAIL          Your Cloudflare email
-  CLOUDFLARE_ACCOUNT_ID     Your Cloudflare account ID
+  --url <base>           Override API base URL (default: FRAUD_API_URL or http://localhost:8787)
+  --api-key <key>        Override API key (default: FRAUD_API_KEY)
+  --hours <n>            Time range for query command (default: 24)
+  --last <hours>         Time range for stats command (default: 24)
+  --format <type>        Output format for query: json|table (default: json)
+  --help, -h             Show this help message
 
 EXAMPLES
-  npm run cli analytics:query "SELECT COUNT(*) FROM ANALYTICS_DATASET"
-  npm run cli analytics:query "SELECT * FROM ANALYTICS_DATASET LIMIT 10" --format table
+  npm run cli analytics:query "SELECT COUNT(*) AS total FROM validations"
   npm run cli analytics:stats --last 48
 `);
     return;
@@ -170,8 +152,8 @@ EXAMPLES
 
   const command = process.argv[3];
   if (command.includes(':query')) {
-    await query(args);
+    await runQuery(args);
   } else if (command.includes(':stats')) {
-    await stats(args);
+    await runStats(args);
   }
 }

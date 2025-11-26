@@ -839,12 +839,11 @@ LIMIT 100</textarea>
     <div class="tab-content" id="tab-management">
         <div class="panel">
             <div class="panel-header">
-                <div class="panel-title">Analytics Engine Data Management</div>
+                <div class="panel-title">D1 Data Management</div>
             </div>
             <div class="panel-body">
                 <div class="info-box">
-                    <strong>ℹ️ Important:</strong> Cloudflare Analytics Engine data is immutable and cannot be deleted directly.
-                    Data is automatically retained for 6 months. Use the tools below to generate SQL filters to exclude unwanted data from queries.
+                    <strong>ℹ️ Important:</strong> Cloudflare D1 is a relational database. Deletions are permanent, so generate SQL filters to exclude or remove records deliberately.
                 </div>
 
                 <h3 style="margin-top: 30px; margin-bottom: 15px;">Filter by Time Range</h3>
@@ -2057,7 +2056,7 @@ LIMIT 100</textarea>
             // Basic SQL validation warning
             const dangerousPatterns = /DROP|DELETE|UPDATE|INSERT|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE/i;
             if (dangerousPatterns.test(sql)) {
-                showNotification('Warning: Potentially dangerous SQL keywords detected. Analytics Engine is read-only, but be cautious.', 'warning', 10000);
+                showNotification('Warning: Potentially dangerous SQL keywords detected. D1 allows writes—double check before executing.', 'warning', 10000);
             }
 
             showLoading('query-result');

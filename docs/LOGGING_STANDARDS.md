@@ -7,7 +7,7 @@ This document defines the logging and observability standards for the Bogus Emai
 1. [Overview](#overview)
 2. [Logging Architecture](#logging-architecture)
 3. [Structured Logging with Pino](#structured-logging-with-pino)
-4. [Analytics Engine Metrics](#analytics-engine-metrics)
+4. [D1 Metrics](#d1-metrics)
 5. [Event Naming Conventions](#event-naming-conventions)
 6. [Privacy & Security](#privacy--security)
 7. [Examples](#examples)
@@ -20,11 +20,11 @@ This document defines the logging and observability standards for the Bogus Emai
 The system uses **two separate observability mechanisms**:
 
 1. **Pino.js Structured Logs** - For application events (training, deployments, errors)
-2. **Cloudflare Analytics Engine** - For high-volume validation metrics (per-request data)
+2. **Cloudflare D1** - For high-volume validation metrics (per-request data)
 
 ### Why Two Systems?
 
-- **Analytics Engine**: High-volume, time-series data (10,000+ requests/hour)
+- **D1**: High-volume, time-series data (10,000+ requests/hour)
   - Optimized for aggregation queries
   - Limited schema (20 blobs, 20 doubles, 1 index)
   - Used for: validation metrics, A/B test assignments, risk scores
@@ -58,7 +58,7 @@ The system uses **two separate observability mechanisms**:
             │                                   │
             ▼                                   ▼
    ┌──────────────────┐            ┌──────────────────────┐
-   │ Analytics Engine │            │ Cloudflare Workers   │
+   │ D1 Database      │            │ Cloudflare Workers   │
    │    ANALYTICS     │            │       Logs           │
    │                  │            │                      │
    │ - Validation     │            │ - Training events    │
@@ -156,7 +156,7 @@ catch (error) {
 
 ---
 
-## Analytics Engine Metrics
+## D1 Metrics
 
 ### Validation Metrics Only
 
@@ -195,19 +195,14 @@ writeValidationMetric(env.ANALYTICS, {
 
 ### Schema Design
 
-Analytics Engine has strict limits:
-- **20 blobs** (categorical strings)
-- **20 doubles** (numeric values)
-- **1 index** (for filtering)
+D1 tables are defined in `schema.sql` (see `validations`, `training_metrics`, `admin_metrics`, `ab_test_metrics`). Keep inserts lightweight (avoid large JSON blobs) to stay within D1's operation limits (~1k ops/min per database).
 
-See `src/utils/metrics.ts` for the complete schema mapping.
+### Do NOT Use D1 For:
 
-### Do NOT Use Analytics Engine For:
-
-❌ Training pipeline events
-❌ Model deployment events
-❌ Configuration changes
-❌ Low-frequency events (<1/minute)
+❌ Long-running audit logs  
+❌ Configuration changes (use KV + Pino logs)  
+❌ Extremely sparse events (<1/minute)  
+❌ Sensitive payloads that belong in Secrets/KV
 
 Use **Pino logs** for these instead.
 
@@ -445,23 +440,16 @@ npx wrangler tail
 npx wrangler tail | grep "training_completed"
 ```
 
-### Analytics Engine Queries
+### D1 Queries
 
-Query validation metrics using GraphQL or SQL:
+Query validation metrics using SQLite (via admin API or `wrangler d1`):
 
-**Example SQL Query:**
-```sql
-SELECT
-  blob1 as decision,
-  COUNT(*) as count,
-  AVG(double1) as avg_risk_score
-FROM ANALYTICS
-WHERE timestamp >= NOW() - INTERVAL '1' HOUR
-GROUP BY decision
-ORDER BY count DESC
+```bash
+npx wrangler d1 execute ANALYTICS --remote --command \
+  "SELECT decision, COUNT(*) AS total, AVG(risk_score) AS avg_risk FROM validations WHERE timestamp >= datetime('now','-1 hour') GROUP BY decision ORDER BY total DESC"
 ```
 
-See `src/utils/metrics.ts` for example dashboard queries.
+See `src/utils/metrics.ts` for example insert payloads and [`docs/ANALYTICS.md`](ANALYTICS.md) for more queries.
 
 ---
 
@@ -484,14 +472,14 @@ See `src/utils/metrics.ts` for example dashboard queries.
 - Log raw email addresses or PII
 - Log API keys or secrets
 - Create custom logging functions
-- Mix training metrics into Analytics Engine
+- Mix training metrics into D1 (they have dedicated tables already)
 - Log verbose data in tight loops
 - Use string interpolation for context (use fields instead)
 
 ### Performance Considerations
 
 - Pino is **async** by default (non-blocking)
-- Analytics Engine writes are **fire-and-forget**
+- Metric writes are **fire-and-forget** (do not block the request path)
 - Both are safe to use in hot paths
 - Avoid logging in loops (aggregate first)
 
@@ -538,6 +526,6 @@ logger.error({
 
 - [Pino.js Documentation](https://getpino.io/)
 - [Cloudflare Workers Logs](https://developers.cloudflare.com/workers/observability/logs/)
-- [Cloudflare Analytics Engine](https://developers.cloudflare.com/analytics/analytics-engine/)
+- [Cloudflare D1](https://developers.cloudflare.com/d1/)
 - Project file: `src/logger.ts`
 - Project file: `src/utils/metrics.ts`

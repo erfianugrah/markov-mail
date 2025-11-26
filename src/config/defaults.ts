@@ -33,13 +33,9 @@ export interface FraudDetectionConfig {
 
 	// Feature Toggles
 	features: {
-		enableMxCheck: boolean; // Enable MX record validation
 		enableDisposableCheck: boolean; // Enable disposable domain detection
 		enablePatternCheck: boolean; // Enable pattern detection
-		enableNGramAnalysis: boolean; // Enable gibberish detection
 		enableTLDRiskProfiling: boolean; // Enable TLD risk scoring
-		enableBenfordsLaw: boolean; // Enable batch attack detection
-		enableKeyboardWalkDetection: boolean; // Enable keyboard walk patterns
 		enableMarkovChainDetection: boolean; // Enable Markov Chain pattern detection (Phase 7)
 	};
 
@@ -149,13 +145,9 @@ export const DEFAULT_CONFIG: FraudDetectionConfig = {
 
 	// Enable all detection features by default
 	features: {
-		enableMxCheck: false, // Disabled by default (DNS overhead)
 		enableDisposableCheck: true, // Recommended
 		enablePatternCheck: true, // Recommended
-		enableNGramAnalysis: true, // Phase 6A feature
 		enableTLDRiskProfiling: true, // Phase 6A feature
-		enableBenfordsLaw: true, // Batch detection
-		enableKeyboardWalkDetection: true, // Multi-layout keyboard walks
 		enableMarkovChainDetection: true, // Phase 7 feature (high accuracy)
 	},
 

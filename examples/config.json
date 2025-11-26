@@ -14,13 +14,9 @@
     "patternRisk": 0.5
   },
   "features": {
-    "enableMxCheck": false,
     "enableDisposableCheck": true,
     "enablePatternCheck": true,
-    "enableNGramAnalysis": true,
     "enableTLDRiskProfiling": true,
-    "enableBenfordsLaw": true,
-    "enableKeyboardWalkDetection": true,
     "enableMarkovChainDetection": true
   },
   "logging": {
