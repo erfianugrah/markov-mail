@@ -45,6 +45,25 @@ export function ensemblePredict(
 	const H_legit2 = legit2.crossEntropy(localPart);
 	const H_fraud2 = fraud2.crossEntropy(localPart);
 
+	// Validate 2-gram entropy values (critical - cannot proceed without these)
+	if (!Number.isFinite(H_legit2) || !Number.isFinite(H_fraud2)) {
+		// Return safe default result if models produce invalid values
+		return {
+			isLikelyFraudulent: false,
+			crossEntropyLegit: 0,
+			crossEntropyFraud: 0,
+			crossEntropyLegit2: 0,
+			crossEntropyFraud2: 0,
+			confidence: 0,
+			differenceRatio: 0,
+			ensembleReasoning: 'invalid_entropy_fallback',
+			model2gramPrediction: 'error',
+			minEntropy: 0,
+			abnormalityScore: 0,
+			abnormalityRisk: 0,
+		};
+	}
+
 	const isLikelyFraud2 = H_fraud2 < H_legit2;
 	const diff2 = Math.abs(H_legit2 - H_fraud2);
 	const maxH2 = Math.max(H_legit2, H_fraud2);
@@ -74,6 +93,28 @@ export function ensemblePredict(
 
 	const H_legit3 = legit3.crossEntropy(localPart);
 	const H_fraud3 = fraud3.crossEntropy(localPart);
+
+	// Validate 3-gram entropy values (if invalid, fall back to 2-gram only)
+	if (!Number.isFinite(H_legit3) || !Number.isFinite(H_fraud3)) {
+		const minEntropy = Math.min(H_legit2, H_fraud2);
+		const { abnormalityScore, abnormalityRisk } = calculateAbnormality(minEntropy, config);
+
+		return {
+			isLikelyFraudulent: isLikelyFraud2,
+			crossEntropyLegit: H_legit2,
+			crossEntropyFraud: H_fraud2,
+			crossEntropyLegit2: H_legit2,
+			crossEntropyFraud2: H_fraud2,
+			confidence: confidence2,
+			differenceRatio: diffRatio2,
+			ensembleReasoning: '3gram_invalid_fallback_to_2gram',
+			model2gramPrediction: prediction2,
+			minEntropy,
+			abnormalityScore,
+			abnormalityRisk,
+		};
+	}
+
 	const isLikelyFraud3 = H_fraud3 < H_legit3;
 	const diff3 = Math.abs(H_legit3 - H_fraud3);
 	const maxH3 = Math.max(H_legit3, H_fraud3);
