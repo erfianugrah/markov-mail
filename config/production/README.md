@@ -59,25 +59,25 @@ npx wrangler kv key put config.json \
   --binding=CONFIG \
   --remote
 
-# 2. Upload Markov Chain models to your MODELS KV namespace
+# 2. Upload Markov Chain models to your MARKOV_MODEL KV namespace
 npx wrangler kv key put markov_fraud_2gram \
   --path=config/production/markov_fraud_2gram.json \
-  --binding=MODELS \
+  --binding=MARKOV_MODEL \
   --remote
 
 npx wrangler kv key put markov_fraud_3gram \
   --path=config/production/markov_fraud_3gram.json \
-  --binding=MODELS \
+  --binding=MARKOV_MODEL \
   --remote
 
 npx wrangler kv key put markov_legit_2gram \
   --path=config/production/markov_legit_2gram.json \
-  --binding=MODELS \
+  --binding=MARKOV_MODEL \
   --remote
 
 npx wrangler kv key put markov_legit_3gram \
   --path=config/production/markov_legit_3gram.json \
-  --binding=MODELS \
+  --binding=MARKOV_MODEL \
   --remote
 ```
 

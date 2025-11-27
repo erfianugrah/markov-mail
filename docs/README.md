@@ -182,12 +182,13 @@ npm run cli config:sync --remote      # Sync to production
 
 **Fraud Patterns Detected**:
 - ✅ Markov ensemble (2-gram + 3-gram) with OOD detection
+- ✅ Sequential overrides for high-confidence automation (0.45‑0.95 risk once threshold met)
 - ✅ Dated pattern overrides (0.2‑0.9 confidence)
 - ✅ Plus-addressing alias abuse (0.2‑0.9 risk)
 - ✅ Disposable domains (71K+ services) and domain reputation scoring
 - ✅ TLD risk profiling (143+ TLD categories)
 - ✅ Benford's Law (batch analysis)
-- ⚠️ Sequential/keyboard/gibberish heuristics are telemetry-only (Markov handles scoring)
+- ⚠️ Keyboard/gibberish heuristics remain telemetry-only; rely on Markov for enforcement
 
 **False-Positive Guardrails**:
 - Professional mailbox detection (info@, support@, admin@, etc.)

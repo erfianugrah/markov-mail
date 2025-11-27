@@ -512,8 +512,7 @@ WORKER_URL=https://your-worker.workers.dev npm run test:e2e
 - **[Getting Started](docs/GETTING_STARTED.md)** - Setup and quickstart
 - **[API Reference](docs/API.md)** - Complete API documentation
 - **[Architecture](docs/ARCHITECTURE.md)** - System design deep dive
-- **[Detectors Guide](docs/DETECTORS.md)** - All 8 fraud detection algorithms
-- **[Keyboard Detection Summary](docs/KEYBOARD_DETECTION_SUMMARY.md)** - Keyboard detection improvements
+- **[Detectors Guide](docs/DETECTORS.md)** - Active detectors and telemetry
 - **[Risk Scoring](docs/SCORING.md)** - Complete scoring system with examples
 - **[Configuration](docs/CONFIGURATION.md)** - Configuration management
 - **[Analytics](docs/ANALYTICS.md)** - D1 Database analytics and dashboard
@@ -524,7 +523,6 @@ WORKER_URL=https://your-worker.workers.dev npm run test:e2e
 
 ### Recent Updates
 - **[CHANGELOG](CHANGELOG.md)** - Version history
-- **[Detector Audit](docs/DETECTOR_AUDIT.md)** - Detector cleanup audit (2025-01-07)
 
 ### CLI & Development
 - **[CLI Documentation](cli/README.md)** - Command-line interface guide

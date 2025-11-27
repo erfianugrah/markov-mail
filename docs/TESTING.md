@@ -387,7 +387,7 @@ describe('POST /validate', () => {
 
 ### Run Specific Test File
 ```bash
-npx vitest tests/unit/detectors/sequential.test.ts
+npx vitest tests/unit/detectors/pattern-detectors.test.ts
 ```
 
 ### Run Tests in Watch Mode

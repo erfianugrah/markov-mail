@@ -169,7 +169,7 @@ The configuration system includes:
 
 **Feature Flags:**
 - `enableDisposableCheck`: true (KV-backed disposable domain list)
-- `enablePatternCheck`: true (pattern-family extraction for telemetry + dated scoring)
+- `enablePatternCheck`: true (pattern-family extraction for sequential/dates; sequential scoring kicks in once confidence ≥ threshold, otherwise telemetry)
 - `enableTLDRiskProfiling`: true (TLD risk profiles)
 - `enableMarkovChainDetection`: true (Markov ensemble + OOD)
 

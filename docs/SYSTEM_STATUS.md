@@ -24,7 +24,7 @@ Markov-first detection with OOD scoring + D1 analytics is healthy. All scheduled
 - ✅ A/B Pipeline: `ab_test_config` key + `/admin/ab-test/status` powering dashboard experiment card
 
 ### Recent Changes (v2.4.2)
-- Clarified scoring hooks (dated + plus-addressing risk, sequential telemetry-only)
+- Clarified scoring hooks (dated + plus-addressing risk + sequential overrides when confidence clears threshold; sub-threshold hits stay telemetry-only)
 - Added configurable domain/TLD weights + professional email adjustments
 - Migrated docs to D1 terminology
 
