@@ -126,7 +126,7 @@ export async function loadStats(hours: number = 24): Promise<Stats> {
     });
   }
 
-  const total = blocks + warns + allows || 1;
+  const total = blocks + warns + allows;
   const avgRow = avgsResult.data?.[0] || {};
 
   return {
@@ -134,8 +134,8 @@ export async function loadStats(hours: number = 24): Promise<Stats> {
     totalBlocks: blocks,
     totalWarns: warns,
     totalAllows: allows,
-    blockRate: (blocks / total) * 100,
-    warnRate: (warns / total) * 100,
+    blockRate: total > 0 ? (blocks / total) * 100 : 0,
+    warnRate: total > 0 ? (warns / total) * 100 : 0,
     avgRiskScore: Number(avgRow.avg_risk) || 0,
     avgLatency: Number(avgRow.avg_latency) || 0,
   };
