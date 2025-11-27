@@ -197,6 +197,10 @@ app.post('/validate', async (c) => {
 	// Get calibration metadata
 	let calibrationMetadata: Record<string, any> | undefined;
 	try {
+		if (!c.env.CONFIG) {
+			throw new Error('CONFIG binding not available');
+		}
+
 		const config = await getConfig(c.env.CONFIG, {
 			'X-API-KEY': c.env['X-API-KEY'],
 			ORIGIN_URL: c.env.ORIGIN_URL,

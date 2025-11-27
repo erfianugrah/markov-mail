@@ -37,6 +37,13 @@ export interface ValidationSignals {
   markovConfidence?: number;
   markovCrossEntropyLegit?: number;
   markovCrossEntropyFraud?: number;
+  // Calibration signals
+  calibratedFraudProbability?: number;
+  classificationRisk?: number;
+  domainRisk?: number;
+  ensembleBoost?: number;
+  plusAddressingRisk?: number;
+  sequentialPatternRisk?: number;
 }
 
 export interface EmailValidationResult {
