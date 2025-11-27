@@ -25,7 +25,9 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 - ✅ Unified CLI management system
 
 ### Latest Updates (v2.4.2 - 2025-01-12)
-- 🧮 **Scoring Clarifications** – Two-dimensional Markov scoring remains the source of truth. Sequential pattern detection is now observability-only, while dated patterns and plus-addressing still contribute deterministic risk (0.2‑0.9) when abuse is detected.
+- 🧮 **Scoring Clarifications** – Two-dimensional Markov scoring remains the source of truth. Sequential pattern detection is back in the scoring path for obvious automation, while plus-addressing keeps its 0.2‑0.9 deterministic contribution (baseline 0.2 for any plus tag, +0.3 for suspicious tags, +0.4 for alias abuse).
+- 🧱 **Short-Local OOD Guardrail** – Abnormality risk now ramps with local-part length (≤4 chars = 0 risk, 5‑12 chars scale up). This keeps classic four-character addresses (e.g., `timc@…`) from being auto-warned while still flagging true gibberish. After deploying the clamp, rerun `npm run cli train:calibrate … --upload` so the calibration layer reflects the new scoring curve.
+- 🎚️ **Calibration as a Boost** – The logistic calibration layer now only elevates risk; it never suppresses the base Markov confidence. If calibration drifts, you still get the original Markov behavior rather than a sudden zero-risk system.
 - ⚙️ **Configurable Domain Signals** – `riskWeights.domainReputation` (default 0.2) and `riskWeights.tldRisk` (0.3) are runtime-tunable so you can dial domain/TLD influence without redeploying.
 - 🗄️ **D1 Metrics Backend** – All validation, training, and admin metrics write to a Cloudflare D1 database. Analytics Engine references in older docs have been removed.
 - 🧪 **A/B Experiments Everywhere** – Active experiments stored in KV are now applied at the middleware layer, logged to D1, exposed via `/admin/ab-test/status`, and rendered inside the dashboard overview.
@@ -143,7 +145,7 @@ A Cloudflare Workers-based fraud detection API that identifies fraudulent email 
 | Detector | Description | Status |
 |----------|-------------|--------|
 | **Markov Chain (N-grams)** | **PRIMARY**: 2-gram & 3-gram character patterns (111K+ trained) | ✅ Active |
-| **Pattern Classification** | Extracts sequential/dated/plus families for observability (only dated feeds scoring) | ✅ Active (observability) |
+| **Pattern Classification** | Extracts sequential/dated/plus families; dated patterns always contribute risk, sequential patterns only score when confidence ≥ threshold | ✅ Active |
 | **TLD Risk Scoring** | 143 TLDs categorized by risk level | ✅ Active |
 | **Plus-Addressing** | Email normalization and abuse detection (user+tag) | ✅ Active |
 | **Benford's Law** | Statistical batch anomaly detection | ✅ Active |
@@ -564,7 +566,7 @@ personC.personD@outlook.com → Risk: 0.12 (allow)
 
 ### ⚠️ Suspicious Patterns (Warn)
 ```
-user+test@gmail.com        → Risk: 0.35 (warn) - Plus-addressing
+user+test@gmail.com        → Risk: 0.50 (warn) - Plus-addressing
 newuser2024@hotmail.com    → Risk: 0.42 (warn) - Dated pattern
 ```
 

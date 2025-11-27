@@ -104,8 +104,8 @@ docs/
 
 ### Detection Stack (v2.4.2)
 
-- **Markov Chain (2-gram + 3-gram)** – Primary scoring, cross-entropy, and OOD detection
-- **Pattern Classification** – Extracts sequential/dated/simple families for observability (only dated feeds scoring)
+- **Markov Chain (2-gram + 3-gram)** – Primary scoring, cross-entropy, and OOD detection (with short-local clamp that zeroes abnormality risk for ≤4 character locals and ramps 5‑12). Logistic calibration is treated as a boost on top of Markov confidence, never a replacement.
+- **Pattern Classification** – Extracts sequential/dated/simple families; dated patterns always score, sequential patterns feed scoring only when confidence clears configured thresholds (legit ≤3-digit suffixes stay observability-only)
 - **Plus-Addressing Risk Scorer** – Normalizes aliases and assigns 0.2‑0.9 risk when abuse is detected
 - **Disposable/TLD Signals** – KV-backed disposable list + TLD risk profiles
 - **Benford's Law** – Optional batch analysis for large datasets
@@ -126,7 +126,7 @@ See [Detectors Guide](DETECTORS.md) for complete technical details.
 **Two-Dimensional Markov Approach (v2.4.x)**:
 1. **Classification Risk** – Fraud vs legit cross-entropy difference
 2. **Abnormality Risk** – OOD detection using min(H_legit, H_fraud) with piecewise thresholds (3.8 warn / 5.5 block)
-3. **Deterministic Signals** – Dated patterns (0.2‑0.9) + plus-addressing risk helper (0.2 base + suspicious tag/group boosts)
+3. **Deterministic Signals** – Dated patterns (0.2‑0.9), sequential overrides for high-confidence automation (0.45‑0.95), plus-addressing risk helper (0.2 base + suspicious tag/group boosts)
 4. **Domain Signals** – `riskWeights.domainReputation` (default 0.2) + `riskWeights.tldRisk` (0.3)
 
 Final score = `max(classificationRisk, abnormalityRisk)` + domain signals (+ ensemble boost when Markov + TLD agree). See [SCORING.md](SCORING.md) for full details.

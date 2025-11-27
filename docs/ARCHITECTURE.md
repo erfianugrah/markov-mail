@@ -875,7 +875,7 @@ Analytics (async):   ~0.3ms (non-blocking)
 - TLD risk (Phase 6A)
 
 **Medium Confidence, Fast** (pattern telemetry):
-- Sequential/structured families (observability)
+- Sequential/structured families (observability by default; high-confidence hits feed risk scoring)
 - Plus-addressing normalization
 - Dated pattern override (0.2-0.9)
 

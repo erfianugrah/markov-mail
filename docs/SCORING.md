@@ -154,18 +154,41 @@ function calculateAlgorithmicRiskScore({
   config
 }) {
   // Dimension 1: Classification risk (fraud vs legit)
-  const classificationRisk = markovResult?.isLikelyFraudulent
+  const baseClassificationRisk = markovResult?.isLikelyFraudulent
     ? markovResult.confidence
     : 0;
-
+  const calibrationFeatures = buildCalibrationFeatureMap(/* ... */);
+  const calibratedProbability = config.calibration
+    ? applyCalibration(config.calibration, calibrationFeatures)
+    : null;
+  const classificationRisk = calibratedProbability !== null
+    ? Math.max(baseClassificationRisk, calibratedProbability)
+    : baseClassificationRisk;
   // Dimension 2: Abnormality risk (OOD)
   const abnormalityRisk = markovResult?.abnormalityRisk ?? 0;
+  const localPartLength = providerLocalPart?.length ?? 0;
+  const lengthClampedAbnormality = clampAbnormalityRiskForLocalLength(
+    abnormalityRisk,
+    localPartLength
+  );
 
-  let score = Math.max(classificationRisk, abnormalityRisk);
+  let score = Math.max(classificationRisk, lengthClampedAbnormality);
 
   // Dated patterns (deterministic override)
   if (patternFamilyResult?.patternType === 'dated') {
     score = Math.max(score, patternFamilyResult.confidence ?? 0.7);
+  }
+
+  // Sequential patterns (only when confidence clears the configured threshold)
+  if (patternFamilyResult?.patternType === 'sequential') {
+    const threshold = config.patternThresholds.sequential ?? 0.6;
+    const confidence = patternFamilyResult.confidence ?? 0;
+    if (confidence >= threshold) {
+      const sequentialRisk = Math.min(0.45 + confidence * 0.55, 0.95);
+      score = Math.max(score, sequentialRisk);
+    } else if (confidence >= Math.max(0.4, threshold * 0.8)) {
+      score = Math.max(score, confidence * 0.5);
+    }
   }
 
   // Plus-addressing abuse contributes independent risk (0.2-0.9)
@@ -184,6 +207,19 @@ function calculateAlgorithmicRiskScore({
 
   return Math.min(score + domainRisk, 1.0);
 }
+
+function clampAbnormalityRiskForLocalLength(abnormalityRisk: number, localPartLength: number): number {
+  if (!abnormalityRisk || localPartLength <= 4) {
+    return 0;
+  }
+
+  if (localPartLength >= 12) {
+    return abnormalityRisk;
+  }
+
+  const ramp = (localPartLength - 4) / (12 - 4);
+  return abnormalityRisk * ramp;
+}
 ```
 
 **Markov Chain Detection**:
@@ -199,9 +235,10 @@ Deterministic rules layered on top of Markov signals:
 | Pattern | Override Score | Example |
 |---------|---------------|---------|
 | Dated | 0.2-0.9 (dynamic) | john.2024, user_oct2024 |
+| Sequential | 0.45-0.95 (confidence dependent, only when ≥ threshold) | user001@gmail.com, test_42@yahoo.com |
 | Plus-Addressing | 0.2 base + 0.3 (suspicious tag) + 0.4 (multi-alias) | user+1@gmail.com, user+spam@gmail.com |
 
-**Note**: Sequential/keyboard/gibberish detectors are observability-only. Markov/OOD scoring handles those cases.
+**Note**: Keyboard/gibberish detectors remain observability-only; Markov/OOD (with the short-local clamp) and the sequential override handle those scenarios.
 
 **Step 3: Domain Signals**
 

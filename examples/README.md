@@ -17,7 +17,7 @@ All configs now ship with:
 
 ## Updating KV with a Calibrated Config
 
-1. Train + upload the calibration layer (writes the coefficients and merges them into `config.json` in KV):
+1. Train + upload the calibration layer (writes the coefficients and merges them into `config.json` in KV). Re-run this whenever you ship scoring changes (e.g., OOD clamp updates) so the logistic layer stays in sync:
 
 ```bash
 npm run cli train:calibrate -- \
@@ -25,6 +25,7 @@ npm run cli train:calibrate -- \
   --models models \
   --output calibration.json \
   --upload --remote
+# Add `--allow-empty` if KV doesn't have a config yet (otherwise the helper refuses to overwrite an unknown state).
 ```
 
 2. To upload one of the example configs without calibration baked in, copy it and set `calibration` to the JSON generated in step 1, then push via wrangler:

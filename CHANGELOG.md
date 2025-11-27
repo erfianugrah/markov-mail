@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Sequential detector guardrails** – Restored the ≤3 digit exemption for personal names and documented the targeted scoring path so only high-confidence automation feeds risk again.
+- **Plus-addressing scoring** – Reintroduced the 0.2 baseline contribution for any plus usage and added unit tests to enforce the full 0.2/0.3/0.4 stacking behavior promised in the docs.
+- **Calibration uploader safety** – `train:calibrate --upload` now refuses to overwrite `config.json` if it cannot read the current KV contents (pass `--allow-empty` intentionally when seeding a brand new config) so configuration tweaks are no longer lost due to transient KV failures.
+- **Short-local OOD clamp** – Abnormality risk now ramps with local-part length (≤4 chars = 0 risk, 5‑12 chars scale linearly, ≥12 unchanged) which keeps short-but-legit addresses from being falsely flagged by the OOD rail.
+- **Calibration boost guardrail** – The logistic calibration output now acts as an upper-bound adjustment (`classificationRisk = max(markovConfidence, calibrationProbability)`) so a mis-tuned calibration file can no longer zero out fraud detection entirely.
+
 ### Added
 - **A/B Experiments** – Middleware now applies treatment overrides, writes experiment metadata to D1/response headers, exposes `/admin/ab-test/status`, and surfaces experiment status inside the dashboard.
 - **D1-first CLI** – `training:extract`, `analytics:*`, and `ab:analyze` now talk to D1 (either via wrangler or `/admin/analytics`) so no Cloudflare Analytics Engine credentials are required.

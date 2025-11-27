@@ -10,7 +10,7 @@ The system uses **6 detection methods** with Markov Chain as the primary detecto
 |----------|---------|-------------------|---------|
 | **Markov Chain** | **ML fraud detection** | **All fraud patterns** | **0.10ms** |
 | **OOD Detection** | **Abnormality detection** | **Novel/unfamiliar patterns** | **+0ms** |
-| Sequential (telemetry) | Numbered accounts (observability only) | user123, test001 | 0.05ms |
+| Sequential (thresholded) | Numbered accounts (observability + scoring when high-confidence) | user123, test001 | 0.05ms |
 | Dated | Date-based patterns | john.2025, oct2024 | 0.05ms |
 | Plus-Addressing | Email aliasing abuse | user+1, user+spam | 0.10ms |
 | TLD Risk | Domain extension risk | .tk, .ml, .ga | 0.05ms |
@@ -20,9 +20,9 @@ The system uses **6 detection methods** with Markov Chain as the primary detecto
 
 ---
 
-## 1. Sequential Pattern Detector (Telemetry)
+## 1. Sequential Pattern Detector (Telemetry + Targeted Scoring)
 
-> **Status (v2.4.2)**: This detector still runs for observability/analytics, but its scoring hook was removed. Sequential patterns no longer contribute a fixed risk score; Markov/OOD scoring now handles these cases.
+> **Status (v2.4.2)**: Observability remains the default, but sequential patterns now contribute risk again when the detector is highly confident (confidence ≥ `config.patternThresholds.sequential`). Legitimate addresses with ≤3 digit suffixes and no generic bot base still bypass scoring entirely.
 
 **File**: `src/detectors/sequential.ts` (301 lines)
 
@@ -44,6 +44,7 @@ Detects emails with sequential numbering patterns common in automated bot signup
 - Exact 4-digit years: `john.2000`, `mary1985`
 - Years with month/date: `april198807` (1988 + month 07)
 - Years with suffixes: `butler198145` (1981 + suffix)
+- Personal names with **≤3 digit suffixes** (e.g., `andrew123`) also bypass scoring unless the base contains a known automation keyword (`user`, `test`, `demo`, etc.).
 
 ```typescript
 // Birth year detection (lines 28-44)
@@ -96,7 +97,21 @@ if (numbers.length > 0) {
 8. **Birth year detected (×0 - skip entirely)**
 
 ### Risk Contribution
-Sequential detection is **observability-only**. It surfaces family information in logs/metrics, but no longer adds risk directly. Use Markov signals or dated/plus detectors for enforcement.
+When `patternType === 'sequential'` **and** the detector confidence meets your configured threshold (default 0.6), the middleware applies:
+
+```ts
+let sequentialRisk = 0;
+
+if (confidence >= threshold) {
+  sequentialRisk = Math.min(0.45 + confidence * 0.55, 0.95);
+} else if (confidence >= Math.max(0.4, threshold * 0.8)) {
+  sequentialRisk = confidence * 0.5; // telemetry bump only
+}
+
+score = Math.max(score, sequentialRisk);
+```
+
+This keeps observability intact for ambiguous names while letting obvious automation sequences push overall risk near block thresholds.
 
 ---
 
