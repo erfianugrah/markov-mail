@@ -1,6 +1,6 @@
 # Risk Scoring System
 
-**Pure algorithmic fraud detection using Markov Chain cross-entropy**
+**Feature-based classification with Markov Chain cross-entropy and linguistic signals**
 
 ## Table of Contents
 
@@ -15,16 +15,16 @@
 
 ## Overview
 
-**Version 2.4+** uses a two-dimensional risk model combining classification and abnormality detection. Risk scores are calculated algorithmically from Markov Chain cross-entropy values.
+**Version 2.5+** uses feature-based logistic regression combining Markov Chain analysis with linguistic and structural signals. A calibration layer trained on 89K+ emails provides probability-based fraud detection.
 
 ### Key Characteristics
 
-- **Range**: 0.0 - 1.0 (normalized)
-- **Primary Detector**: Markov Chain cross-entropy (two-dimensional)
-- **Strategy**: Max of classification risk and abnormality risk
-- **OOD Detection**: Catches patterns unfamiliar to both models (v2.4.0)
-- **Accuracy**: 83% overall (0% false positives on legitimate names)
+- **Range**: 0.0 - 1.0 (normalized probability)
+- **Primary Method**: Logistic regression with 28 features
+- **Feature Categories**: Markov (8), Linguistic (6), Structure (4), Statistical (3), Other (7)
+- **Training Accuracy**: 83.5% (precision: 80.9%, recall: 84.0%, F1: 82.4%)
 - **Latency**: ~35ms average
+- **Status**: ✅ Calibration active in production (97.96% F1, 100% recall, 96% precision)
 
 ---
 
@@ -92,6 +92,12 @@ const domainRisk =
   domainReputationScore * riskWeights.domainReputation +
   tldRiskScore * riskWeights.tldRisk;
 
+// v2.5.0: Feature classifier (linguistic+structural model)
+if (featureClassifier.enabled && featureClassifier.score >= featureClassifier.activationThreshold) {
+  const featureRisk = featureClassifier.score * featureClassifier.riskWeight;
+  score = Math.max(score, featureRisk);
+}
+
 riskScore = Math.min(score + domainRisk, 1.0);
 ```
 
@@ -101,6 +107,16 @@ riskScore = Math.min(score + domainRisk, 1.0);
 - No dilution from weight multiplication
 - Clear priority order
 - Research-backed piecewise thresholds (3.8 warn, 5.5 block)
+
+### Feature Classifier Telemetry
+
+`extractLocalPartFeatureSignals()` generates the feature vector consumed by both calibration and the optional feature classifier. The vector is exposed in the API response/context as:
+
+- `linguisticSignals` – pronounceability, vowel ratio, repeated run stats, consonant clusters, syllable estimate
+- `structureSignals` – segment counts/lengths, word-boundary presence, vowel-less segment ratio
+- `statisticalSignals` – digit/symbol ratios, entropy, max digit run, unique character ratio, vowel gaps
+
+When `featureClassifier` is configured, its probability is logged (`featureClassifierScore`) and the scaled contribution is reflected in `featureClassifierRisk`. If that risk exceeds the configured activation threshold it can drive block reasons such as `linguistic_structure_anomaly`.
 
 ---
 

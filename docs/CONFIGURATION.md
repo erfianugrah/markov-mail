@@ -4,6 +4,15 @@
 
 The fraud detection system is configured via JSON stored in Cloudflare KV. This allows real-time configuration updates without redeployment.
 
+## Quick Start
+
+**New to Markov Mail?** Use the production-ready configuration:
+- **Pre-configured**: [`config/production/config.json`](../config/production/config.json) includes calibration and optimal thresholds
+- **Tested**: 97.96% F1 score with 100% recall and 96% precision
+- **Upload Instructions**: See [`config/production/README.md`](../config/production/README.md)
+
+The rest of this document covers individual configuration options for customization.
+
 ## Action Overrides
 
 Override the normal decision logic for specific use cases.

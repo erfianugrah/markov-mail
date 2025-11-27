@@ -4,6 +4,15 @@
 
 The calibration layer is a logistic regression model trained on top of Markov Chain outputs and metadata features. It refines the raw Markov fraud probability into a calibrated score that better matches real-world fraud rates.
 
+## Quick Start
+
+**New to Markov Mail?** Use the pre-trained production configuration:
+- See [`config/production/README.md`](../config/production/README.md) for ready-to-deploy models and calibration
+- **Production Performance**: 97.96% F1, 100% recall, 96% precision (99-email validation)
+- **No Training Data Required**: Just upload to KV and start using immediately
+
+The rest of this document covers the training workflow for advanced users who want to retrain calibration on their own data.
+
 ## Architecture
 
 ### Design Principles
@@ -52,7 +61,7 @@ The calibration model uses 15 features:
 
 ### Training Metrics
 
-Expected performance on `training_compiled.csv` (baseline dataset):
+Expected performance on `dataset/training_compiled/training_compiled.csv` (baseline dataset):
 
 | Metric | Target | Acceptable Range | Red Flag |
 |--------|--------|------------------|----------|

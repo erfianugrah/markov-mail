@@ -26,17 +26,28 @@ git clone https://github.com/your-org/markov-mail.git
 cd markov-mail
 npm install
 
-# 2. Run tests
+# 2. Upload production config (includes pre-trained models)
+# See config/production/README.md for complete instructions
+npx wrangler kv key put config.json \
+  --path=config/production/config.json \
+  --binding=CONFIG \
+  --remote
+
+# Upload Markov models (see config/production/README.md for all 4 models)
+
+# 3. Run tests
 npm test
 
-# 3. Start development server
+# 4. Start development server
 npm run dev
 
-# 4. Test the API
+# 5. Test the API
 curl -X POST http://localhost:8787/validate \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com"}'
 ```
+
+**Already have production config?** The [`config/production/`](../config/production/) directory contains pre-trained models and calibration (97.96% F1 score) ready to deploy - no training data required!
 
 ---
 

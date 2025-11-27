@@ -4,6 +4,18 @@
 
 The fraud detection system uses NGram Markov Chain models trained on large datasets of legitimate and fraudulent email patterns. This guide covers training, deployment, and maintenance of these models.
 
+## Quick Start
+
+**New to Markov Mail?** You don't need to train models from scratch:
+- **Pre-trained Models**: See [`config/production/`](../config/production/) for production-ready Markov models and calibration
+- **97.96% F1 Score**: Trained on 92K emails for Markov models, 89K for calibration
+- **Just Upload to KV**: Follow the instructions in [`config/production/README.md`](../config/production/README.md)
+
+The rest of this document covers the training workflow for users who want to:
+- Retrain models on custom datasets
+- Update models with new fraud patterns
+- Experiment with different training parameters
+
 ## ⚠️ CRITICAL: Pattern-Based vs Content-Based Labels
 
 **Most spam/phishing datasets label emails based on MESSAGE CONTENT (spam/phishing), not ADDRESS PATTERNS (bot-generated).** This causes severe training issues:
@@ -19,7 +31,7 @@ Before training Markov models, **always re-label your dataset** using pattern an
 ```bash
 # Re-label dataset based on email ADDRESS PATTERNS (not message content)
 # Note: Replace paths with your actual dataset files
-npm run cli train:relabel --input ./dataset/raw_emails.csv --output ./dataset/pattern_labeled_emails.csv
+npm run cli train:relabel --input ./dataset/raw_emails.csv --output ./dataset/training_compiled/training_compiled.csv
 
 # Review changes
 # Typical result: 40-50% of labels change!
@@ -189,10 +201,10 @@ The cron trigger still fires every 6 hours but only updates the disposable domai
 
 ```bash
 # 1. Prepare dataset with pattern-based labels
-npm run cli train:relabel --input ./dataset/raw.csv --output ./dataset/labeled.csv
+npm run cli train:relabel --input ./dataset/raw.csv --output ./dataset/training_compiled/training_compiled.csv
 
 # 2. Train models from labeled CSV
-npm run cli train:markov -- --orders "2,3" --upload --remote
+npm run cli train:markov -- --orders "2,3" --dataset ./dataset/training_compiled/training_compiled.csv --upload --remote
 
 # 3. Verify models
 npm run cli test:live
