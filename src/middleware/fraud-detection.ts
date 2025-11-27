@@ -416,9 +416,9 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       email: email.substring(0, 3) + '***',
     }, 'Starting algorithmic risk calculation');
 
-    const providerNormalizedEmail = normalizedEmailResult?.providerNormalized ?? email.toLowerCase();
-    const [providerLocalPart] = providerNormalizedEmail.split('@');
-    const localPartLength = providerLocalPart?.length ?? 0;
+  const providerNormalizedEmail = normalizedEmailResult?.providerNormalized ?? email.toLowerCase();
+  const [providerLocalPart] = providerNormalizedEmail.split('@');
+  const localPartLength = providerLocalPart?.length ?? 0;
     const digitCount = providerLocalPart ? (providerLocalPart.match(/\d/g) || []).length : 0;
     const digitRatio = localPartLength > 0 ? digitCount / localPartLength : 0;
     const sequentialConfidenceFeature = sequentialResult?.confidence ?? 0;
@@ -455,7 +455,8 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       normalizedEmailResult,
       domainValidation,
       precomputedPlusRisk,
-      calibratedProbability: calibratedFraudProbability
+      calibratedProbability: calibratedFraudProbability,
+      localPartLength
     });
     riskScore = riskCalculation.score;
     classificationRisk = riskCalculation.classificationRisk;
@@ -516,7 +517,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
    *   - Final risk: max(classification, abnormality) + domain signals
    * v2.4.2 (2025-11-12): Return risk breakdown for transparency
    */
-  function calculateAlgorithmicRiskScore(params: {
+function calculateAlgorithmicRiskScore(params: {
     email: string;
     markovResult: MarkovResult | null | undefined;
     patternFamilyResult: any;
@@ -526,6 +527,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     domainValidation: DomainValidationResult | undefined;
     precomputedPlusRisk?: number;
     calibratedProbability?: number | null;
+    localPartLength?: number;
   }): {
     score: number;
     classificationRisk: number;
@@ -542,18 +544,20 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       tldRiskScore,
       normalizedEmailResult,
       domainValidation,
-      precomputedPlusRisk,
-      calibratedProbability
-    } = params;
+    precomputedPlusRisk,
+    calibratedProbability,
+    localPartLength = 0,
+  } = params;
 
     // Check if this is a professional email
     const isProfessional = isProfessionalEmail(email);
 
     // Primary: Two-dimensional risk from Markov models (v2.4+)
     // Dimension 1: Classification risk (fraud vs legit)
-    let classificationRisk = markovResult?.isLikelyFraudulent ? markovResult.confidence : 0;
+    const baseClassificationRisk = markovResult?.isLikelyFraudulent ? markovResult.confidence : 0;
+    let classificationRisk = baseClassificationRisk;
     if (typeof calibratedProbability === 'number') {
-      classificationRisk = calibratedProbability;
+      classificationRisk = Math.max(baseClassificationRisk, calibratedProbability);
     }
     if (isProfessional && classificationRisk < 0.7) {
       classificationRisk = classificationRisk * config.adjustments.professionalEmailFactor; // v2.4.2: configurable
@@ -564,6 +568,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     if (isProfessional && abnormalityRisk > 0) {
       abnormalityRisk = abnormalityRisk * config.adjustments.professionalAbnormalityFactor;
     }
+    abnormalityRisk = clampAbnormalityRiskForLocalLength(abnormalityRisk, localPartLength);
 
     // Combined risk: Take stronger signal (independent dimensions)
     let score = Math.max(classificationRisk, abnormalityRisk);
@@ -1037,4 +1042,22 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     // Continue to next handler (fail open for better debugging)
     return next();
   }
+}
+
+export function clampAbnormalityRiskForLocalLength(abnormalityRisk: number, localPartLength: number): number {
+  if (!abnormalityRisk || !Number.isFinite(abnormalityRisk)) {
+    return abnormalityRisk;
+  }
+
+  if (!localPartLength || localPartLength <= 4) {
+    return 0;
+  }
+
+  const FULL_SIGNAL_LENGTH = 12;
+  if (localPartLength >= FULL_SIGNAL_LENGTH) {
+    return abnormalityRisk;
+  }
+
+  const ramp = (localPartLength - 4) / (FULL_SIGNAL_LENGTH - 4);
+  return abnormalityRisk * Math.max(0, Math.min(1, ramp));
 }
