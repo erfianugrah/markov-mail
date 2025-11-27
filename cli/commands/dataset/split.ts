@@ -33,12 +33,16 @@ function shuffleArray<T>(array: T[], seed?: number): T[] {
 	const shuffled = [...array];
 
 	// Simple seeded random if seed provided
-	let random = seed !== undefined
-		? () => {
-			seed = (seed * 9301 + 49297) % 233280;
-			return seed / 233280;
-		}
-		: Math.random;
+	let random: () => number;
+	if (seed !== undefined) {
+		let currentSeed = seed;
+		random = () => {
+			currentSeed = (currentSeed * 9301 + 49297) % 233280;
+			return currentSeed / 233280;
+		};
+	} else {
+		random = Math.random;
+	}
 
 	for (let i = shuffled.length - 1; i > 0; i--) {
 		const j = Math.floor(random() * (i + 1));
