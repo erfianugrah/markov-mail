@@ -184,6 +184,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
   let consumer: string | undefined;
   let flow: string | undefined;
 
+  // Try JSON first
   try {
     requestBody = await c.req.json();
     email = requestBody.email;
@@ -192,13 +193,29 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 
     // Store body for downstream handlers
     c.set('requestBody', requestBody);
+  } catch {
+    // Not JSON - try form data
+    try {
+      const formData = await c.req.formData();
+      email = formData.get('email')?.toString();
+      consumer = formData.get('consumer')?.toString();
+      flow = formData.get('flow')?.toString();
 
-    // If no email field, skip validation
-    if (!email || typeof email !== 'string') {
+      // Convert form data to object for downstream handlers
+      requestBody = {};
+      formData.forEach((value, key) => {
+        requestBody[key] = value.toString();
+      });
+      c.set('requestBody', requestBody);
+    } catch {
+      // Not form data either - skip validation
+      // This prevents processing GET requests or other non-POST methods
       return next();
     }
-  } catch {
-    // Not JSON or no body - skip validation
+  }
+
+  // If no email field, skip validation
+  if (!email || typeof email !== 'string') {
     return next();
   }
 
@@ -298,6 +315,27 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     logger.info({ event: 'markov_loading', email: email.substring(0, 3) + '***' }, 'Loading Markov models');
     const modelsLoaded = await loadMarkovModels(c.env);
     logger.info({ event: 'markov_load_result', modelsLoaded, hasLegit: !!markovLegitModel, hasFraud: !!markovFraudModel }, 'Models load result');
+
+    // FAIL-SAFE: If Markov models are required but failed to load, return 503
+    // This prevents silent failures where all emails are allowed due to zero risk scores
+    if (!markovLegitModel2gram || !markovFraudModel2gram) {
+      logger.error({
+        event: 'markov_models_missing',
+        email: email.substring(0, 3) + '***',
+        hasLegit2gram: !!markovLegitModel2gram,
+        hasFraud2gram: !!markovFraudModel2gram,
+      }, 'CRITICAL: Markov models failed to load - fraud detection unavailable');
+
+      return c.json({
+        decision: null,
+        riskScore: 0,
+        message: 'Service temporarily unavailable - fraud detection models not loaded',
+        signals: {
+          error: 'markov_models_missing',
+          formatValid: emailValidation.valid,
+        }
+      }, 503);
+    }
   }
 
   // Pattern analysis
@@ -444,6 +482,33 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       });
 
       calibratedFraudProbability = applyCalibration(config.calibration, featureMap);
+
+      // CALIBRATION HEALTH MONITORING
+      // Emit warning/metric if calibration is missing, malformed, or returns NaN
+      if (!config.calibration) {
+        logger.warn({
+          event: 'calibration_missing',
+          email: email.substring(0, 3) + '***',
+        }, 'Calibration config missing - using Markov-only scoring');
+      } else if (typeof calibratedFraudProbability !== 'number' || !Number.isFinite(calibratedFraudProbability)) {
+        logger.error({
+          event: 'calibration_invalid_output',
+          email: email.substring(0, 3) + '***',
+          calibratedProb: calibratedFraudProbability,
+          hasCalibration: !!config.calibration,
+          hasFeatureMap: !!featureMap,
+        }, 'CRITICAL: Calibration returned invalid value (NaN/undefined) - falling back to Markov-only');
+        calibratedFraudProbability = null;
+      } else {
+        // Log successful calibration application
+        logger.info({
+          event: 'calibration_applied',
+          email: email.substring(0, 3) + '***',
+          calibratedProb: calibratedFraudProbability,
+          markovConf: markovResult?.confidence,
+          version: config.calibration.version,
+        }, 'Calibration successfully applied');
+      }
     }
 
     const riskCalculation = calculateAlgorithmicRiskScore({

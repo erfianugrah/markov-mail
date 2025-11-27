@@ -282,20 +282,6 @@ app.post('/validate', async (c) => {
 	return response;
 });
 
-// Example application route: /signup
-// Demonstrates minimal response headers on fraud block
-app.post('/signup', async (c) => {
-	const body = c.get('requestBody');
-
-	// If we got here, fraud detection passed!
-	// (Middleware would have blocked if fraud was detected)
-	return c.json({
-		success: true,
-		message: 'Signup successful',
-		email: body.email
-	}, 201);
-});
-
 // 🆕 EXAMPLE ROUTES - Demonstrate automatic fraud detection
 // These routes show that ANY endpoint with 'email' field gets automatic validation
 

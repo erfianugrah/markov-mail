@@ -88,12 +88,41 @@ async function testEmail(
 }
 
 function calculateMetrics(results: TestResult[]) {
-  const totalTests = results.length;
-  const passed = results.filter(r => r.passed).length;
-  const failed = results.filter(r => !r.passed).length;
+  // Separate error results from valid test results
+  const errorResults = results.filter(r => r.actual === 'error');
+  const validResults = results.filter(r => r.actual !== 'error');
 
-  const legitimateTests = results.filter(r => r.expected === 'legit');
-  const fraudTests = results.filter(r => r.expected === 'fraud');
+  // If there are network errors, abort metrics calculation
+  if (errorResults.length > 0) {
+    const errorRate = ((errorResults.length / results.length) * 100).toFixed(2);
+    logger.error(`ABORT: ${errorResults.length} network/API errors detected (${errorRate}%) - metrics would be invalid`);
+    logger.error(`Sample errors: ${errorResults.slice(0, 3).map(r => `${r.email}: ${r.reason}`).join(', ')}`);
+
+    return {
+      totalTests: results.length,
+      errors: errorResults.length,
+      passed: 0,
+      failed: 0,
+      accuracy: 0,
+      truePositives: 0,
+      falsePositives: 0,
+      trueNegatives: 0,
+      falseNegatives: 0,
+      precision: 0,
+      recall: 0,
+      f1Score: 0,
+      avgLatency: 0,
+      aborted: true,
+      abortReason: `${errorResults.length} network/API errors - endpoint unreachable or returning errors`,
+    };
+  }
+
+  const totalTests = validResults.length;
+  const passed = validResults.filter(r => r.passed).length;
+  const failed = validResults.filter(r => !r.passed).length;
+
+  const legitimateTests = validResults.filter(r => r.expected === 'legit');
+  const fraudTests = validResults.filter(r => r.expected === 'fraud');
 
   const truePositives = fraudTests.filter(r => (r.actual === 'block' || r.actual === 'warn') && r.passed).length;
   const falseNegatives = fraudTests.filter(r => r.actual === 'allow').length;
@@ -105,10 +134,11 @@ function calculateMetrics(results: TestResult[]) {
   const recall = truePositives / (truePositives + falseNegatives) || 0;
   const f1Score = (2 * precision * recall) / (precision + recall) || 0;
 
-  const avgLatency = results.reduce((sum, r) => sum + r.latency, 0) / results.length;
+  const avgLatency = validResults.reduce((sum, r) => sum + r.latency, 0) / validResults.length;
 
   return {
     totalTests,
+    errors: 0,
     passed,
     failed,
     accuracy,
@@ -120,6 +150,7 @@ function calculateMetrics(results: TestResult[]) {
     recall: recall * 100,
     f1Score: f1Score * 100,
     avgLatency,
+    aborted: false,
   };
 }
 
