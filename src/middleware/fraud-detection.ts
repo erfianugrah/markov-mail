@@ -185,38 +185,48 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
   let flow: string | undefined;
 
   // Try JSON first
+  let bodyParsed = false;
+
   try {
     requestBody = await c.req.json();
-    email = requestBody.email;
-    consumer = requestBody.consumer;
-    flow = requestBody.flow;
-
-    // Store body for downstream handlers
-    c.set('requestBody', requestBody);
+    bodyParsed = true;
   } catch {
-    // Not JSON - try form data
     try {
       const formData = await c.req.formData();
-      email = formData.get('email')?.toString();
-      consumer = formData.get('consumer')?.toString();
-      flow = formData.get('flow')?.toString();
-
-      // Convert form data to object for downstream handlers
-      requestBody = {};
+      requestBody = {} as Record<string, string>;
       formData.forEach((value, key) => {
-        requestBody[key] = value.toString();
+        (requestBody as Record<string, string>)[key] = value?.toString() ?? '';
       });
-      c.set('requestBody', requestBody);
+      bodyParsed = true;
     } catch {
-      // Not form data either - skip validation
-      // This prevents processing GET requests or other non-POST methods
-      return next();
+      try {
+        const rawText = await c.req.text();
+        requestBody = { raw: rawText };
+        bodyParsed = true;
+      } catch {
+        bodyParsed = false;
+      }
     }
   }
 
-  // If no email field, skip validation
+  if (!bodyParsed) {
+    return c.json({
+      error: 'Unable to parse request body. Expected JSON or form data with an email field.',
+      code: 'invalid_request_body',
+    }, 400);
+  }
+
+  email = requestBody.email;
+  consumer = requestBody.consumer;
+  flow = requestBody.flow;
+
+  c.set('requestBody', requestBody);
+
   if (!email || typeof email !== 'string') {
-    return next();
+    return c.json({
+      error: 'Email is required in the request body.',
+      code: 'email_required',
+    }, 400);
   }
 
   // Wrap entire fraud detection logic in try-catch

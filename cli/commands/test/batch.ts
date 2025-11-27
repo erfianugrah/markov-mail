@@ -430,6 +430,11 @@ EXAMPLES
     // Calculate metrics for labeled data
     const metrics = calculateMetrics(results);
 
+    if (metrics.aborted) {
+      logger.error('Batch run aborted due to network/API errors. No metrics were recorded.');
+      return;
+    }
+
     console.log(`\nOverall Performance:`);
     console.log(`  Total Tests:        ${metrics.totalTests}`);
     console.log(`  Passed:             ${metrics.passed} (${metrics.accuracy.toFixed(2)}%)`);
@@ -495,34 +500,46 @@ EXAMPLES
   // Save results
   let report: any;
 
-  if (hasLabels) {
-    // Accuracy testing report
-    const metrics = calculateMetrics(results);
-    report = {
-      timestamp: new Date().toISOString(),
-      endpoint,
-      mode: 'accuracy_testing',
-      dataset: {
-        input: inputPath,
-        legitimate: dataset.legitimate,
-        fraudulent: dataset.fraudulent,
-        total: dataset.count,
-      },
-      metrics,
-      categoryBreakdown: categories.map(cat => {
-        const catResults = results.filter(r => r.category === cat);
-        return {
-          category: cat,
-          total: catResults.length,
-          passed: catResults.filter(r => r.passed).length,
-          accuracy: (catResults.filter(r => r.passed).length / catResults.length * 100),
-        };
-      }),
-      samples: {
-        falsePositives: results.filter(r => !r.passed && r.expected === 'legit').slice(0, 10),
-        falseNegatives: results.filter(r => !r.passed && r.expected === 'fraud').slice(0, 10),
-      },
-    };
+    if (metrics.aborted) {
+      report = {
+        timestamp: new Date().toISOString(),
+        endpoint,
+        mode: 'accuracy_testing_aborted',
+        dataset: {
+          input: inputPath,
+          legitimate: dataset.legitimate,
+          fraudulent: dataset.fraudulent,
+          total: dataset.count,
+        },
+        error: metrics.abortReason,
+      };
+    } else {
+      // Accuracy testing report
+      report = {
+        timestamp: new Date().toISOString(),
+        endpoint,
+        mode: 'accuracy_testing',
+        dataset: {
+          input: inputPath,
+          legitimate: dataset.legitimate,
+          fraudulent: dataset.fraudulent,
+          total: dataset.count,
+        },
+        metrics,
+        categoryBreakdown: categories.map(cat => {
+          const catResults = results.filter(r => r.category === cat);
+          return {
+            category: cat,
+            total: catResults.length,
+            passed: catResults.filter(r => r.passed).length,
+            accuracy: (catResults.filter(r => r.passed).length / catResults.length * 100),
+          };
+        }),
+        samples: {
+          falsePositives: results.filter(r => !r.passed && r.expected === 'legit').slice(0, 10),
+          falseNegatives: results.filter(r => !r.passed && r.expected === 'fraud').slice(0, 10),
+        },
+      };
   } else {
     // Validation report (unlabeled data)
     const allowCount = results.filter(r => r.actual === 'allow').length;

@@ -239,6 +239,18 @@ const COMMANDS = {
     description: 'Stop active A/B test',
     file: 'commands/ab/stop.ts',
     usage: 'ab:stop [--remote] [--yes]'
+  },
+
+  // Dataset management commands
+  'dataset:analyze': {
+    description: 'Analyze dataset quality and identify mislabeled emails',
+    file: 'commands/dataset/analyze.ts',
+    usage: 'dataset:analyze [--dataset <path>] [--endpoint <url>] [--sample <n>] [--output <path>]'
+  },
+  'dataset:clean': {
+    description: 'Clean dataset by correcting mislabeled emails',
+    file: 'commands/dataset/clean.ts',
+    usage: 'dataset:clean [--input <path>] [--output <path>] [--analysis <path>] [--min-confidence <high|medium|low>] [--dry-run]'
   }
 };
 
