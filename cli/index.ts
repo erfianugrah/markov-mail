@@ -99,6 +99,11 @@ const COMMANDS = {
     file: 'commands/data/analytics.ts',
     usage: 'analytics:stats [--last <hours>] [--url <base>] [--api-key <key>]'
   },
+  'analytics:drift': {
+    description: 'Monitor calibration drift and health',
+    file: 'commands/analytics/drift.ts',
+    usage: 'analytics:drift [--hours <n>] [--url <base>] [--api-key <key>]'
+  },
   'domains:update': {
     description: 'Update disposable domains from external sources',
     file: 'commands/data/domains.ts',
@@ -208,6 +213,11 @@ const COMMANDS = {
     file: 'commands/config/manage.ts',
     usage: 'config:sync'
   },
+  'config:verify': {
+    description: 'Verify deployed config.json integrity',
+    file: 'commands/config/verify.ts',
+    usage: 'config:verify [--remote] [--max-age <hours>]'
+  },
 
   // A/B Testing commands
   'ab:create': {
@@ -260,6 +270,7 @@ Usage: npm run cli <command> [options]
   kv:delete <key>           Delete KV key
   analytics:query <sql>     Run D1 SQL via /admin/analytics
   analytics:stats           Show analytics summaries
+  analytics:drift           Monitor calibration drift
   domains:update            Update disposable domains list
   domains:metadata          Show domains metadata
   domains:cache:clear       Clear domains cache
@@ -281,6 +292,7 @@ Usage: npm run cli <command> [options]
   config:set <key> <value>  Set configuration
   config:list               List configurations
   config:sync               Sync config to KV
+  config:verify             Verify deployed config integrity
 
 🧪 A/B TESTING
   ab:create                 Create new experiment

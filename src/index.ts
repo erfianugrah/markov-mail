@@ -194,10 +194,52 @@ app.post('/validate', async (c) => {
 		// Fail silently - version metadata is non-critical
 	}
 
+	// Get calibration metadata
+	let calibrationMetadata: Record<string, any> | undefined;
+	try {
+		const config = await getConfig(c.env.CONFIG, {
+			'X-API-KEY': c.env['X-API-KEY'],
+			ORIGIN_URL: c.env.ORIGIN_URL,
+		});
+
+		if (config.calibration) {
+			calibrationMetadata = {
+				version: config.calibration.version,
+				createdAt: config.calibration.createdAt,
+			};
+
+			// Add boost information if calibration was used
+			if (fraud?.signals?.calibratedFraudProbability !== undefined) {
+				const markovConfidence = fraud.signals.markovConfidence || 0;
+				const calibratedProb = fraud.signals.calibratedFraudProbability;
+				calibrationMetadata.calibrationUsed = true;
+				calibrationMetadata.calibrationBoosted = calibratedProb > markovConfidence;
+				calibrationMetadata.boostAmount = calibratedProb > markovConfidence
+					? Math.round((calibratedProb - markovConfidence) * 1000) / 1000
+					: 0;
+			} else {
+				calibrationMetadata.calibrationUsed = false;
+			}
+
+			// Add training metrics if available
+			if (config.calibration.metrics) {
+				calibrationMetadata.metrics = {
+					accuracy: Math.round(config.calibration.metrics.accuracy * 1000) / 1000,
+					precision: Math.round(config.calibration.metrics.precision * 1000) / 1000,
+					recall: Math.round(config.calibration.metrics.recall * 1000) / 1000,
+					f1: Math.round(config.calibration.metrics.f1 * 1000) / 1000,
+				};
+			}
+		}
+	} catch (e) {
+		// Fail silently - calibration metadata is non-critical
+	}
+
 	const metadata: Record<string, any> = {
 		version: pkg.version,
 		modelVersion,
 		modelTrainingCount,
+		...(calibrationMetadata && { calibration: calibrationMetadata }),
 	};
 
 	if (fraud?.signals?.experimentId) {
