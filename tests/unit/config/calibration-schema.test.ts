@@ -576,7 +576,7 @@ describe('Calibration Schema Validation', () => {
 				version: '1.0.0',
 				createdAt: '2025-11-27T10:25:09.743Z',
 				trainedOn: {
-					dataset: 'dataset/pattern_labeled_emails.csv',
+					dataset: 'dataset/training_compiled/training_compiled.csv',
 					legitimate: 50164,
 					fraudulent: 41802,
 					total: 91966,

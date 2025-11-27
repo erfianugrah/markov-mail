@@ -175,7 +175,6 @@ cf-docs
 # Training models and temporary files
 models/
 test-emails.json
-markov_*.json
 training*.log
 dataset*
 public/dashboard/
@@ -192,4 +191,4 @@ validations_*.json
 deduped_*.json
 d1-validations.json
 **/exports/*.json
-calibration.json
+AGENTS.md

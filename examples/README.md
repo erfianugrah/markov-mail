@@ -62,6 +62,6 @@ curl -X POST https://<worker>/validate \
 
 # Batch evaluation
 npm run cli test:batch -- \
-  --input dataset/pattern_labeled_emails.csv \
+  --input dataset/training_compiled/training_compiled.csv \
   --endpoint https://<worker>/validate
 ```

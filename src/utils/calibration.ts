@@ -34,6 +34,25 @@ export interface CalibrationFeatureInput {
 	providerIsFree?: boolean;
 	providerIsDisposable?: boolean;
 	tldRisk?: number;
+	linguistic?: {
+		pronounceability?: number;
+		vowelRatio?: number;
+		maxConsonantCluster?: number;
+		repeatedCharRatio?: number;
+		syllableEstimate?: number;
+		impossibleClusterCount?: number;
+	};
+	structure?: {
+		hasWordBoundaries?: boolean;
+		segmentCount?: number;
+		avgSegmentLength?: number;
+		segmentsWithoutVowelsRatio?: number;
+	};
+	statistical?: {
+		uniqueCharRatio?: number;
+		vowelGapRatio?: number;
+		maxDigitRun?: number;
+	};
 }
 
 export type CalibrationFeatureMap = Record<string, number>;
@@ -80,6 +99,32 @@ export function buildCalibrationFeatureMap(input: CalibrationFeatureInput): Cali
 		tld_risk: sanitize(input.tldRisk, 0, { min: 0, max: 1 }),
 		abnormality_risk: sanitize(input.markov.abnormalityRisk, 0, { min: 0, max: 1 }),
 	};
+
+	if (input.linguistic) {
+		features.pronounceability = sanitize(input.linguistic.pronounceability, 0, { min: 0, max: 1 });
+		features.vowel_ratio = sanitize(input.linguistic.vowelRatio, 0, { min: 0, max: 1 });
+		features.max_consonant_cluster = sanitize(input.linguistic.maxConsonantCluster, 0, { min: 0, max: 64 });
+		features.repeated_char_ratio = sanitize(input.linguistic.repeatedCharRatio, 0, { min: 0, max: 1 });
+		features.syllable_estimate = sanitize(input.linguistic.syllableEstimate, 0, { min: 0, max: 20 });
+		features.impossible_cluster_count = sanitize(input.linguistic.impossibleClusterCount, 0, { min: 0, max: 20 });
+	}
+
+	if (input.structure) {
+		features.has_word_boundaries = input.structure.hasWordBoundaries ? 1 : 0;
+		features.segment_count = sanitize(input.structure.segmentCount, 0, { min: 0, max: 32 });
+		features.avg_segment_length = sanitize(input.structure.avgSegmentLength, 0, { min: 0, max: 64 });
+		features.segments_without_vowels_ratio = sanitize(
+			input.structure.segmentsWithoutVowelsRatio,
+			0,
+			{ min: 0, max: 1 }
+		);
+	}
+
+	if (input.statistical) {
+		features.unique_char_ratio = sanitize(input.statistical.uniqueCharRatio, 0, { min: 0, max: 1 });
+		features.vowel_gap_ratio = sanitize(input.statistical.vowelGapRatio, 0, { min: 0, max: 1 });
+		features.max_digit_run = sanitize(input.statistical.maxDigitRun, 0, { min: 0, max: 64 });
+	}
 
 	return features;
 }

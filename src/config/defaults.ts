@@ -119,6 +119,11 @@ export interface FraudDetectionConfig {
 	};
 
 	calibration?: CalibrationCoefficients | null;
+	featureClassifier?: {
+		coefficients: CalibrationCoefficients | null;
+		riskWeight: number;
+		activationThreshold: number;
+	} | null;
 }
 
 /**
@@ -236,6 +241,11 @@ export const DEFAULT_CONFIG: FraudDetectionConfig = {
 	},
 
 	calibration: null,
+	featureClassifier: {
+		coefficients: null,
+		riskWeight: 1,
+		activationThreshold: 0.55,
+	},
 };
 
 /**
@@ -344,6 +354,39 @@ export function validateConfig(config: Partial<FraudDetectionConfig>): {
 				}
 				if (typeof feature.std !== 'number' || feature.std < 0) {
 					errors.push(`calibration.features[${feature.name}].std must be a non-negative number`);
+				}
+			}
+		}
+	}
+
+	if (config.featureClassifier) {
+		if (config.featureClassifier.riskWeight < 0 || config.featureClassifier.riskWeight > 1) {
+			errors.push('featureClassifier.riskWeight must be between 0 and 1');
+		}
+		if (config.featureClassifier.activationThreshold < 0 || config.featureClassifier.activationThreshold > 1) {
+			errors.push('featureClassifier.activationThreshold must be between 0 and 1');
+		}
+		if (config.featureClassifier.coefficients) {
+			const classifier = config.featureClassifier.coefficients;
+			if (typeof classifier.bias !== 'number') {
+				errors.push('featureClassifier.coefficients.bias must be a number');
+			}
+			if (!Array.isArray(classifier.features) || classifier.features.length === 0) {
+				errors.push('featureClassifier.coefficients.features must be a non-empty array');
+			} else {
+				for (const feature of classifier.features) {
+					if (!feature.name) {
+						errors.push('featureClassifier.coefficients.features[].name is required');
+					}
+					if (typeof feature.weight !== 'number') {
+						errors.push(`featureClassifier.coefficients.features[${feature.name}].weight must be a number`);
+					}
+					if (typeof feature.mean !== 'number') {
+						errors.push(`featureClassifier.coefficients.features[${feature.name}].mean must be a number`);
+					}
+					if (typeof feature.std !== 'number' || feature.std < 0) {
+						errors.push(`featureClassifier.coefficients.features[${feature.name}].std must be a non-negative number`);
+					}
 				}
 			}
 		}

@@ -1371,7 +1371,7 @@ The re-labeling engine analyzes each email address through 6 independent pattern
 **Command Usage:**
 ```bash
 # Re-label dataset based on patterns
-npm run cli train:relabel --input ./dataset/raw.csv --output ./dataset/pattern_labeled.csv
+npm run cli train:relabel --input ./dataset/raw.csv --output ./dataset/training_compiled/training_compiled.csv
 
 # Train models with pattern-labeled data
 npm run cli train:markov -- --orders "2,3" --upload --remote

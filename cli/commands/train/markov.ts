@@ -126,7 +126,7 @@ USAGE
   npm run cli train:markov [options]
 
 OPTIONS
-  --dataset <path>    Path to dataset directory (default: ./dataset)
+  --dataset <path>    Path to dataset directory or CSV file (default: ./dataset/training_compiled)
   --output <path>     Output directory for models (default: ./)
   --orders <list>     Comma-separated n-gram orders to train (default: "2")
                       Valid orders: 1 (unigram), 2 (bigram), 3 (trigram)
@@ -168,7 +168,7 @@ EXAMPLES
   }
 
   const options: TrainingOptions = {
-    dataset: getOption(parsed, 'dataset') || './dataset',
+    dataset: getOption(parsed, 'dataset') || './dataset/training_compiled',
     output: getOption(parsed, 'output') || './',
     upload: hasFlag(parsed, 'upload'),
     remote: hasFlag(parsed, 'remote'),
@@ -184,25 +184,51 @@ EXAMPLES
   let allLegit: string[] = [];
   let allFraud: string[] = [];
 
-  // Get all CSV files in the dataset directory
-  const { readdirSync } = await import('fs');
+  const { readdirSync, statSync } = await import('fs');
   const { join } = await import('path');
 
+  let datasetFiles: string[] = [];
+  let datasetIsDirectory = false;
+
   try {
-    const files = readdirSync(options.dataset)
-      .filter(f => f.endsWith('.csv'))
-      .map(f => join(options.dataset, f));
+    const stats = statSync(options.dataset);
 
-    logger.info(`Found ${files.length} CSV files in ${options.dataset}`);
-
-    for (const file of files) {
-      const { legit, fraud } = await loadCSV(file);
-      allLegit.push(...legit);
-      allFraud.push(...fraud);
+    if (stats.isDirectory()) {
+      datasetIsDirectory = true;
+      datasetFiles = readdirSync(options.dataset)
+        .filter(f => f.endsWith('.csv'))
+        .map(f => join(options.dataset, f));
+    } else if (stats.isFile()) {
+      if (!options.dataset.endsWith('.csv')) {
+        logger.error('Dataset file must be a .csv');
+        process.exit(1);
+      }
+      datasetFiles = [options.dataset];
+    } else {
+      logger.error('Dataset path must be a directory or CSV file');
+      process.exit(1);
     }
   } catch (error) {
-    logger.error(`Failed to read dataset directory: ${error}`);
-    throw error;
+    logger.error(`Failed to read dataset path "${options.dataset}": ${error}`);
+    process.exit(1);
+  }
+
+  if (datasetFiles.length === 0) {
+    const location = datasetIsDirectory ? `directory "${options.dataset}"` : 'provided file list';
+    logger.error(`No CSV files found in ${location}`);
+    process.exit(1);
+  }
+
+  if (datasetIsDirectory) {
+    logger.info(`Found ${datasetFiles.length} CSV files in ${options.dataset}`);
+  } else {
+    logger.info(`Using dataset file ${datasetFiles[0]}`);
+  }
+
+  for (const file of datasetFiles) {
+    const { legit, fraud } = await loadCSV(file);
+    allLegit.push(...legit);
+    allFraud.push(...fraud);
   }
 
   logger.subsection('Dataset Statistics');

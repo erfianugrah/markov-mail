@@ -136,10 +136,10 @@ All documentation is in `docs/` folder (27 markdown files):
   - Dashboard: React, Recharts, shadcn/ui
 
 ### Training Data
-- **dataset/pattern_labeled_emails.csv** - 91,966 labeled emails
-  - 50,164 legit (54.5%)
-  - 41,802 fraud (45.5%)
-  - Labels corrected using production validation data
+- **dataset/training_compiled/training_compiled.csv** - Canonical combined dataset (89,352 rows)
+  - 48,151 legit (53.9%)
+  - 41,201 fraud (46.1%)
+  - Already deduplicated, re-labeled, and purged of legacy corpora (e.g., Enron)
 
 ## Analysis Archive
 

@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **A/B Experiments** – Middleware now applies treatment overrides, writes experiment metadata to D1/response headers, exposes `/admin/ab-test/status`, and surfaces experiment status inside the dashboard.
 - **D1-first CLI** – `training:extract`, `analytics:*`, and `ab:analyze` now talk to D1 (either via wrangler or `/admin/analytics`) so no Cloudflare Analytics Engine credentials are required.
+- **Linguistic & structural feature extractor** – `extractLocalPartFeatureSignals` emits pronounceability, cluster, repetition, and segmentation metrics. Middleware, calibration tooling, and response telemetry surface the new `linguisticSignals`, `structureSignals`, and `statisticalSignals` blocks.
+- **Feature classifier scaffold** – Added optional logistic classifier coefficients (`featureClassifier` config) that run alongside Markov/calibration. When enabled the classifier contributes a separate risk lane and new block reasons (`linguistic_structure_*`) powered purely by the feature vector.
 
 ---
 

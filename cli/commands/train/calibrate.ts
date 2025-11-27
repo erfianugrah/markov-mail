@@ -4,7 +4,7 @@
  * Fits a logistic calibration layer on top of the Markov outputs + metadata.
  *
  * Usage:
- *   npm run cli train:calibrate --dataset dataset/training_compiled.csv --models models --output calibration.json
+ *   npm run cli train:calibrate --dataset dataset/training_compiled/training_compiled.csv --models models --output calibration.json
  */
 
 import { readFileSync, writeFileSync, rmSync } from 'fs';
@@ -17,6 +17,7 @@ import { getPlusAddressingRiskScore } from '../../../src/detectors/plus-addressi
 import { validateDomain } from '../../../src/validators/domain.ts';
 import { calculateAbnormality } from '../../../src/detectors/markov-ensemble.ts';
 import { buildCalibrationFeatureMap, type CalibrationCoefficients } from '../../../src/utils/calibration.ts';
+import { extractLocalPartFeatureSignals } from '../../../src/detectors/linguistic-features.ts';
 import { DEFAULT_CONFIG } from '../../../src/config/defaults.ts';
 import { logger } from '../../utils/logger.ts';
 import { parseArgs, getOption, hasFlag } from '../../utils/args.ts';
@@ -62,7 +63,7 @@ export default async function calibrateCommand(args: string[]) {
 	}
 
 	const options: CalibrationOptions = {
-		dataset: getOption(parsed, 'dataset') || 'dataset/training_compiled.csv',
+		dataset: getOption(parsed, 'dataset') || 'dataset/training_compiled/training_compiled.csv',
 		modelsDir: getOption(parsed, 'models') || 'models',
 		output: getOption(parsed, 'output') || 'calibration.json',
 		orders,
@@ -98,6 +99,7 @@ export default async function calibrateCommand(args: string[]) {
 		}
 
 		const sequential = detectSequentialPattern(providerNormalized);
+		const localPartFeatures = extractLocalPartFeatureSignals(localPart);
 		const plusRisk = getPlusAddressingRiskScore(sample.email);
 
 		const markovFeatures = computeMarkovCrossEntropies(localPart, models);
@@ -115,9 +117,6 @@ export default async function calibrateCommand(args: string[]) {
 		const domain = sample.email.split('@')[1] || '';
 		const domainValidation = validateDomain(domain);
 
-		const digits = (localPart.match(/\d/g) || []).length;
-		const digitRatio = localPart.length > 0 ? digits / localPart.length : 0;
-
 		const featureMap = buildCalibrationFeatureMap({
 			markov: {
 				ceLegit2: markovFeatures.ceLegit2,
@@ -130,10 +129,29 @@ export default async function calibrateCommand(args: string[]) {
 			sequentialConfidence: sequential.confidence,
 			plusRisk,
 			localPartLength: localPart.length,
-			digitRatio,
+			digitRatio: localPartFeatures.statistical.digitRatio,
 			providerIsFree: domainValidation.isFreeProvider,
 			providerIsDisposable: domainValidation.isDisposable,
 			tldRisk: 0,
+			linguistic: {
+				pronounceability: localPartFeatures.linguistic.pronounceability,
+				vowelRatio: localPartFeatures.linguistic.vowelRatio,
+				maxConsonantCluster: localPartFeatures.linguistic.maxConsonantCluster,
+				repeatedCharRatio: localPartFeatures.linguistic.repeatedCharRatio,
+				syllableEstimate: localPartFeatures.linguistic.syllableEstimate,
+				impossibleClusterCount: localPartFeatures.linguistic.impossibleClusterCount,
+			},
+			structure: {
+				hasWordBoundaries: localPartFeatures.structure.hasWordBoundaries,
+				segmentCount: localPartFeatures.structure.segmentCount,
+				avgSegmentLength: localPartFeatures.structure.avgSegmentLength,
+				segmentsWithoutVowelsRatio: localPartFeatures.structure.segmentsWithoutVowelsRatio,
+			},
+			statistical: {
+				uniqueCharRatio: localPartFeatures.statistical.uniqueCharRatio,
+				vowelGapRatio: localPartFeatures.statistical.vowelGapRatio,
+				maxDigitRun: localPartFeatures.statistical.maxDigitRun,
+			},
 		});
 
 		featureSamples.push({
@@ -185,7 +203,7 @@ USAGE
   npm run cli train:calibrate [options]
 
 OPTIONS
-  --dataset <path>    Training CSV (default: dataset/training_compiled.csv)
+  --dataset <path>    Training CSV (default: dataset/training_compiled/training_compiled.csv)
   --models <dir>      Directory containing markov_legit_*.json files (default: models)
   --output <path>     Output calibration JSON (default: calibration.json)
   --orders <list>     N-gram orders to use (comma separated, default: "2,3")
@@ -197,7 +215,7 @@ OPTIONS
 
 Example:
   npm run cli train:calibrate \\
-    --dataset dataset/training_compiled.csv \\
+    --dataset dataset/training_compiled/training_compiled.csv \\
     --models models \\
     --output calibration.json \\
     --upload --remote

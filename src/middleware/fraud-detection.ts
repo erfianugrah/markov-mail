@@ -8,7 +8,7 @@
 import pkg from '../../package.json';
 import { Context, Next } from 'hono';
 import { generateFingerprint } from '../fingerprint';
-import { validateEmail, calculateEntropy } from '../validators/email';
+import { validateEmail } from '../validators/email';
 import { validateDomain, getDomainReputationScore, type DomainValidationResult } from '../validators/domain';
 import {
   extractPatternFamily,
@@ -32,7 +32,8 @@ import { loadDisposableDomains } from '../services/disposable-domain-updater';
 import { loadTLDRiskProfiles } from '../services/tld-risk-updater';
 import { writeValidationMetric } from '../utils/metrics';
 import { getConfig } from '../config';
-import { buildCalibrationFeatureMap, applyCalibration } from '../utils/calibration';
+import { buildCalibrationFeatureMap, applyCalibration, type CalibrationFeatureMap } from '../utils/calibration';
+import { extractLocalPartFeatureSignals, type LocalPartFeatureSignals } from '../detectors/linguistic-features';
 import { logger } from '../logger';
 
 // Cache Markov models globally per worker instance
@@ -429,6 +430,15 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     }
   }
 
+  // Feature extraction scaffolding (populated during algorithmic scoring)
+  let providerLocalPart = '';
+  let localPartFeatures: LocalPartFeatureSignals = extractLocalPartFeatureSignals('');
+  let localPartLength = 0;
+  let digitRatio = 0;
+  let sequentialConfidenceFeature = sequentialResult?.confidence ?? 0;
+  let precomputedPlusRisk = 0;
+  let calibrationFeatureMap: CalibrationFeatureMap | undefined;
+
   // Calculate risk score using early returns for priority checks
   let riskScore = 0;
   let blockReason = '';
@@ -438,6 +448,8 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
   let plusRisk = 0;
   let sequentialRisk = 0;
   let calibratedFraudProbability: number | null = null;
+  let featureClassifierRisk = 0;
+  let featureClassifierScore: number | null = null;
 
   // Priority 1: Hard blockers (immediate block)
   if (!emailValidation.valid) {
@@ -464,23 +476,25 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       email: email.substring(0, 3) + '***',
     }, 'Starting algorithmic risk calculation');
 
-  const providerNormalizedEmail = normalizedEmailResult?.providerNormalized ?? email.toLowerCase();
-  const [providerLocalPart] = providerNormalizedEmail.split('@');
-  const localPartLength = providerLocalPart?.length ?? 0;
-    const digitCount = providerLocalPart ? (providerLocalPart.match(/\d/g) || []).length : 0;
-    const digitRatio = localPartLength > 0 ? digitCount / localPartLength : 0;
-    const sequentialConfidenceFeature = sequentialResult?.confidence ?? 0;
-    const precomputedPlusRisk = normalizedEmailResult ? getPlusAddressingRiskScore(email) : 0;
+    const providerNormalizedEmail = normalizedEmailResult?.providerNormalized ?? email.toLowerCase();
+    const [providerLocalPartRaw] = providerNormalizedEmail.split('@');
+    providerLocalPart = providerLocalPartRaw || '';
+    localPartFeatures = extractLocalPartFeatureSignals(providerLocalPart);
+    localPartLength = localPartFeatures.statistical.length;
+    digitRatio = localPartFeatures.statistical.digitRatio;
+    sequentialConfidenceFeature = sequentialResult?.confidence ?? 0;
+    precomputedPlusRisk = normalizedEmailResult ? getPlusAddressingRiskScore(email) : 0;
 
-    if (markovResult && config.calibration) {
-      const featureMap = buildCalibrationFeatureMap({
+    // Always build feature map - it's used by calibration, feature classifier, and telemetry
+    if (true) {
+      calibrationFeatureMap = buildCalibrationFeatureMap({
         markov: {
-          ceLegit2: markovResult.crossEntropyLegit2 ?? markovResult.crossEntropyLegit,
-          ceFraud2: markovResult.crossEntropyFraud2 ?? markovResult.crossEntropyFraud,
-          ceLegit3: markovResult.crossEntropyLegit3,
-          ceFraud3: markovResult.crossEntropyFraud3,
-          minEntropy: markovResult.minEntropy,
-          abnormalityRisk: markovResult.abnormalityRisk,
+          ceLegit2: markovResult?.crossEntropyLegit2 ?? markovResult?.crossEntropyLegit ?? 0,
+          ceFraud2: markovResult?.crossEntropyFraud2 ?? markovResult?.crossEntropyFraud ?? 0,
+          ceLegit3: markovResult?.crossEntropyLegit3,
+          ceFraud3: markovResult?.crossEntropyFraud3,
+          minEntropy: markovResult?.minEntropy,
+          abnormalityRisk: markovResult?.abnormalityRisk,
         },
         sequentialConfidence: sequentialConfidenceFeature,
         plusRisk: precomputedPlusRisk,
@@ -489,28 +503,49 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
         providerIsFree: domainValidation?.isFreeProvider,
         providerIsDisposable: domainValidation?.isDisposable,
         tldRisk: tldRiskScore,
+        linguistic: {
+          pronounceability: localPartFeatures.linguistic.pronounceability,
+          vowelRatio: localPartFeatures.linguistic.vowelRatio,
+          maxConsonantCluster: localPartFeatures.linguistic.maxConsonantCluster,
+          repeatedCharRatio: localPartFeatures.linguistic.repeatedCharRatio,
+          syllableEstimate: localPartFeatures.linguistic.syllableEstimate,
+          impossibleClusterCount: localPartFeatures.linguistic.impossibleClusterCount,
+        },
+        structure: {
+          hasWordBoundaries: localPartFeatures.structure.hasWordBoundaries,
+          segmentCount: localPartFeatures.structure.segmentCount,
+          avgSegmentLength: localPartFeatures.structure.avgSegmentLength,
+          segmentsWithoutVowelsRatio: localPartFeatures.structure.segmentsWithoutVowelsRatio,
+        },
+        statistical: {
+          uniqueCharRatio: localPartFeatures.statistical.uniqueCharRatio,
+          vowelGapRatio: localPartFeatures.statistical.vowelGapRatio,
+          maxDigitRun: localPartFeatures.statistical.maxDigitRun,
+        },
       });
+    }
 
-      calibratedFraudProbability = applyCalibration(config.calibration, featureMap);
+    logger.info({
+      event: 'calibration_check',
+      hasCalibrationFeatureMap: !!calibrationFeatureMap,
+      hasConfigCalibration: !!config.calibration,
+      calibrationFeatureCount: config.calibration?.features?.length,
+      featureMapKeys: calibrationFeatureMap ? Object.keys(calibrationFeatureMap).length : 0,
+    }, 'Checking calibration availability');
 
-      // CALIBRATION HEALTH MONITORING
-      // Emit warning/metric if calibration is missing, malformed, or returns NaN
-      if (!config.calibration) {
-        logger.warn({
-          event: 'calibration_missing',
-          email: email.substring(0, 3) + '***',
-        }, 'Calibration config missing - using Markov-only scoring');
-      } else if (typeof calibratedFraudProbability !== 'number' || !Number.isFinite(calibratedFraudProbability)) {
+    if (calibrationFeatureMap && config.calibration) {
+      calibratedFraudProbability = applyCalibration(config.calibration, calibrationFeatureMap);
+
+      if (typeof calibratedFraudProbability !== 'number' || !Number.isFinite(calibratedFraudProbability)) {
         logger.error({
           event: 'calibration_invalid_output',
           email: email.substring(0, 3) + '***',
           calibratedProb: calibratedFraudProbability,
           hasCalibration: !!config.calibration,
-          hasFeatureMap: !!featureMap,
+          hasFeatureMap: !!calibrationFeatureMap,
         }, 'CRITICAL: Calibration returned invalid value (NaN/undefined) - falling back to Markov-only');
         calibratedFraudProbability = null;
       } else {
-        // Log successful calibration application
         logger.info({
           event: 'calibration_applied',
           email: email.substring(0, 3) + '***',
@@ -518,6 +553,24 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
           markovConf: markovResult?.confidence,
           version: config.calibration.version,
         }, 'Calibration successfully applied');
+      }
+    }
+
+    if (calibrationFeatureMap && config.featureClassifier?.coefficients) {
+      featureClassifierScore = applyCalibration(config.featureClassifier.coefficients, calibrationFeatureMap);
+      if (typeof featureClassifierScore !== 'number' || !Number.isFinite(featureClassifierScore)) {
+        logger.warn({
+          event: 'feature_classifier_invalid_output',
+          email: email.substring(0, 3) + '***',
+          classifierScore: featureClassifierScore,
+        }, 'Feature classifier returned invalid value - ignoring');
+        featureClassifierScore = null;
+      } else {
+        logger.info({
+          event: 'feature_classifier_applied',
+          email: email.substring(0, 3) + '***',
+          classifierScore: featureClassifierScore,
+        }, 'Feature classifier applied successfully');
       }
     }
 
@@ -531,7 +584,8 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       domainValidation,
       precomputedPlusRisk,
       calibratedProbability: calibratedFraudProbability,
-      localPartLength
+      localPartLength,
+      featureClassifierScore,
     });
     riskScore = riskCalculation.score;
     classificationRisk = riskCalculation.classificationRisk;
@@ -539,6 +593,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
     ensembleBoost = riskCalculation.ensembleBoost;
     plusRisk = riskCalculation.plusRisk;
     sequentialRisk = riskCalculation.sequentialRisk;
+    featureClassifierRisk = riskCalculation.featureClassifierRisk;
 
     blockReason = determineBlockReason({
       riskScore,
@@ -549,7 +604,8 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       tldRiskScore,
       config,
       plusRisk,
-      sequentialRisk
+      sequentialRisk,
+      featureClassifierRisk,
     });
 
     logger.info({
@@ -559,6 +615,8 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
       markovDetected: markovResult?.isLikelyFraudulent,
       markovConfidence: markovResult?.confidence,
       calibratedFraudProbability,
+      featureClassifierScore,
+      featureClassifierRisk: Math.round(featureClassifierRisk * 100) / 100,
     }, 'Risk score calculated');
   }
 
@@ -603,6 +661,7 @@ function calculateAlgorithmicRiskScore(params: {
     precomputedPlusRisk?: number;
     calibratedProbability?: number | null;
     localPartLength?: number;
+    featureClassifierScore?: number | null;
   }): {
     score: number;
     classificationRisk: number;
@@ -610,6 +669,7 @@ function calculateAlgorithmicRiskScore(params: {
     ensembleBoost: number;
     plusRisk: number;
     sequentialRisk: number;
+    featureClassifierRisk: number;
   } {
     const {
       email,
@@ -622,6 +682,7 @@ function calculateAlgorithmicRiskScore(params: {
     precomputedPlusRisk,
     calibratedProbability,
     localPartLength = 0,
+    featureClassifierScore = null,
   } = params;
 
     // Check if this is a professional email
@@ -681,8 +742,18 @@ function calculateAlgorithmicRiskScore(params: {
         sequentialRisk = sequentialConfidence * 0.5;
       }
 
-      if (sequentialRisk > 0) {
-        score = Math.max(score, sequentialRisk);
+    if (sequentialRisk > 0) {
+      score = Math.max(score, sequentialRisk);
+    }
+  }
+
+    let featureClassifierRisk = 0;
+    if (typeof featureClassifierScore === 'number' && config.featureClassifier) {
+      const weight = config.featureClassifier.riskWeight ?? 1;
+      const activationThreshold = config.featureClassifier.activationThreshold ?? 0.55;
+      if (featureClassifierScore >= activationThreshold) {
+        featureClassifierRisk = Math.min(1, featureClassifierScore * weight);
+        score = Math.max(score, featureClassifierRisk);
       }
     }
 
@@ -719,6 +790,7 @@ function calculateAlgorithmicRiskScore(params: {
       ensembleBoost,
       plusRisk,
       sequentialRisk,
+      featureClassifierRisk,
     };
   }
 
@@ -743,6 +815,7 @@ function calculateAlgorithmicRiskScore(params: {
     config: any;
     plusRisk: number;
     sequentialRisk: number;
+    featureClassifierRisk: number;
   }): string {
     const {
       riskScore,
@@ -754,6 +827,7 @@ function calculateAlgorithmicRiskScore(params: {
       config,
       plusRisk,
       sequentialRisk,
+      featureClassifierRisk,
     } = params;
 
     // TIER 1: HIGH CONFIDENCE DETECTIONS (any risk level)
@@ -776,6 +850,10 @@ function calculateAlgorithmicRiskScore(params: {
         condition: sequentialRisk >= config.patternThresholds.sequential,
         reason: 'sequential_pattern'
       },
+      {
+        condition: featureClassifierRisk >= config.featureClassifier?.activationThreshold,
+        reason: 'linguistic_structure_anomaly'
+      },
     ];
 
     // Check high-confidence detections first
@@ -795,6 +873,7 @@ function calculateAlgorithmicRiskScore(params: {
       if (patternFamilyResult?.patternType === 'dated') return 'dated_pattern';
       if (patternFamilyResult?.patternType === 'sequential') return 'sequential_pattern';
       if (plusRisk >= config.patternThresholds.plusAddressing) return 'high_risk_plus_addressing';
+      if (featureClassifierRisk > 0) return 'high_risk_linguistic_structure';
       return 'high_risk_multiple_signals';
     } else if (riskScore >= config.riskThresholds.warn) {
       // MEDIUM RISK (0.3-0.6): Descriptive warnings
@@ -804,6 +883,7 @@ function calculateAlgorithmicRiskScore(params: {
       if (tldRiskScore > 0.3) return 'suspicious_tld';
       if (domainReputationScore > 0.3) return 'suspicious_domain';
       if (plusRisk >= config.patternThresholds.plusAddressing * 0.8) return 'suspicious_plus_addressing';
+      if (featureClassifierRisk > 0) return 'suspicious_linguistic_structure';
       return 'medium_risk';
     } else {
       // LOW RISK (<0.3): Legitimate descriptions
@@ -1037,6 +1117,31 @@ function calculateAlgorithmicRiskScore(params: {
         plusAddressingRisk: Math.round(plusRisk * 100) / 100,
         sequentialPatternRisk: Math.round(sequentialRisk * 100) / 100,
       }),
+      ...(featureClassifierScore !== null && {
+        featureClassifierScore: Math.round(featureClassifierScore * 100) / 100,
+        featureClassifierRisk: Math.round(featureClassifierRisk * 100) / 100,
+      }),
+      linguisticSignals: {
+        pronounceability: Math.round(localPartFeatures.linguistic.pronounceability * 100) / 100,
+        vowelRatio: Math.round(localPartFeatures.linguistic.vowelRatio * 100) / 100,
+        maxConsonantCluster: localPartFeatures.linguistic.maxConsonantCluster,
+        maxRepeatedCharRun: localPartFeatures.linguistic.maxRepeatedCharRun,
+        hasImpossibleCluster: localPartFeatures.linguistic.hasImpossibleCluster,
+        syllableEstimate: localPartFeatures.linguistic.syllableEstimate,
+      },
+      structureSignals: {
+        hasWordBoundaries: localPartFeatures.structure.hasWordBoundaries,
+        segmentCount: localPartFeatures.structure.segmentCount,
+        avgSegmentLength: Math.round(localPartFeatures.structure.avgSegmentLength * 100) / 100,
+        segmentsWithoutVowelsRatio: Math.round(localPartFeatures.structure.segmentsWithoutVowelsRatio * 100) / 100,
+      },
+      statisticalSignals: {
+        localPartLength,
+        digitRatio: Math.round(localPartFeatures.statistical.digitRatio * 100) / 100,
+        uniqueCharRatio: Math.round(localPartFeatures.statistical.uniqueCharRatio * 100) / 100,
+        vowelGapRatio: Math.round(localPartFeatures.statistical.vowelGapRatio * 100) / 100,
+        entropy: Math.round(localPartFeatures.statistical.entropy * 100) / 100,
+      },
     },
   });
 

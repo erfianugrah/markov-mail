@@ -216,7 +216,7 @@ export default async function driftMonitor(args: string[]) {
         logger.info('  1. Review recent calibration training data quality');
         logger.info('  2. Check if dataset distribution has shifted');
         logger.info('  3. Consider retraining calibration:');
-        logger.info('     npm run cli train:calibrate --dataset dataset/training_compiled.csv --models models --upload --remote');
+        logger.info('     npm run cli train:calibrate --dataset dataset/training_compiled/training_compiled.csv --models models --upload --remote');
       }
     }
 
