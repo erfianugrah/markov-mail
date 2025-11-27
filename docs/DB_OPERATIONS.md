@@ -287,7 +287,7 @@ await db.prepare(`
     email_local_part, domain, tld, fingerprint_hash,
     pattern_type, pattern_family,
     is_disposable, is_free_provider, has_plus_addressing,
-    has_keyboard_walk, is_gibberish,
+    has_keyboard_walk, is_gibberish,  -- Deprecated fields (always 0), kept for schema compatibility
     entropy_score, bot_score, tld_risk_score,
     domain_reputation_score, pattern_confidence,
     markov_detected, markov_confidence,

@@ -652,16 +652,18 @@ if (riskScore > 100) {
 1. invalid_format           // Format violation
 2. disposable_domain        // Known disposable email
 3. markov_fraud_detected    // Markov chain high confidence
-4. gibberish_detected       // N-gram analysis
+4. gibberish_detected       // N-gram analysis (deprecated v2.2.0)
 5. high_risk_tld            // Free/cheap TLD
 6. sequential_pattern       // Bot numbering
 7. dated_pattern            // Date-based generation
 8. plus_addressing_abuse    // Email aliasing
-9. keyboard_walk            // Keyboard patterns
+9. keyboard_walk            // Keyboard patterns (deprecated v2.2.0)
 10. suspicious_pattern      // Generic pattern match
 11. domain_reputation       // Poor domain score
 12. entropy_threshold       // High randomness
 ```
+
+> **Note**: Reasons 4 and 9 are deprecated as of v2.2.0 - these patterns are now detected by Markov Chain analysis.
 
 ### 7. Logging (`src/logger.ts`)
 

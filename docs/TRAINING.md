@@ -18,6 +18,7 @@ Before training Markov models, **always re-label your dataset** using pattern an
 
 ```bash
 # Re-label dataset based on email ADDRESS PATTERNS (not message content)
+# Note: Replace paths with your actual dataset files
 npm run cli train:relabel --input ./dataset/raw_emails.csv --output ./dataset/pattern_labeled_emails.csv
 
 # Review changes
@@ -26,15 +27,17 @@ npm run cli train:relabel --input ./dataset/raw_emails.csv --output ./dataset/pa
 # - Legit → Fraud: ~7,000 emails (truly suspicious patterns)
 ```
 
+> **Note**: All file paths in examples (`dataset/raw_emails.csv`, etc.) are **placeholders**. Use your actual dataset file paths.
+
 **What Re-labeling Does:**
-1. Analyzes each email address with pattern detectors (keyboard walks, sequential, gibberish, etc.)
+1. Analyzes each email address with pattern detectors (Markov chain, sequential, etc.)
 2. Assigns label based on **address pattern**, ignoring message content
 3. Outputs CSV with: `email`, `label`, `original_label`, `reason`, `confidence`, `changed`
 
 **Pattern Analysis Heuristics:**
 - ✅ Legitimate: `person1.person2`, `first_last`, simple names
 - ⚠️ Suspicious: Very short (<3 chars), high entropy gibberish
-- 🚫 Fraud: Keyboard walks (qwerty, asdf), sequential (abc123), pure random
+- 🚫 Fraud: Sequential (abc123), pure random, keyboard patterns (detected by Markov)
 
 **Always use pattern-labeled data for training!** This ensures models learn actual fraud patterns, not message content.
 
@@ -234,7 +237,7 @@ npm run cli test:live
 
 Runs 49 comprehensive test cases against production API:
 - Legitimate emails (names, birth years, professional)
-- Fraudulent patterns (sequential, dated, keyboard walks)
+- Fraudulent patterns (sequential, dated, keyboard patterns)
 - Edge cases (plus addressing, international names)
 
 ### Expected Results

@@ -337,7 +337,7 @@ Result: SUSPICIOUS ❌
 
 ## 6. Markov Chain Detector (Phase 7)
 
-**File**: `src/detectors/markov-chain.ts` (337 lines)
+**File**: `src/detectors/markov-ensemble.ts`
 
 ### Purpose
 Advanced statistical model that learns character transition patterns to distinguish legitimate from fraudulent emails.

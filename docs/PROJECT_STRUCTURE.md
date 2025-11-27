@@ -9,7 +9,6 @@ markov-mail/
 ├── src/                      # Source code
 │   ├── detectors/           # Pattern detection modules
 │   │   ├── _deprecated/     # Archived/deprecated detectors
-│   │   ├── keyboard-walk.ts # 8 keyboard layouts support
 │   │   ├── keyboard-mashing.ts # NEW: Region clustering detection
 │   │   ├── ngram-markov.ts  # PRIMARY: N-gram Markov chain (91K trained)
 │   │   ├── pattern-family.ts # Pattern classification
@@ -52,17 +51,16 @@ markov-mail/
 └── CHANGELOG.md           # Version history
 ```
 
-## Active Detectors (8)
+## Active Detectors (7)
 
 ### Exported (Public API)
 1. **ngram-markov.ts** - Primary Markov chain (N-gram based, 91K trained)
-2. **keyboard-walk.ts** - Sequential keyboard keys (8 layouts)
-3. **keyboard-mashing.ts** - Region clustering detection (NEW!)
-4. **pattern-family.ts** - Pattern classification (sequential, dated, keyboard, etc.)
-5. **ngram-analysis.ts** - Gibberish detection (multi-language)
-6. **tld-risk.ts** - TLD reputation scoring
-7. **plus-addressing.ts** - Email normalization
-8. **benfords-law.ts** - Batch fraud analysis
+2. **keyboard-mashing.ts** - Region clustering detection
+3. **pattern-family.ts** - Pattern classification (sequential, dated, keyboard, etc.)
+4. **ngram-analysis.ts** - Gibberish detection (multi-language)
+5. **tld-risk.ts** - TLD reputation scoring
+6. **plus-addressing.ts** - Email normalization
+7. **benfords-law.ts** - Batch fraud analysis
 
 ### Internal-Only (Not Exported)
 - **ngram-multilang.ts** - Used by ngram-analysis.ts

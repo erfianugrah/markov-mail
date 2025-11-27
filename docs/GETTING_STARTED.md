@@ -277,10 +277,10 @@ curl -X POST http://localhost:8787/validate \
     "patternRiskScore": 0.5,
     "normalizedEmail": "person1.person2@example.com",
     "hasPlusAddressing": false,
-    "hasKeyboardWalk": false,
-    "keyboardWalkType": "none",
-    "isGibberish": true,
-    "gibberishConfidence": 1,
+    "hasKeyboardWalk": false,         // Deprecated v2.2.0
+    "keyboardWalkType": "none",        // Deprecated v2.2.0
+    "isGibberish": true,               // Deprecated v2.2.0
+    "gibberishConfidence": 1,          // Deprecated v2.2.0
     "tldRiskScore": 0.29
   },
   "fingerprint": {

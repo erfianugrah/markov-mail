@@ -257,9 +257,12 @@ Recommendation: Ready for training
 
 ### Common Data Issues
 
+> **Note**: All file paths shown below (`dataset/emails.csv`, etc.) are **examples only**. Replace them with your actual dataset file paths.
+
 **Issue: Too Many Duplicates**
 ```bash
 # Remove duplicates (keeps first occurrence)
+# Example: sort -u YOUR_FILE.csv > YOUR_FILE_deduped.csv
 sort -u dataset/emails.csv > dataset/emails_deduped.csv
 ```
 
