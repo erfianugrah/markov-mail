@@ -25,14 +25,14 @@ Markov Mail uses Cloudflare D1 (SQLite at edge) for storing analytics, training 
 
 ## Schema Overview
 
-**Schema Version**: 2.5.0
-**Last Updated**: 2025-11-17
+**Schema Version**: 2.5.1
+**Last Updated**: 2025-11-27
 **Migrations Included**: 0001-0008
 
 The database schema includes:
 - **4 tables**: validations, training_metrics, ab_test_metrics, admin_metrics
-- **20+ indexes** for optimized queries
-- **65+ columns** in the validations table alone
+- **24 indexes** on validations table + 9 additional indexes on other tables
+- **67 columns** in the validations table alone
 
 ---
 
@@ -44,7 +44,7 @@ The database schema includes:
 
 **Primary Key**: `id` (INTEGER AUTOINCREMENT)
 
-**Columns** (65 total):
+**Columns** (67 total):
 
 #### Decision & Risk
 - `decision` (TEXT, NOT NULL) - CHECK: 'allow', 'warn', 'block'
@@ -151,7 +151,7 @@ The database schema includes:
 #### Timestamps
 - `timestamp` (DATETIME, DEFAULT CURRENT_TIMESTAMP, NOT NULL)
 
-**Indexes** (12 total):
+**Indexes** (24 total):
 ```sql
 idx_validations_timestamp ON validations(timestamp)
 idx_validations_decision ON validations(decision)
@@ -174,6 +174,9 @@ idx_validations_ja3_hash ON validations(ja3_hash)
 idx_validations_ja4 ON validations(ja4)
 idx_validations_verified_bot ON validations(verified_bot)
 idx_validations_client_trust_score ON validations(client_trust_score)
+idx_validations_consumer ON validations(consumer)
+idx_validations_flow ON validations(flow)
+idx_validations_consumer_flow ON validations(consumer, flow)
 ```
 
 ---
@@ -520,7 +523,7 @@ executeD1QueryPaginated<T>(
 | 0005 | - | Added OOD detection (min_entropy, abnormality metrics) |
 | 0006 | - | Added OOD zone tracking (ood_zone column) |
 | 0007 | - | Added enhanced request.cf metadata (65+ fields) |
-| 0008 | - | Added RPC metadata (consumer, flow) |
+| 0008 | 2025-11-21 | Added RPC metadata (consumer, flow columns and 3 indexes) |
 
 ### Apply Migrations
 
@@ -594,6 +597,7 @@ wrangler d1 execute DB --file=./drop_all.sql --remote
 
 ### Reset Database (Nuke + Recreate)
 
+**Sequential approach**:
 ```bash
 # Step 1: Drop all tables
 wrangler d1 execute DB --remote --command="DROP TABLE IF EXISTS validations"
@@ -605,7 +609,12 @@ wrangler d1 execute DB --remote --command="DROP TABLE IF EXISTS admin_metrics"
 wrangler d1 execute DB --file=./schema.sql --remote
 ```
 
-This resets all autoincrement counters to start at 1.
+**One-liner approach** (recommended):
+```bash
+wrangler d1 execute DB --command="DROP TABLE IF EXISTS validations; DROP TABLE IF EXISTS training_metrics; DROP TABLE IF EXISTS ab_test_metrics; DROP TABLE IF EXISTS admin_metrics; DELETE FROM sqlite_sequence;" --remote && wrangler d1 execute DB --file=./schema.sql --remote
+```
+
+This resets all autoincrement counters to start at 1. The `DELETE FROM sqlite_sequence;` ensures all sequence counters are cleared.
 
 ---
 
@@ -676,6 +685,7 @@ Extracts high-confidence validations for model retraining.
 - **OOD detection**: `idx_validations_ood_detected`, `idx_validations_ood_zone`
 - **Network forensics**: `idx_validations_colo`, `idx_validations_ja3_hash`, `idx_validations_ja4`
 - **Bot detection**: `idx_validations_verified_bot`, `idx_validations_client_trust_score`
+- **RPC tracking**: `idx_validations_consumer`, `idx_validations_flow`, `idx_validations_consumer_flow`
 
 ### Index Maintenance
 
@@ -759,6 +769,8 @@ D1 does not support bulk import via wrangler. Options:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.5.1 | 2025-11-27 | Updated schema.sql to include migration 0008 (RPC metadata) |
+| 2.5.0 | 2025-11-21 | Added RPC metadata (migration 0008: consumer, flow) |
 | 2.5.0 | 2025-11-17 | Added enhanced request.cf metadata (migration 0007) |
 | 2.4.1 | - | Added OOD zone tracking (migration 0006) |
 | 2.4.0 | - | Added OOD detection (migration 0005) |

@@ -242,6 +242,11 @@ const COMMANDS = {
   },
 
   // Dataset management commands
+  'dataset:generate': {
+    description: 'Generate synthetic pattern-based dataset (gibberish vs. legitimate names)',
+    file: 'commands/dataset/generate.ts',
+    usage: 'dataset:generate [--legit <n>] [--fraud <n>] [--output <path>] [--verbose]'
+  },
   'dataset:analyze': {
     description: 'Analyze dataset quality and identify mislabeled emails',
     file: 'commands/dataset/analyze.ts',

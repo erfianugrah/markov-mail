@@ -34,7 +34,7 @@
 
 **Detection Stack**:
 - **Primary**: Markov Chain ensemble (2-gram + 3-gram) with OOD detection
-- **Deterministic**: Pattern classification (sequential/dates for telemetry, dated patterns for scoring), plus-addressing risk scorer
+- **Deterministic**: Pattern classification (dated + high-confidence sequential patterns feed scoring, lighter hits stay telemetry-only), plus-addressing risk scorer
 - **Domain Signals**: TLD risk profiles + disposable domain reputation
 - **Batch**: Benford's Law (offline/batch analysis)
 - **Deprecated**: Keyboard Walk, Keyboard Mashing, N-Gram Gibberish remain disabled

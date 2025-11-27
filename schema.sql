@@ -1,13 +1,13 @@
 -- ============================================================================
 -- Markov Mail Complete Database Schema
 -- ============================================================================
--- This is a consolidated schema that includes all migrations up to 0007
+-- This is a consolidated schema that includes all migrations up to 0008
 -- For NEW deployments, use this file to initialize the database
 -- For EXISTING deployments, use migrations in migrations/ directory
 -- ============================================================================
--- Version: 2.5.0
--- Last Updated: 2025-11-17
--- Migrations Included: 0001-0007
+-- Version: 2.5.1
+-- Last Updated: 2025-11-27
+-- Migrations Included: 0001-0008
 -- ============================================================================
 
 -- ============================================================================
@@ -114,7 +114,11 @@ CREATE TABLE IF NOT EXISTS validations (
     -- Fingerprints (Enhanced)
     ja3_hash TEXT,
     ja4 TEXT,
-    ja4_signals TEXT -- JSON object
+    ja4_signals TEXT, -- JSON object
+
+    -- RPC Metadata (Migration 0008)
+    consumer TEXT,
+    flow TEXT
 );
 
 -- Indexes for common queries
@@ -149,6 +153,11 @@ CREATE INDEX IF NOT EXISTS idx_validations_ja3_hash ON validations(ja3_hash);
 CREATE INDEX IF NOT EXISTS idx_validations_ja4 ON validations(ja4);
 CREATE INDEX IF NOT EXISTS idx_validations_verified_bot ON validations(verified_bot);
 CREATE INDEX IF NOT EXISTS idx_validations_client_trust_score ON validations(client_trust_score);
+
+-- RPC metadata indexes (Migration 0008)
+CREATE INDEX IF NOT EXISTS idx_validations_consumer ON validations(consumer);
+CREATE INDEX IF NOT EXISTS idx_validations_flow ON validations(flow);
+CREATE INDEX IF NOT EXISTS idx_validations_consumer_flow ON validations(consumer, flow);
 
 -- ============================================================================
 -- Training Metrics Table
@@ -278,6 +287,7 @@ CREATE INDEX IF NOT EXISTS idx_admin_config_key ON admin_metrics(config_key);
 -- - Migration 0005: Added OOD detection (min_entropy, abnormality metrics)
 -- - Migration 0006: Added OOD zone tracking (ood_zone column)
 -- - Migration 0007: Added enhanced request.cf metadata (geographic, network, bot detection)
+-- - Migration 0008: Added RPC metadata (consumer, flow columns and indexes)
 --
 -- For NEW deployments:
 --   wrangler d1 execute DB --file=./schema.sql --remote

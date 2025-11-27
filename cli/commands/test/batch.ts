@@ -425,13 +425,32 @@ EXAMPLES
 
   // Display results
   logger.section('📊 Validation Results');
+  let report: any;
+
+  let metrics: ReturnType<typeof calculateMetrics> | undefined;
 
   if (hasLabels) {
     // Calculate metrics for labeled data
-    const metrics = calculateMetrics(results);
+    metrics = calculateMetrics(results);
 
     if (metrics.aborted) {
-      logger.error('Batch run aborted due to network/API errors. No metrics were recorded.');
+      logger.error('Batch run aborted due to network/API errors. No metrics recorded.');
+
+      const abortReport = {
+        timestamp: new Date().toISOString(),
+        endpoint,
+        mode: 'accuracy_testing_aborted',
+        dataset: {
+          input: inputPath,
+          legitimate: dataset.legitimate,
+          fraudulent: dataset.fraudulent,
+          total: dataset.count,
+        },
+        error: metrics.abortReason,
+      };
+
+      fs.writeFileSync(outputPath, JSON.stringify(abortReport, null, 2));
+      logger.error(`\n❌ Batch run aborted. Details saved to: ${outputPath}`);
       return;
     }
 
@@ -454,6 +473,23 @@ EXAMPLES
     console.log(`  F1 Score:           ${metrics.f1Score.toFixed(2)}% (harmonic mean)`);
     console.log(`  False Positive Rate: ${(metrics.falsePositives / (metrics.falsePositives + metrics.trueNegatives) * 100).toFixed(2)}%`);
     console.log(`  False Negative Rate: ${(metrics.falseNegatives / (metrics.falseNegatives + metrics.truePositives) * 100).toFixed(2)}%`);
+
+    report = {
+      timestamp: new Date().toISOString(),
+      endpoint,
+      mode: 'accuracy_testing',
+      dataset: {
+        input: inputPath,
+        legitimate: dataset.legitimate,
+        fraudulent: dataset.fraudulent,
+        total: dataset.count,
+      },
+      metrics,
+      samples: {
+        falsePositives: results.filter(r => !r.passed && r.expected === 'legit').slice(0, 10),
+        falseNegatives: results.filter(r => !r.passed && r.expected === 'fraud').slice(0, 10),
+      },
+    };
   } else {
     // Show distribution for unlabeled data
     const allowCount = results.filter(r => r.actual === 'allow').length;
@@ -478,75 +514,6 @@ EXAMPLES
     console.log(`  Low Risk (<0.3):    ${lowRisk} (${(lowRisk / results.length * 100).toFixed(1)}%)`);
     console.log(`  Medium Risk (0.3-0.6): ${medRisk} (${(medRisk / results.length * 100).toFixed(1)}%)`);
     console.log(`  High Risk (>0.6):   ${highRisk} (${(highRisk / results.length * 100).toFixed(1)}%)`);
-  }
-
-  // Category breakdown
-  console.log(`\n${'='.repeat(80)}`);
-  console.log('📋 CATEGORY BREAKDOWN');
-  console.log('='.repeat(80));
-
-  const categories = [...new Set(results.map(r => r.category))];
-  categories.sort();
-
-  for (const category of categories) {
-    const categoryResults = results.filter(r => r.category === category);
-    const categoryPassed = categoryResults.filter(r => r.passed).length;
-    const categoryTotal = categoryResults.length;
-    const categoryAccuracy = (categoryPassed / categoryTotal) * 100;
-
-    console.log(`\n${category}: ${categoryPassed}/${categoryTotal} (${categoryAccuracy.toFixed(1)}%)`);
-  }
-
-  // Save results
-  let report: any;
-
-    if (metrics.aborted) {
-      report = {
-        timestamp: new Date().toISOString(),
-        endpoint,
-        mode: 'accuracy_testing_aborted',
-        dataset: {
-          input: inputPath,
-          legitimate: dataset.legitimate,
-          fraudulent: dataset.fraudulent,
-          total: dataset.count,
-        },
-        error: metrics.abortReason,
-      };
-    } else {
-      // Accuracy testing report
-      report = {
-        timestamp: new Date().toISOString(),
-        endpoint,
-        mode: 'accuracy_testing',
-        dataset: {
-          input: inputPath,
-          legitimate: dataset.legitimate,
-          fraudulent: dataset.fraudulent,
-          total: dataset.count,
-        },
-        metrics,
-        categoryBreakdown: categories.map(cat => {
-          const catResults = results.filter(r => r.category === cat);
-          return {
-            category: cat,
-            total: catResults.length,
-            passed: catResults.filter(r => r.passed).length,
-            accuracy: (catResults.filter(r => r.passed).length / catResults.length * 100),
-          };
-        }),
-        samples: {
-          falsePositives: results.filter(r => !r.passed && r.expected === 'legit').slice(0, 10),
-          falseNegatives: results.filter(r => !r.passed && r.expected === 'fraud').slice(0, 10),
-        },
-      };
-  } else {
-    // Validation report (unlabeled data)
-    const allowCount = results.filter(r => r.actual === 'allow').length;
-    const warnCount = results.filter(r => r.actual === 'warn').length;
-    const blockCount = results.filter(r => r.actual === 'block').length;
-    const avgLatency = results.reduce((sum, r) => sum + r.latency, 0) / results.length;
-    const avgRiskScore = results.reduce((sum, r) => sum + r.riskScore, 0) / results.length;
 
     report = {
       timestamp: new Date().toISOString(),
@@ -572,9 +539,9 @@ EXAMPLES
         avgLatency,
       },
       riskDistribution: {
-        low: results.filter(r => r.riskScore < 0.3).length,
-        medium: results.filter(r => r.riskScore >= 0.3 && r.riskScore < 0.6).length,
-        high: results.filter(r => r.riskScore >= 0.6).length,
+        low: lowRisk,
+        medium: medRisk,
+        high: highRisk,
       },
       topBlocked: results.filter(r => r.actual === 'block').slice(0, 20).map(r => ({
         email: r.email,
@@ -587,6 +554,35 @@ EXAMPLES
         reason: r.reason,
       })),
     };
+  }
+
+  // Category breakdown
+  console.log(`\n${'='.repeat(80)}`);
+  console.log('📋 CATEGORY BREAKDOWN');
+  console.log('='.repeat(80));
+
+  const categories = [...new Set(results.map(r => r.category))];
+  categories.sort();
+
+  for (const category of categories) {
+    const categoryResults = results.filter(r => r.category === category);
+    const categoryPassed = categoryResults.filter(r => r.passed).length;
+    const categoryTotal = categoryResults.length;
+    const categoryAccuracy = (categoryPassed / categoryTotal) * 100;
+
+    console.log(`\n${category}: ${categoryPassed}/${categoryTotal} (${categoryAccuracy.toFixed(1)}%)`);
+  }
+
+  if (report.mode === 'accuracy_testing') {
+    report.categoryBreakdown = categories.map(cat => {
+      const catResults = results.filter(r => r.category === cat);
+      return {
+        category: cat,
+        total: catResults.length,
+        passed: catResults.filter(r => r.passed).length,
+        accuracy: (catResults.filter(r => r.passed).length / catResults.length * 100),
+      };
+    });
   }
 
   fs.writeFileSync(outputPath, JSON.stringify(report, null, 2));
