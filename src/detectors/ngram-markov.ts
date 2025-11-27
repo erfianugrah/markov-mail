@@ -30,6 +30,7 @@ export class NGramMarkovChain {
 	private readonly smoothingFactor = 0.001;
 	private readonly vocabSize = 26 + 10 + 10; // a-z, 0-9, special chars
 	private readonly order: number; // 1, 2, or 3
+	private readonly maxHistorySize = 1000; // Limit CE history to prevent unbounded growth
 
 	constructor(order: number = 2) {
 		if (order < 1 || order > 3) {
@@ -91,6 +92,13 @@ export class NGramMarkovChain {
 
 		this.trainingCount++;
 		this.crossEntropyHistory.push(H);
+
+		// Limit history size to prevent unbounded memory growth
+		// Keep only the most recent samples for statistics
+		if (this.crossEntropyHistory.length > this.maxHistorySize) {
+			this.crossEntropyHistory.shift();
+		}
+
 		return true;
 	}
 

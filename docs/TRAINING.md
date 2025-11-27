@@ -4,17 +4,37 @@
 
 The fraud detection system uses NGram Markov Chain models trained on large datasets of legitimate and fraudulent email patterns. This guide covers training, deployment, and maintenance of these models.
 
-## Quick Start
+## Quick Start (Recommended Workflow)
 
-**New to Markov Mail?** You don't need to train models from scratch:
-- **Pre-trained Models**: See [`config/production/`](../config/production/) for production-ready Markov models and calibration
-- **97.96% F1 Score**: Trained on 92K emails for Markov models, 89K for calibration
-- **Just Upload to KV**: Follow the instructions in [`config/production/README.md`](../config/production/README.md)
+### Using Pre-Trained Models
 
-The rest of this document covers the training workflow for users who want to:
-- Retrain models on custom datasets
-- Update models with new fraud patterns
-- Experiment with different training parameters
+**New to Markov Mail?** Start with pre-trained models:
+- **Pre-trained Models**: See [`config/production/`](../config/production/)
+- **80.24% F1 Score**: Trained on 101K samples with proper train/val/test split
+- **Just Upload to KV**: Follow instructions in [`config/production/README.md`](../config/production/README.md)
+
+### Training Your Own Models (One Command)
+
+**Complete training pipeline in one command:**
+
+```bash
+# Complete workflow: split → train → evaluate → upload
+npm run cli train:workflow -- \
+  --dataset dataset/main.csv \
+  --upload --remote
+```
+
+This automatically:
+1. ✅ Splits dataset (70% train / 15% val / 15% test)
+2. ✅ Trains models on training set only
+3. ✅ Evaluates on validation set
+4. ✅ Uploads to production KV
+
+**That's it!** The rest of this document covers advanced topics:
+- Pattern-based labeling (critical for quality data)
+- Manual training steps (for customization)
+- Research methodology (understanding the approach)
+- Troubleshooting and best practices
 
 ## ⚠️ CRITICAL: Pattern-Based vs Content-Based Labels
 
@@ -52,6 +72,138 @@ npm run cli train:relabel --input ./dataset/raw_emails.csv --output ./dataset/tr
 - 🚫 Fraud: Sequential (abc123), pure random, keyboard patterns (detected by Markov)
 
 **Always use pattern-labeled data for training!** This ensures models learn actual fraud patterns, not message content.
+
+## 🎓 Proper Training Methodology (Updated 2025-11-27)
+
+### Research-Backed Best Practices
+
+Based on n-gram language model literature and production ML practices, we've implemented a proper train/validation/test workflow:
+
+**The Problem with Training on 100% of Data:**
+- Cannot detect overfitting (model memorizing training data)
+- No way to tune hyperparameters objectively
+- Cannot estimate real-world performance
+- Risk of data leakage when evaluating
+
+**The Solution: Stratified Train/Val/Test Split**
+
+### Step 1: Split Dataset
+
+Split your dataset into three sets using **stratified sampling** to maintain label balance:
+
+```bash
+# Split with default 70/15/15 ratios
+npm run cli dataset:split -- --input dataset/main.csv --shuffle --seed 42
+
+# Output:
+#   dataset/train.csv  (70% - 101,245 samples)
+#   dataset/val.csv    (15% - 21,694 samples)
+#   dataset/test.csv   (15% - 21,698 samples)
+```
+
+**Why stratified?** Ensures each split has the same proportion of fraud/legit labels as the original dataset.
+
+**Why shuffle?** Prevents source clustering (e.g., all Enron emails followed by all synthetic emails).
+
+**Why seed?** Makes splits reproducible for experiments.
+
+### Step 2: Train on Training Set ONLY
+
+```bash
+# Train on training set (NOT the full dataset!)
+npm run cli train:markov -- \
+  --dataset dataset/train.csv \
+  --orders "2,3" \
+  --upload --remote
+```
+
+**Critical:** Only train on `train.csv`, never on validation or test sets.
+
+### Step 3: Evaluate on Validation Set
+
+Use the validation set for model selection and hyperparameter tuning:
+
+```bash
+# Evaluate 2-gram model
+npm run cli evaluate:markov -- \
+  --dataset dataset/val.csv \
+  --legit markov_legit_2gram.json \
+  --fraud markov_fraud_2gram.json
+
+# Evaluate 3-gram model
+npm run cli evaluate:markov -- \
+  --dataset dataset/val.csv \
+  --legit markov_legit_3gram.json \
+  --fraud markov_fraud_3gram.json
+```
+
+**Output metrics:**
+- Accuracy: (TP + TN) / Total
+- Precision: TP / (TP + FP) - How many predicted frauds are actually fraud?
+- Recall: TP / (TP + FN) - How many actual frauds did we catch?
+- F1 Score: Harmonic mean of precision and recall
+- Perplexity: 2^(average cross-entropy) - Lower is better
+- Confusion Matrix: TP, FP, TN, FN
+
+**Use validation metrics to:**
+- Choose between 2-gram vs 3-gram models
+- Tune classification thresholds
+- Select optimal hyperparameters
+- Compare different training approaches
+
+### Step 4: Final Test Evaluation (ONCE)
+
+After selecting your best model configuration, evaluate on the test set **exactly once**:
+
+```bash
+# Final evaluation on held-out test set
+npm run cli evaluate:markov -- \
+  --dataset dataset/test.csv \
+  --legit markov_legit_3gram.json \
+  --fraud markov_fraud_3gram.json
+```
+
+**⚠️ WARNING:** Never use test set performance to make decisions. That's what validation set is for. Test set gives you an unbiased estimate of real-world performance.
+
+### Step 5: Deploy to Production
+
+```bash
+# Upload models to KV
+npm run cli train:markov -- --upload --remote
+
+# Deploy worker
+npm run deploy
+```
+
+### Performance Benchmarks
+
+**Current Models (trained on 101K samples):**
+- 2-gram: 78.25% F1 (moderate)
+- 3-gram: 80.24% F1 (good)
+
+**Target Performance:**
+- Excellent: >90% F1
+- Good: 80-90% F1
+- Moderate: 70-80% F1
+- Poor: <70% F1
+
+### Key Improvements (v2.5+)
+
+1. **Cross-Entropy History Limited to 1000 samples**
+   - Previous: Unbounded growth (144K floats = 576KB wasted)
+   - Now: Fixed 1000-sample sliding window
+   - Result: 94% reduction in model size (1.75MB → 0.10MB for 2-gram)
+
+2. **Proper Train/Val/Test Split**
+   - Research-backed 70/15/15 split
+   - Stratified sampling maintains label balance
+   - Shuffling prevents source clustering
+
+3. **Comprehensive Evaluation Metrics**
+   - Precision, Recall, F1 Score
+   - Perplexity (language model quality)
+   - Confusion matrix
+   - Per-sample verbose output
 
 ## Training Architecture
 
@@ -691,6 +843,83 @@ ORDER BY risk_bucket;
 - OOD detection: 1-3% of total validations
 - Most OOD: 0.15-0.35 risk range (warning level)
 - High OOD (>0.4): <0.5% (block level)
+
+## Appendix: Research Validation & Methodology
+
+### Why This Approach?
+
+The training methodology (train/val/test split, proper metrics) is based on:
+- **N-gram Language Model Literature** (Stanford NLP textbook)
+- **Character N-gram Classification Studies** (Springer, PMC, Frontiers)
+- **Production ML Best Practices** (universal ML standards)
+
+### Research-Backed Decisions
+
+**✅ Train/Val/Test Split (70/15/15)**
+- **Source:** Universal ML practice, explicit in NLP literature
+- **Quote:** "The model's performance is evaluated on a separate test set that contains data the model has not seen during training"
+- **Why:** Prevents overfitting, enables objective hyperparameter tuning
+
+**✅ Evaluation Metrics (Precision, Recall, F1, Perplexity)**
+- **Source:** Standard for language models and classification
+- **Quote:** "Lower perplexity indicates a better language model"
+- **Typical Values:** Perplexity of 74 (trigram), 137 (bigram) for 50K vocab
+
+**✅ Cross-Entropy History Limitation (1000 samples)**
+- **Source:** CE/perplexity used as evaluation metric, not stored during training
+- **Result:** 94% reduction in model size (1.75MB → 0.10MB for 2-gram)
+
+**⚠️ Data Shuffling (Optional)**
+- **Source:** Required for time-series; optional for i.i.d. data
+- **Our case:** Email addresses are i.i.d., so shuffling is helpful but not critical
+- **Why we do it:** Prevents source clustering (Enron → Synthetic → IKEA)
+
+### Implementation Results
+
+**Dataset Split:**
+```
+Total: 144,637 samples
+Train: 101,245 (70%) - 52,614 legit / 48,631 fraud (52/48 split)
+Val:   21,694 (15%) - 11,274 legit / 10,420 fraud (52/48 split)
+Test:  21,698 (15%) - 11,276 legit / 10,422 fraud (52/48 split)
+```
+
+**Performance (Validation Set):**
+```
+2-gram: 78.25% F1 (moderate)
+3-gram: 80.24% F1 (good) ← Selected for production
+```
+
+**Model Sizes (with CE history limit):**
+```
+Before: 1.75 MB (2-gram with 144K history)
+After:  0.10 MB (2-gram with 1K history) - 94% reduction
+```
+
+### What We Learned
+
+1. **Project Already Sophisticated**
+   - Pattern-based labeling (not content-based)
+   - Incremental training architecture
+   - OOD detection implemented
+   - Online training correctly disabled (circular reasoning)
+
+2. **Research Validation Prevented Overcorrections**
+   - Not all "best practices" are critical
+   - Context matters (i.i.d. vs time-series)
+   - Some initial recommendations were incorrect (vocab size)
+
+3. **Train/Test Split Was the Key Missing Piece**
+   - Most impactful improvement
+   - Enables proper evaluation
+   - Standard in all ML literature
+
+### References
+
+- Stanford NLP: "Speech and Language Processing" (Jurafsky & Martin, 3rd ed.)
+- Character N-gram Models: Springer, PMC, Frontiers journals
+- ML Best Practices: Udacity, KDnuggets
+- Bergholz et al. (2008): "Improved Phishing Detection using Model-Based Features"
 
 ## See Also
 

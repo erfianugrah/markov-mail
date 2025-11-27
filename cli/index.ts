@@ -10,50 +10,38 @@ import { join } from 'path';
 
 const COMMANDS = {
   // Training commands
-  'train:relabel': {
-    description: 'Re-label dataset based on pattern analysis (not content)',
-    file: 'commands/train/relabel.ts',
-    usage: 'train:relabel [--input <path>] [--output <path>] [--threshold <n>]'
+  'train:workflow': {
+    description: 'Complete training workflow (split → train → evaluate)',
+    file: 'commands/train/workflow.ts',
+    usage: 'train:workflow --dataset <path> [--upload] [--remote]'
   },
   'train:markov': {
-    description: 'Train Markov Chain models from CSV datasets',
+    description: 'Train Markov Chain models from CSV datasets (low-level)',
     file: 'commands/train/markov.ts',
     usage: 'train:markov [--dataset <path>] [--output <path>]'
-  },
-  'train:dataset': {
-    description: 'Combine base + curated datasets into a training CSV',
-    file: 'commands/train/dataset-build.ts',
-    usage: 'train:dataset [--base <paths>] [--augment <paths>] [--output <path>]'
   },
   'train:calibrate': {
     description: 'Fit logistic calibration layer on top of Markov outputs',
     file: 'commands/train/calibrate.ts',
     usage: 'train:calibrate [--dataset <path>] [--models <dir>] [--output <path>]'
   },
-  'train:validate': {
-    description: 'Validate training dataset quality',
-    file: 'commands/train/validate.ts',
-    usage: 'train:validate <dataset-path>'
+
+  // Dataset management commands
+  'dataset:split': {
+    description: 'Split dataset into train/val/test sets (stratified)',
+    file: 'commands/dataset/split.ts',
+    usage: 'dataset:split --input <path> [--ratios "0.7,0.15,0.15"] [--shuffle]'
   },
+  'evaluate:markov': {
+    description: 'Evaluate Markov models on test dataset (precision/recall/F1)',
+    file: 'commands/dataset/evaluate.ts',
+    usage: 'evaluate:markov --dataset <path> --legit <model> --fraud <model>'
+  },
+
   'model:validate': {
     description: 'Validate trained models against test suite',
     file: 'commands/model/validate.ts',
     usage: 'model:validate [--remote] [--orders <n>] [--ensemble] [--verbose]'
-  },
-  'training:validate': {
-    description: 'Validate trained models before deployment',
-    file: 'commands/training/validate.ts',
-    usage: 'training:validate --version <version>'
-  },
-  'training:extract': {
-    description: 'Extract training data from D1 validations table',
-    file: 'commands/training/extract.ts',
-    usage: 'training:extract [--days <n>] [--min-confidence <n>] [--remote]'
-  },
-  'training:train': {
-    description: 'Train models from extracted datasets',
-    file: 'commands/training/train.ts',
-    usage: 'training:train [--days <n>] [--orders <list>]'
   },
 
   // Deployment commands
@@ -268,13 +256,12 @@ function showHelp() {
 Usage: npm run cli <command> [options]
 
 📦 TRAINING COMMANDS
-  train:relabel             Re-label dataset (pattern-based, not content)
-  train:markov              Train Markov Chain models
-  train:validate            Validate dataset quality
-  training:extract          Extract training data from D1
- (??)
-  training:train            Train models from extracted datasets
-  training:validate         Validate trained models before deployment
+  train:workflow            Complete ML pipeline (split → train → evaluate)
+  train:markov              Train Markov Chain models (low-level)
+  train:calibrate           Fit logistic calibration layer
+  dataset:split             Split dataset (train/val/test, stratified)
+  evaluate:markov           Evaluate models (precision/recall/F1)
+  model:validate            Validate trained models
 
 🚀 DEPLOYMENT COMMANDS
   deploy                    Deploy worker to Cloudflare
@@ -322,11 +309,11 @@ OPTIONS
   --version, -v             Show version
 
 EXAMPLES
-  npm run cli train:markov --dataset ./dataset
-  npm run cli deploy --minify
-  npm run cli kv:list --binding MARKOV_MODEL
-  FRAUD_API_KEY=your-key npm run cli analytics:query "SELECT COUNT(*) FROM validations"
-  npm run cli test:generate --count 100 --patterns sequential,dated
+  npm run cli train:workflow -- --dataset dataset/main.csv --upload --remote
+  npm run cli evaluate:markov -- --dataset dataset/test.csv --legit markov_legit_2gram.json --fraud markov_fraud_2gram.json
+  npm run cli deploy -- --minify
+  npm run cli kv:list -- --binding MARKOV_MODEL
+  npm run cli test:api -- user@example.com
 
 For detailed command help: npm run cli <command> --help
 `);
