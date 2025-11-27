@@ -176,7 +176,8 @@ cf-docs
 models/
 test-emails.json
 training*.log
-dataset*
+data*
+!cli/commands/dataset/
 public/dashboard/
 
 # Analysis archives (temporary data from tuning sessions)
