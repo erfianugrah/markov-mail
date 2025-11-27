@@ -109,7 +109,7 @@ export function detectSequentialPattern(email: string): SequentialPatternResult 
     const baseLower = base.toLowerCase();
     const hasCommonBase = COMMON_SEQUENTIAL_BASES.some(common => baseLower.includes(common));
 
-    if (numberStr.length <= 2 && base.length >= 4 && !hasLeadingZeros) {
+    if (numberStr.length <= 3 && base.length >= 4 && !hasLeadingZeros) {
       // If it's a normal name + small number (no leading zeros), likely memorable/personal
       if (!hasCommonBase) {
         return {

@@ -20,7 +20,8 @@ import {
   supportsPlusAddressing,
   analyzePlusTagPattern,
   getCanonicalEmail,
-  areEmailsEquivalent
+  areEmailsEquivalent,
+  getPlusAddressingRiskScore
 } from '../../../src/detectors/plus-addressing';
 import {
   detectKeyboardWalk,
@@ -56,6 +57,11 @@ describe('Sequential Pattern Detector', () => {
     expect(result.isSequential).toBe(false);
   });
 
+  it('should allow personal names with three-digit suffixes', () => {
+    const result = detectSequentialPattern('andrew123@gmail.com');
+    expect(result.isSequential).toBe(false);
+  });
+
   it('should extract pattern family correctly', () => {
     const family1 = getSequentialPatternFamily('user123@gmail.com');
     const family2 = getSequentialPatternFamily('user456@gmail.com');
@@ -72,6 +78,23 @@ describe('Sequential Pattern Detector', () => {
     expect(result.hasSequentialPattern).toBe(true);
     expect(result.confidence).toBeGreaterThan(0.7);
     expect(result.matchingEmails.length).toBe(3);
+  });
+});
+
+describe('Plus-addressing risk score', () => {
+  it('should add baseline risk for any plus usage', () => {
+    const score = getPlusAddressingRiskScore('user+news@gmail.com');
+    expect(score).toBeCloseTo(0.2, 5);
+  });
+
+  it('should stack suspicious tags and multi-alias abuse', () => {
+    const score = getPlusAddressingRiskScore('user+1@gmail.com', ['user+2@gmail.com']);
+    expect(score).toBeCloseTo(0.9, 2);
+  });
+
+  it('should return zero for emails without plus addressing', () => {
+    const score = getPlusAddressingRiskScore('user@gmail.com');
+    expect(score).toBe(0);
   });
 });
 

@@ -30,6 +30,7 @@ interface CalibrationOptions {
 	upload: boolean;
 	remote: boolean;
 	binding: string;
+	allowEmpty: boolean;
 }
 
 interface SampleRow {
@@ -68,6 +69,7 @@ export default async function calibrateCommand(args: string[]) {
 		upload: hasFlag(parsed, 'upload'),
 		remote: hasFlag(parsed, 'remote'),
 		binding: getOption(parsed, 'binding') || 'CONFIG',
+		allowEmpty: hasFlag(parsed, 'allow-empty'),
 	};
 
 	if (options.remote && !options.upload) {
@@ -160,7 +162,11 @@ export default async function calibrateCommand(args: string[]) {
 	logger.success(`Calibration coefficients saved to ${outputPath}`);
 
 	if (options.upload) {
-		await uploadCalibrationToKV(calibration, options.binding, options.remote);
+		await uploadCalibrationToKV(calibration, {
+			binding: options.binding,
+			remote: options.remote,
+			allowEmpty: options.allowEmpty,
+		});
 	} else {
 		logger.info('To upload the calibration coefficients to KV:');
 		logger.info(`  npm run cli train:calibrate --dataset ${options.dataset} --models ${options.modelsDir} --output ${options.output} --upload${options.remote ? ' --remote' : ''}`);
@@ -186,6 +192,7 @@ OPTIONS
   --upload            Upload calibration JSON into config KV
   --remote            Use remote KV when uploading (requires --upload)
   --binding <name>    KV binding for config (default: CONFIG)
+  --allow-empty       Allow creating config.json if it doesn't already exist
   --help, -h          Show this help message
 
 Example:
@@ -314,24 +321,38 @@ function trainCalibration(samples: FeatureSample[], featureNames: string[]): Cal
 	};
 }
 
+interface UploadOptions {
+	binding: string;
+	remote: boolean;
+	allowEmpty: boolean;
+}
+
 async function uploadCalibrationToKV(
 	calibration: CalibrationCoefficients,
-	binding: string,
-	remote: boolean
+	options: UploadOptions
 ) {
 	logger.section('📤 Uploading Calibration to KV');
-	logger.info(`Binding: ${binding}`);
+	logger.info(`Binding: ${options.binding}`);
 
-	const remoteFlag = remote ? '--remote' : '';
-	let configData: Record<string, any> = {};
+	const remoteFlag = options.remote ? '--remote' : '';
+	let configData: Record<string, any> | null = null;
 
 	try {
-		const existingConfig = await $`npx wrangler kv key get config.json --binding=${binding} ${remoteFlag}`.text();
+		const existingConfig = await $`npx wrangler kv key get config.json --binding=${options.binding} ${remoteFlag}`.text();
 		if (existingConfig && existingConfig.trim().length > 0) {
 			configData = JSON.parse(existingConfig);
 		}
 	} catch (error) {
-		logger.warn(`No existing config.json found or failed to load: ${error}`);
+		logger.error(`❌ Failed to fetch existing config.json: ${error}`);
+		if (!options.allowEmpty) {
+			throw new Error('Load existing config before uploading calibration or pass --allow-empty to create a new file.');
+		}
+	}
+
+	if (!configData) {
+		if (!options.allowEmpty) {
+			throw new Error('No config.json found in KV. Upload a base config (or pass --allow-empty) before adding calibration.');
+		}
 		configData = {};
 	}
 
@@ -341,7 +362,7 @@ async function uploadCalibrationToKV(
 	writeFileSync(tempFile, JSON.stringify(configData, null, 2));
 
 	try {
-		await $`npx wrangler kv key put config.json --path=${tempFile} --binding=${binding} ${remoteFlag}`.quiet();
+		await $`npx wrangler kv key put config.json --path=${tempFile} --binding=${options.binding} ${remoteFlag}`.quiet();
 		logger.success('✅ Calibration uploaded to KV');
 	} catch (error) {
 		logger.error(`Failed to upload calibration: ${error}`);

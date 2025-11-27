@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_CONFIG } from '../../src/config/defaults';
+import { clampAbnormalityRiskForLocalLength } from '../../src/middleware/fraud-detection';
 
 describe('Config Application Verification v2.4.2', () => {
 	describe('Risk calculation formulas with config values', () => {
@@ -346,6 +347,30 @@ describe('Config Application Verification v2.4.2', () => {
 			// The reduction is significant: (1.58 - 0.81) / 1.58 ≈ 49% reduction
 			const reduction = (nonProfessionalScore - score) / nonProfessionalScore;
 			expect(reduction).toBeGreaterThan(0.45); // At least 45% reduction
+		});
+	});
+
+	describe('OOD abnormality clamping for short local parts', () => {
+		it('should zero abnormality risk for ultra-short locals', () => {
+			const abnormalityRisk = 0.6;
+			expect(clampAbnormalityRiskForLocalLength(abnormalityRisk, 3)).toBe(0);
+			expect(clampAbnormalityRiskForLocalLength(abnormalityRisk, 4)).toBe(0);
+		});
+
+		it('should ramp abnormality risk between 5 and 12 characters', () => {
+			const abnormalityRisk = 0.6;
+			const len5 = clampAbnormalityRiskForLocalLength(abnormalityRisk, 5);
+			const len8 = clampAbnormalityRiskForLocalLength(abnormalityRisk, 8);
+			const len11 = clampAbnormalityRiskForLocalLength(abnormalityRisk, 11);
+
+			expect(len5).toBeGreaterThan(0);
+			expect(len5).toBeLessThan(len8);
+			expect(len11).toBeLessThan(abnormalityRisk);
+		});
+
+		it('should keep abnormality risk unchanged for long locals', () => {
+			const abnormalityRisk = 0.6;
+			expect(clampAbnormalityRiskForLocalLength(abnormalityRisk, 15)).toBe(abnormalityRisk);
 		});
 	});
 });
