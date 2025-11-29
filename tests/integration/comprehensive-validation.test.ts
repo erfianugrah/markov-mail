@@ -321,7 +321,7 @@ describe('Comprehensive Email Validation Test Suite', () => {
 
 				// Pattern should be detected (may be dated, random, or other)
 				expect(result.signals.patternType).toBeDefined();
-				// Without trained Markov models, some dated patterns may only be flagged as allow
+				// Legacy behavior allowed some dated patterns; keep for regression tracking
 				expect(['allow', 'warn', 'block']).toContain(result.decision);
 			});
 		});
@@ -771,7 +771,7 @@ describe('Comprehensive Email Validation Test Suite', () => {
 				}
 			}
 
-			// Without trained Markov models, expect lower detection (will be > 40 once trained)
+			// Legacy expectation noted here; update once we have decision-tree benchmarks
 			expect(blockedCount + warnCount).toBeGreaterThan(20);
 			// Most should have pattern detected (pattern detection should still work)
 			expect(sequentialCount).toBeGreaterThan(30);
@@ -797,7 +797,7 @@ describe('Comprehensive Email Validation Test Suite', () => {
 				expect(result.signals.patternType).toBe('dated');
 			}
 
-			// Without trained Markov models, expect lower detection (will be > 25 once trained)
+			// Legacy expectation noted here; update once we have decision-tree benchmarks
 			expect(blockedCount + warnCount).toBeGreaterThan(12);
 		}, 15000); // 15 second timeout for batch processing
 	});

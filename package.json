@@ -5,11 +5,8 @@
   "scripts": {
     "cli": "bun run cli/index.ts",
     "typecheck": "tsc --noEmit",
-    "dashboard:build": "cd dashboard && npm run build",
-    "dashboard:dev": "cd dashboard && npm run dev",
-    "predeploy": "npm run dashboard:build && npm run typecheck",
-    "deploy": "npm run dashboard:build && wrangler deploy",
-    "deploy:skip-checks": "npm run dashboard:build && wrangler deploy",
+    "predeploy": "npm run typecheck",
+    "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "cf-typegen": "wrangler types",

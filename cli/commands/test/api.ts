@@ -36,7 +36,8 @@ export default async function api(args: string[]) {
         reason?: string;
         signals?: {
           patternType?: string;
-          markovConfidence?: number;
+          decisionTreeReason?: string;
+          decisionTreePath?: string[];
         };
       };
 
@@ -47,8 +48,11 @@ export default async function api(args: string[]) {
 
       if (data.signals) {
         console.log(`  Pattern Type: ${data.signals.patternType || 'unknown'}`);
-        if (typeof data.signals.markovConfidence === 'number') {
-          console.log(`  Markov Confidence: ${data.signals.markovConfidence.toFixed(3)}`);
+        if (data.signals.decisionTreeReason) {
+          console.log(`  Tree Reason: ${data.signals.decisionTreeReason}`);
+        }
+        if (Array.isArray(data.signals.decisionTreePath) && data.signals.decisionTreePath.length > 0) {
+          console.log(`  Tree Path: ${data.signals.decisionTreePath.join(' -> ')}`);
         }
       }
 

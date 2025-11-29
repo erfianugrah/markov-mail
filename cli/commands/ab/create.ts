@@ -65,8 +65,8 @@ Examples:
 
   # Deploy to production KV
   npm run cli ab:create \\
-    --experiment-id "ensemble_markov" \\
-    --description "Test ensemble Markov models" \\
+    --experiment-id "tree_tuning" \\
+    --description "Test decision-tree risk weights" \\
     --remote
 		`);
 		return;

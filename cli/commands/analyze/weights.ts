@@ -7,13 +7,10 @@
 import { logger } from '../../utils/logger';
 
 export async function analyzeWeights() {
-	logger.info('Analyzing risk weights...');
-
-	// TODO: Implement risk weight analysis
-	// const { analyzeRiskWeights } = await import('../../../scripts/analyze-risk-weights-lib');
-
-	logger.error('Risk weight analysis not yet implemented');
-	throw new Error('analyze-risk-weights-lib script not found');
+	logger.section('📉 Risk weight analysis');
+	logger.warn('This command was replaced by the offline decision-tree workflow.');
+	logger.info('Export features via `features:export`, retrain the tree, and compare D1 metrics instead.');
+	throw new Error('analyze:weights is deprecated in the reset branch.');
 }
 
 export const command = {

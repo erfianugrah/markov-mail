@@ -7,7 +7,6 @@ declare namespace Cloudflare {
 	}
 	interface Env {
 		CONFIG: KVNamespace;
-		MARKOV_MODEL: KVNamespace;
 		DISPOSABLE_DOMAINS_LIST: KVNamespace;
 		TLD_LIST: KVNamespace;
 		'X-API-KEY': string;

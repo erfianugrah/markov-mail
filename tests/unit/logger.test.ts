@@ -107,8 +107,8 @@ describe('Logger', () => {
 				decision: 'warn',
 				riskScore: 0.55,
 				signals: {
-					markovScore: 0.45,
-					ensembleScore: 0.60,
+					decisionTreeScore: 0.45,
+					featureVectorHash: 'abc123',
 					entropy: 4.2,
 					randomness: true,
 				},
@@ -200,12 +200,12 @@ describe('Logger', () => {
 		});
 
 		it('should support domain-prefixed events', () => {
-			logger.info({ event: 'markov_models_loaded' }, 'Models loaded');
-			logger.info({ event: 'ensemble_validation_passed' }, 'Validation passed');
+			logger.info({ event: 'decision_tree_loaded' }, 'Model loaded');
+			logger.info({ event: 'feature_export_completed' }, 'Export finished');
 
 			const output = consoleOutput.join('');
-			expect(output).toContain('markov_models_loaded');
-			expect(output).toContain('ensemble_validation_passed');
+			expect(output).toContain('decision_tree_loaded');
+			expect(output).toContain('feature_export_completed');
 		});
 	});
 

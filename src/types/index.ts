@@ -32,16 +32,9 @@ export interface ValidationSignals {
   isGibberish?: boolean;
   gibberishConfidence?: number;
   tldRiskScore?: number;
-  // Phase 7: Markov Chain signals
-  markovDetected?: boolean;
-  markovConfidence?: number;
-  markovCrossEntropyLegit?: number;
-  markovCrossEntropyFraud?: number;
-  // Calibration signals
-  calibratedFraudProbability?: number;
-  classificationRisk?: number;
-  domainRisk?: number;
-  ensembleBoost?: number;
+  decisionTreeReason?: string;
+  decisionTreePath?: string[];
+  decisionTreeVersion?: string;
   plusAddressingRisk?: number;
   sequentialPatternRisk?: number;
 }

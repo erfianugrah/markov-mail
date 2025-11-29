@@ -2,7 +2,6 @@
  * E2E API Endpoint Tests
  *
  * Tests API endpoints with various email scenarios and payloads
- * Migrated from scripts/test-api.js
  */
 
 import { describe, test, expect, beforeAll } from 'vitest';

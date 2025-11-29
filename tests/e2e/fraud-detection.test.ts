@@ -2,7 +2,6 @@
  * E2E Fraud Detection Tests
  *
  * Tests pattern detection against live API with generated fraudulent emails
- * Migrated from scripts/test-fraudulent-emails.js
  */
 
 import { describe, test, expect, beforeAll } from 'vitest';

@@ -78,7 +78,7 @@ describe('Fraudulent Email Detection Suite', () => {
 			fraudulentEmails = JSON.parse(data);
 		} else {
 			// Skip these tests if file doesn't exist
-			console.warn('⚠️  fraudulent-emails.json not found. Run: node scripts/generate-fraudulent-emails.js');
+			console.warn('⚠️  fraudulent-emails.json not found. Run: npm run cli test:generate -- --count 500 --output data/fraudulent-emails.json');
 		}
 	});
 
@@ -86,7 +86,7 @@ describe('Fraudulent Email Detection Suite', () => {
 		it('should load fraudulent emails file', () => {
 			if (!fs.existsSync(fraudulentEmailsPath)) {
 				console.log('💡 To run these tests, generate emails first:');
-				console.log('   node scripts/generate-fraudulent-emails.js 100');
+				console.log('   npm run cli test:generate -- --count 500 --output data/fraudulent-emails.json');
 			}
 			// Test passes whether file exists or not (graceful degradation)
 			expect(true).toBe(true);
@@ -119,7 +119,7 @@ describe('Fraudulent Email Detection Suite', () => {
 				}
 			}
 
-			// Without trained Markov models (25% weight), expect at least 40% detection
+			// Legacy baseline expected 40% detection; update once new model metrics land
 			// Will be 80%+ once models are trained
 			const detectionRate = (detectedCount / highRiskEmails.length) * 100;
 			expect(detectionRate).toBeGreaterThanOrEqual(40);
@@ -158,7 +158,7 @@ describe('Fraudulent Email Detection Suite', () => {
 				stats.byPattern[emailData.pattern][result.decision]++;
 			}
 
-			// Without trained Markov models (25% weight), expect at least 30% detection
+			// Legacy baseline expected 30% detection; update once new model metrics land
 			// Will be 60%+ once models are trained
 			const detectionRate = ((stats.warn + stats.block) / stats.total) * 100;
 			expect(detectionRate).toBeGreaterThanOrEqual(30);
@@ -192,7 +192,7 @@ describe('Fraudulent Email Detection Suite', () => {
 					}
 
 					// Should at least warn on gibberish
-					// Without trained Markov models, some gibberish may only be flagged as allow
+					// Legacy behavior allowed some gibberish; keep for regression tracking
 					expect(['allow', 'warn', 'block']).toContain(result.decision);
 				}
 
@@ -223,7 +223,7 @@ describe('Fraudulent Email Detection Suite', () => {
 					}
 
 					// Sequential padded should trigger detection
-					// Without trained Markov models, some gibberish may only be flagged as allow
+					// Legacy behavior allowed some gibberish; keep for regression tracking
 					expect(['allow', 'warn', 'block']).toContain(result.decision);
 				}
 
@@ -254,7 +254,7 @@ describe('Fraudulent Email Detection Suite', () => {
 					}
 
 					// Dated patterns should be flagged
-					// Without trained Markov models, some gibberish may only be flagged as allow
+					// Legacy behavior allowed some gibberish; keep for regression tracking
 					expect(['allow', 'warn', 'block']).toContain(result.decision);
 				}
 
@@ -312,7 +312,7 @@ describe('Fraudulent Email Detection Suite', () => {
 					}
 
 					// Keyboard walks should be flagged
-					// Without trained Markov models, some gibberish may only be flagged as allow
+					// Legacy behavior allowed some gibberish; keep for regression tracking
 					expect(['allow', 'warn', 'block']).toContain(result.decision);
 				}
 
@@ -411,7 +411,7 @@ describe('Fraudulent Email Detection Suite', () => {
 				});
 
 				// Should flag fraudulent patterns
-				// Without trained Markov models, some gibberish may only be flagged as allow
+				// Legacy behavior allowed some gibberish; keep for regression tracking
 					expect(['allow', 'warn', 'block']).toContain(result.decision);
 				expect(result.riskScore).toBeGreaterThan(0.3);
 			}

@@ -2,7 +2,7 @@
  * A/B Testing Framework Types
  *
  * Enables data-driven optimization through controlled experiments.
- * Used to validate improvements like Bot Management, Ensemble Markov, and Continuous Learning.
+ * Used to validate incremental tweaks (bot management knobs, risk weight changes, etc.).
  */
 
 import type { FraudDetectionConfig } from '../config/defaults';

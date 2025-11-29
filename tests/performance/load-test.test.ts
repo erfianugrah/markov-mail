@@ -2,7 +2,6 @@
  * Performance & Load Tests
  *
  * Tests API performance under load with large batches
- * Migrated from scripts/test-remote-batch.js
  */
 
 import { describe, test, expect, beforeAll } from 'vitest';
