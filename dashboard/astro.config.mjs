@@ -8,6 +8,7 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   integrations: [react()],
   output: 'static',
+  base: '/dashboard',
   outDir: '../public/dashboard',
   build: {
     assets: 'assets'
