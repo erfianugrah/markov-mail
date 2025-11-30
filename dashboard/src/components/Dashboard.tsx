@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import ApiKeyInput from './ApiKeyInput';
+import { Button } from './ui/button';
+import ApiKeyDialog from './ApiKeyDialog';
 import MetricsGrid from './MetricsGrid';
 import BlockReasonsChart from './BlockReasonsChart';
 import TimeSeriesChart from './TimeSeriesChart';
@@ -26,14 +27,14 @@ export default function Dashboard() {
 
   // Auto-refresh every 30 seconds when enabled
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!autoRefresh || !apiKey) return;
 
     const interval = setInterval(() => {
       setRefreshKey((prev) => prev + 1);
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [autoRefresh]);
+  }, [autoRefresh, apiKey]);
 
   // Persist auto-refresh preference
   useEffect(() => {
@@ -43,27 +44,21 @@ export default function Dashboard() {
   }, [autoRefresh]);
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:justify-between">
-        <div className="w-full sm:flex-1">
-          <ApiKeyInput onApiKeyChange={setApiKey} />
-        </div>
-        {apiKey && (
-          <button
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`w-full sm:w-auto px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-              autoRefresh
-                ? 'bg-primary text-primary-foreground'
-                : 'border border-border hover:bg-accent'
-            }`}
-          >
-            {autoRefresh ? '🔄 Auto-refresh ON' : 'Auto-refresh OFF'}
-          </button>
-        )}
-      </div>
+    <>
+      <ApiKeyDialog onApiKeyChange={setApiKey} />
 
       {apiKey ? (
-        <>
+        <div className="space-y-4 sm:space-y-6">
+          <div className="flex justify-end">
+            <Button
+              variant={autoRefresh ? 'default' : 'outline'}
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              className="whitespace-nowrap"
+            >
+              {autoRefresh ? '🔄 Auto-refresh ON' : 'Auto-refresh OFF'}
+            </Button>
+          </div>
+
           <MetricsGrid apiKey={apiKey} key={`metrics-${refreshKey}`} />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
@@ -77,12 +72,12 @@ export default function Dashboard() {
           </div>
 
           <QueryBuilder apiKey={apiKey} />
-        </>
+        </div>
       ) : (
-        <div className="text-center py-12 text-muted-foreground">
-          Please enter your API key to view analytics data.
+        <div className="flex items-center justify-center min-h-[400px]">
+          <p className="text-muted-foreground">Please enter your API key to view analytics data.</p>
         </div>
       )}
-    </div>
+    </>
   );
 }
