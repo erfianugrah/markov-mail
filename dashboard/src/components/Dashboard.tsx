@@ -1,14 +1,28 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { Button } from './ui/button';
 import ApiKeyDialog from './ApiKeyDialog';
-import MetricsGrid from './MetricsGrid';
-import BlockReasonsChart from './BlockReasonsChart';
-import TimeSeriesChart from './TimeSeriesChart';
-import ModelMetrics from './ModelMetrics';
-import ModelComparison from './ModelComparison';
-import QueryBuilder from './QueryBuilder';
+import { ErrorBoundary } from './ErrorBoundary';
+import { CardSkeleton, ChartSkeleton } from './CardSkeleton';
+
+// Lazy load heavy components for better performance
+const MetricsGrid = lazy(() => import('./MetricsGrid'));
+const BlockReasonsChart = lazy(() => import('./BlockReasonsChart'));
+const TimeSeriesChart = lazy(() => import('./TimeSeriesChart'));
+const ModelMetrics = lazy(() => import('./ModelMetrics'));
+const ModelComparison = lazy(() => import('./ModelComparison'));
+const QueryBuilder = lazy(() => import('./QueryBuilder'));
 
 const AUTO_REFRESH_KEY = 'fraud-detection-auto-refresh';
+
+function MetricsGridSkeleton() {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <CardSkeleton key={i} />
+      ))}
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const [apiKey, setApiKey] = useState('');
@@ -59,19 +73,45 @@ export default function Dashboard() {
             </Button>
           </div>
 
-          <MetricsGrid apiKey={apiKey} key={`metrics-${refreshKey}`} />
+          <ErrorBoundary>
+            <Suspense fallback={<MetricsGridSkeleton />}>
+              <MetricsGrid apiKey={apiKey} key={`metrics-${refreshKey}`} />
+            </Suspense>
+          </ErrorBoundary>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            <BlockReasonsChart apiKey={apiKey} key={`blocks-${refreshKey}`} />
-            <TimeSeriesChart apiKey={apiKey} key={`timeseries-${refreshKey}`} />
+            <ErrorBoundary>
+              <Suspense fallback={<ChartSkeleton />}>
+                <BlockReasonsChart apiKey={apiKey} key={`blocks-${refreshKey}`} />
+              </Suspense>
+            </ErrorBoundary>
+
+            <ErrorBoundary>
+              <Suspense fallback={<ChartSkeleton />}>
+                <TimeSeriesChart apiKey={apiKey} key={`timeseries-${refreshKey}`} />
+              </Suspense>
+            </ErrorBoundary>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            <ModelMetrics apiKey={apiKey} key={`model-${refreshKey}`} />
-            <ModelComparison apiKey={apiKey} key={`comparison-${refreshKey}`} />
+            <ErrorBoundary>
+              <Suspense fallback={<ChartSkeleton />}>
+                <ModelMetrics apiKey={apiKey} key={`model-${refreshKey}`} />
+              </Suspense>
+            </ErrorBoundary>
+
+            <ErrorBoundary>
+              <Suspense fallback={<ChartSkeleton />}>
+                <ModelComparison apiKey={apiKey} key={`comparison-${refreshKey}`} />
+              </Suspense>
+            </ErrorBoundary>
           </div>
 
-          <QueryBuilder apiKey={apiKey} />
+          <ErrorBoundary>
+            <Suspense fallback={<CardSkeleton />}>
+              <QueryBuilder apiKey={apiKey} />
+            </Suspense>
+          </ErrorBoundary>
         </div>
       ) : (
         <div className="flex items-center justify-center min-h-[400px]">
