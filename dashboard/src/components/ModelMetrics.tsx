@@ -43,7 +43,7 @@ export default function ModelMetrics({ apiKey }: ModelMetricsProps) {
             AND timestamp >= datetime('now', '-7 days')
         `;
 
-        const response = await queryAnalytics({ sql }, apiKey);
+        const response = await queryAnalytics({ query: sql }, apiKey);
         const row = response.results[0];
 
         const tp = row.tp || 0;

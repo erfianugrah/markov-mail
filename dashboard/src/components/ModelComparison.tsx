@@ -40,7 +40,7 @@ export default function ModelComparison({ apiKey }: ModelComparisonProps) {
           GROUP BY model_version
         `;
 
-        const response = await queryAnalytics({ sql }, apiKey);
+        const response = await queryAnalytics({ query: sql }, apiKey);
 
         if (response.results.length >= 2) {
           const baseline = response.results.find((r: any) => r.model_version.includes('baseline'));

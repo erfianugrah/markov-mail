@@ -5,7 +5,7 @@
 const API_BASE = import.meta.env.PUBLIC_API_URL || 'https://fraud.erfi.dev';
 
 export interface AnalyticsQuery {
-  sql: string;
+  query: string;
   hours?: number;
 }
 
@@ -107,7 +107,7 @@ export async function getMetricsSummary(
     WHERE timestamp >= datetime('now', '-${hours} hours')
   `;
 
-  const response = await queryAnalytics({ sql, hours }, apiKey);
+  const response = await queryAnalytics({ query: sql, hours }, apiKey);
   const row = response.results[0];
 
   return {
@@ -141,7 +141,7 @@ export async function getBlockReasons(
     LIMIT 10
   `;
 
-  const response = await queryAnalytics({ sql, hours }, apiKey);
+  const response = await queryAnalytics({ query: sql, hours }, apiKey);
 
   return response.results.map((row) => ({
     reason: row.reason || 'Unknown',
@@ -169,7 +169,7 @@ export async function getTimeSeriesData(
     ORDER BY hour ASC
   `;
 
-  const response = await queryAnalytics({ sql, hours }, apiKey);
+  const response = await queryAnalytics({ query: sql, hours }, apiKey);
 
   return response.results.map((row) => ({
     timestamp: row.hour,

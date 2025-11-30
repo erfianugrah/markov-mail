@@ -72,7 +72,7 @@ export default function QueryBuilder({ apiKey }: QueryBuilderProps) {
 
     try {
       const startTime = performance.now();
-      const response = await queryAnalytics({ sql: query }, apiKey);
+      const response = await queryAnalytics({ query }, apiKey);
       const executionTime = Math.round(performance.now() - startTime);
 
       setResult({
