@@ -41,6 +41,12 @@ import {
 	getDecisionTreeVersion,
 	type DecisionTreeEvaluation,
 } from '../models/decision-tree';
+import {
+	evaluateRandomForest,
+	loadRandomForestModel,
+	getRandomForestVersion,
+	type RandomForestEvaluation,
+} from '../models/random-forest';
 
 const PATTERN_CLASSIFICATION_VERSION = '2.5.0';
 const AB_CONFIG_CACHE_TTL = 60000; // 1 minute
@@ -289,6 +295,8 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 		let featureVector: FeatureVector | undefined;
 		let decisionTreeResult: DecisionTreeEvaluation | null = null;
 		let decisionTreeVersion = 'unavailable';
+		let randomForestResult: RandomForestEvaluation | null = null;
+		let randomForestVersion = 'unavailable';
 
 		let riskScore = 0;
 		let blockReason = '';
@@ -362,17 +370,37 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 					uniqueCharRatio: localPartFeatures.statistical.uniqueCharRatio,
 					vowelGapRatio: localPartFeatures.statistical.vowelGapRatio,
 					maxDigitRun: localPartFeatures.statistical.maxDigitRun,
+					bigramEntropy: localPartFeatures.statistical.bigramEntropy,
 				},
 			});
 
-			const modelLoaded = await loadDecisionTreeModel(c.env);
+			// Try Random Forest first (better high-entropy pattern detection)
+			const forestLoaded = await loadRandomForestModel(c.env);
+			randomForestVersion = getRandomForestVersion();
+
+			if (forestLoaded && featureVector) {
+				randomForestResult = evaluateRandomForest(featureVector);
+			}
+
+			// Fall back to Decision Tree if Random Forest unavailable
+			const treeLoaded = await loadDecisionTreeModel(c.env);
 			decisionTreeVersion = getDecisionTreeVersion();
 
-			if (modelLoaded && featureVector) {
+			if (treeLoaded && featureVector) {
 				decisionTreeResult = evaluateDecisionTree(featureVector);
 			}
 
-			if (decisionTreeResult) {
+			// Use Random Forest score if available, otherwise Decision Tree
+			if (randomForestResult) {
+				riskScore = randomForestResult.score;
+				blockReason = randomForestResult.reason || 'random_forest';
+				logger.info({
+					event: 'random_forest_result',
+					reason: blockReason,
+					score: Math.round(riskScore * 100) / 100,
+					forestVersion: randomForestVersion,
+				}, 'Random Forest evaluation complete');
+			} else if (decisionTreeResult) {
 				riskScore = decisionTreeResult.score;
 				blockReason = decisionTreeResult.reason || 'decision_tree';
 				logger.info({
@@ -380,15 +408,17 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 					reason: blockReason,
 					score: Math.round(riskScore * 100) / 100,
 					treeVersion: decisionTreeVersion,
-				}, 'Decision tree evaluation complete');
+				}, 'Decision tree evaluation complete (forest unavailable)');
 			} else {
 				riskScore = 0;
-				blockReason = modelLoaded ? 'tree_evaluation_failed' : 'model_unavailable';
+				blockReason = (forestLoaded || treeLoaded) ? 'evaluation_failed' : 'model_unavailable';
 				logger.warn({
-					event: 'decision_tree_missing',
+					event: 'model_unavailable',
+					forestVersion: randomForestVersion,
 					treeVersion: decisionTreeVersion,
-					modelLoaded,
-				}, 'Decision tree unavailable, defaulting to 0 risk');
+					forestLoaded,
+					treeLoaded,
+				}, 'No models available, defaulting to 0 risk');
 			}
 		}
 

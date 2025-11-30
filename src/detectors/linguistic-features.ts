@@ -63,6 +63,7 @@ export interface StatisticalFeatureSignals {
   uniqueCharRatio: number;
   entropy: number;
   vowelGapRatio: number;
+  bigramEntropy: number;
 }
 
 export interface LocalPartFeatureSignals {
@@ -105,6 +106,7 @@ const EMPTY_FEATURES: LocalPartFeatureSignals = {
     uniqueCharRatio: 0,
     entropy: 0,
     vowelGapRatio: 0,
+    bigramEntropy: 0,
   },
 };
 
@@ -122,6 +124,35 @@ interface CharacterFlags {
   isConsonant: boolean;
   isDigit: boolean;
   isSymbol: boolean;
+}
+
+/**
+ * Calculate Bigram (Transition) Entropy
+ * Language-agnostic measure of structural predictability
+ * Higher entropy = more random/unpredictable character transitions (suspicious)
+ * Lower entropy = more predictable patterns (natural language)
+ */
+function calculateTransitionEntropy(text: string): number {
+  if (text.length < 2) {
+    return 0;
+  }
+
+  const bigrams = new Map<string, number>();
+  let totalTransitions = 0;
+
+  for (let i = 0; i < text.length - 1; i++) {
+    const pair = text.substring(i, i + 2).toLowerCase();
+    bigrams.set(pair, (bigrams.get(pair) || 0) + 1);
+    totalTransitions++;
+  }
+
+  let entropy = 0;
+  for (const count of bigrams.values()) {
+    const p = count / totalTransitions;
+    entropy -= p * Math.log2(p);
+  }
+
+  return entropy;
 }
 
 export function extractLocalPartFeatureSignals(localPartInput: string | null | undefined): LocalPartFeatureSignals {
@@ -280,6 +311,7 @@ export function extractLocalPartFeatureSignals(localPartInput: string | null | u
       uniqueCharRatio,
       entropy,
       vowelGapRatio,
+      bigramEntropy: calculateTransitionEntropy(lower),
     },
   };
 }

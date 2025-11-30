@@ -46,6 +46,7 @@ export interface FeatureVectorInput {
 		uniqueCharRatio?: number;
 		vowelGapRatio?: number;
 		maxDigitRun?: number;
+		bigramEntropy?: number;
 	};
 }
 
@@ -117,6 +118,7 @@ export function buildFeatureVector(input: FeatureVectorInput): FeatureVector {
 		features.unique_char_ratio = sanitize(input.statistical.uniqueCharRatio, 0, { min: 0, max: 1 });
 		features.vowel_gap_ratio = sanitize(input.statistical.vowelGapRatio, 0, { min: 0, max: 1 });
 		features.max_digit_run = sanitize(input.statistical.maxDigitRun, 0, { min: 0, max: 64 });
+		features.bigram_entropy = sanitize(input.statistical.bigramEntropy, 0, { min: 0, max: 16 });
 	}
 
 	return features;
