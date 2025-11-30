@@ -158,14 +158,24 @@ const COMMANDS = {
 	},
 
 	'features:export': {
-		description: 'Generate feature matrix for decision-tree training',
+		description: 'Generate feature matrix for model training',
 		file: 'commands/features/export.ts',
 		usage: 'features:export [--input data/main.csv] [--output data/features/export.csv]',
 	},
+	'model:train': {
+		description: 'Train ML model (1 tree = decision tree, 10+ trees = random forest)',
+		file: 'commands/model/train_unified.ts',
+		usage: 'model:train [--n-trees <n>] [--max-depth <n>] [--conflict-weight <n>] [--skip-mx] [--upload]',
+	},
 	'tree:train': {
-		description: 'Train decision tree model with feature export and optional KV upload',
+		description: '[DEPRECATED] Use model:train --n-trees 1',
 		file: 'commands/model/train.ts',
 		usage: 'tree:train [--max-depth <n>] [--min-samples-leaf <n>] [--skip-mx] [--upload]',
+	},
+	'forest:train': {
+		description: '[DEPRECATED] Use model:train --n-trees 10',
+		file: 'commands/model/train_forest_wrapper.ts',
+		usage: 'forest:train [--n-trees <n>] [--max-depth <n>] [--min-samples-leaf <n>] [--conflict-weight <n>] [--skip-mx] [--upload]',
 	},
 
 	// A/B Testing commands
@@ -224,8 +234,10 @@ Usage: npm run cli <command> [options]
   config:upload|sync        Push config files to KV
 
 🛠️ MODEL PIPELINE
-  features:export           Mirror runtime feature vector for decision-tree training
-  tree:train                Train decision tree model (export + train + upload)
+  features:export           Mirror runtime feature vector for model training
+  model:train               Train model (1 tree = decision tree, 10+ = random forest)
+  tree:train                [DEPRECATED] Use model:train --n-trees 1
+  forest:train              [DEPRECATED] Use model:train --n-trees 10
 
 🧮 EXPERIMENTATION
   ab:create|status|analyze|stop   Manage KV-backed experiments
