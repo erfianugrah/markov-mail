@@ -37,20 +37,23 @@ function parseTrainArgs(args: string[]): TrainOptions {
 			const key = arg.slice(2);
 			const next = args[i + 1];
 
+			// Convert kebab-case to camelCase
+			const camelKey = key.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+
 			if (!next || next.startsWith('--')) {
 				// Boolean flag
-				options[key as keyof TrainOptions] = true as any;
+				options[camelKey as keyof TrainOptions] = true as any;
 			} else {
 				// Value parameter
 				const value = next;
 
 				// Type coercion for numeric values
-				if (key === 'max-depth' || key === 'min-samples-leaf') {
-					options[key.replace('-', '') as keyof TrainOptions] = parseInt(value, 10) as any;
-				} else if (key === 'skip-mx' || key === 'upload') {
-					options[key.replace('-', '') as keyof TrainOptions] = (value === 'true' || value === '1') as any;
+				if (camelKey === 'maxDepth' || camelKey === 'minSamplesLeaf') {
+					options[camelKey as keyof TrainOptions] = parseInt(value, 10) as any;
+				} else if (camelKey === 'skipMx' || camelKey === 'upload') {
+					options[camelKey as keyof TrainOptions] = (value === 'true' || value === '1') as any;
 				} else {
-					options[key.replace('-', '') as keyof TrainOptions] = value as any;
+					options[camelKey as keyof TrainOptions] = value as any;
 				}
 
 				i++;
