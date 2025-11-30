@@ -52,6 +52,7 @@
 	},
 	/**
 	 * Static Assets
+	 * New Astro dashboard at /dashboard/, favicon, and JS libraries
 	 * https://developers.cloudflare.com/workers/static-assets/binding/
 	 */
 	"assets": {

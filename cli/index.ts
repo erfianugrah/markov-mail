@@ -162,6 +162,11 @@ const COMMANDS = {
 		file: 'commands/features/export.ts',
 		usage: 'features:export [--input data/main.csv] [--output data/features/export.csv]',
 	},
+	'tree:train': {
+		description: 'Train decision tree model with feature export and optional KV upload',
+		file: 'commands/model/train.ts',
+		usage: 'tree:train [--max-depth <n>] [--min-samples-leaf <n>] [--skip-mx] [--upload]',
+	},
 
 	// A/B Testing commands
 	'ab:create': {
@@ -220,6 +225,7 @@ Usage: npm run cli <command> [options]
 
 🛠️ MODEL PIPELINE
   features:export           Mirror runtime feature vector for decision-tree training
+  tree:train                Train decision tree model (export + train + upload)
 
 🧮 EXPERIMENTATION
   ab:create|status|analyze|stop   Manage KV-backed experiments
@@ -272,8 +278,25 @@ async function main() {
 
     // Pass remaining args to command, and command name for multi-command handlers
     await commandModule.default(args.slice(1), command);
-  } catch (error) {
-    console.error(`❌ Error executing command "${command}":`, error);
+  } catch (error: any) {
+    console.error(`\n❌ Error executing command "${command}":\n`);
+
+    if (error.code === 'MODULE_NOT_FOUND') {
+      console.error(`   Command file not found: ${commandConfig.file}`);
+      console.error(`   This command may not be implemented yet.\n`);
+    } else if (error.message) {
+      console.error(`   ${error.message}\n`);
+      if (error.stack && process.env.DEBUG) {
+        console.error('Stack trace:');
+        console.error(error.stack);
+      }
+    } else {
+      console.error(`   ${String(error)}\n`);
+    }
+
+    console.error('💡 Tip: Run "npm run cli --help" to see available commands');
+    console.error('💡 Tip: Run "npm run cli <command> --help" for command-specific help\n');
+
     process.exit(1);
   }
 }

@@ -193,3 +193,12 @@ deduped_*.json
 d1-validations.json
 **/exports/*.json
 AGENTS.md
+venv
+ml/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python

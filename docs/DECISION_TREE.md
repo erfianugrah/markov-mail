@@ -34,97 +34,21 @@ If the model is missing or malformed the Worker logs `model_unavailable` and ret
 ---
 
 ## Offline Flow
+## Offline Flow
 
-1. **Export features**
-   * Run `npm run cli features:export -- --input data/main.csv --output data/features/export.csv`.
-   * Each row in the output CSV contains the exact keys emitted by `buildFeatureVector` plus a numeric `label` (`0` legit, `1` fraud).
-2. **Train**
-   * Use scikit-learn (DecisionTreeClassifier, RandomForest, GradientBoosting) or any framework you prefer.
-   * Keep depth reasonable (5‑10) so the JSON stays small and edge latency remains <1 ms.
-3. **Export**
-   * Convert the trained estimator into the JSON schema above.
-   * Store the artifact under `config/production/decision-tree.example.json` for reference and upload it to KV.
-4. **Promote**
-   * Record the version in `INVENTORY.md` + `CHANGELOG.md`.
-   * Optionally run an A/B test (`ab:*` CLI commands) before switching all traffic.
-
----
-
-## Reference Script (`ml/export_tree.py`)
-
-```python
-import argparse
-import json
-import pandas as pd
-from sklearn.tree import DecisionTreeClassifier
-
-def node_to_json(tree, feature_names, node_id=0):
-    feature = tree.feature[node_id]
-    if feature == -2:
-        proba = tree.value[node_id][0][1] / tree.value[node_id][0].sum()
-        return {"type": "leaf", "value": float(proba)}
-
-    threshold = float(tree.threshold[node_id])
-    return {
-        "type": "node",
-        "feature": feature_names[feature],
-        "threshold": threshold,
-        "operator": "<=",
-        "left": node_to_json(tree, feature_names, tree.children_left[node_id]),
-        "right": node_to_json(tree, feature_names, tree.children_right[node_id]),
-    }
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", required=True, help="CSV with features + label column")
-    parser.add_argument("--output", default="decision_tree.json")
-    parser.add_argument("--max-depth", type=int, default=6)
-    args = parser.parse_args()
-
-    df = pd.read_csv(args.dataset)
-    feature_cols = [col for col in df.columns if col not in ("label", "y")]
-
-    clf = DecisionTreeClassifier(
-        max_depth=args.max_depth,
-        min_samples_leaf=50,
-        random_state=42,
-    )
-    clf.fit(df[feature_cols], df["label"])
-
-    tree_json = node_to_json(clf.tree_, feature_cols)
-
-    with open(args.output, "w") as f:
-        json.dump(tree_json, f, indent=2)
-
-    print(f"Saved decision tree to {args.output}")
-
-if __name__ == "__main__":
-    main()
-```
-
-### Usage
-
-```bash
-cd ml
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt  # (create if you want to pin sklearn/pandas)
-
-python export_tree.py \
-  --dataset ../data/features/training_features.csv \
-  --output ../config/production/decision-tree.2025-01-15.json \
-  --max-depth 6
-
-# Upload to KV
-npm run cli kv:put -- \
-  --binding CONFIG \
-  decision_tree.json \
-  --file ../config/production/decision-tree.2025-01-15.json
-```
-
-> **Tip:** keep the exported JSON under version control so you can diff paths/reasons between releases.
+1. **One-liner** (recommended)
+   * Run `npm run cli tree:train -- --input data/main.csv --output config/production/decision-tree.$(date +%F).json --upload`
+   * This exports features, trains with scikit-learn (DecisionTreeClassifier), and uploads to KV
+2. **Manual workflow**
+   * Export: `npm run cli features:export -- --input data/main.csv --output data/features/export.csv`
+   * Each row contains the exact keys emitted by `buildFeatureVector` plus a numeric `label` (0 legit, 1 fraud)
+   * Train: Handled by CLI internally (`cli/commands/model/train.ts` calls Python)
+   * Upload: `npm run cli kv:put -- --binding CONFIG decision_tree.json --file <path>`
+3. **Promote**
+   * Record the version in `INVENTORY.md` + `CHANGELOG.md`
+   * Optionally run an A/B test (`npm run cli ab:create`) before switching all traffic
 
 ---
-
 ## JSON Template
 
 See `config/production/decision-tree.example.json` for a tiny sample. Each leaf should include a `reason` so the Worker can explain its decision. Reasons double as analytics dimensions (we log the path + reason in D1).

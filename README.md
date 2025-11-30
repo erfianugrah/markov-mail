@@ -7,24 +7,25 @@ This branch is the clean slate for Markov Mail. The Worker will stay extremely s
 | Component | Status |
 |-----------|--------|
 | Worker entry (`src/`) | ✅ Minimal middleware + decision-tree evaluator (+ identity/geo/MX feature extraction) |
-| Dashboard source (`dashboard/`) | ❌ Removed (archived static bundle lives in `public/dashboard`) |
+| Dashboard source (`dashboard/`) | ✅ Rebuilt with Astro + React (builds to `public/dashboard/`) |
 | D1 schema & migrations | ✅ Fully intact (single reset migration) |
 | CLI tooling | ✅ Focused on KV/config/analytics utilities |
 | Legacy runtime pipeline | ❌ Removed |
 
 ## What we're building
 
-1. **Offline feature export + training** – Bun/TS script to dump labeled features, Python script (`ml/export_tree.py`) to train/convert trees.
+1. **Offline feature export + training** – Bun CLI exports features and trains decision trees with scikit-learn via Python child process (all managed by `npm run cli tree:train`).
 2. **KV-backed model catalog** – upload `decision_tree.json` to the `CONFIG` namespace and hot-swap without redeploying.
 3. **Simple observability** – every validation stores the tree reason/path in D1 so the dashboard can explain blocks.
 
 ## Working directories
 
 - `src/` – Worker runtime (middleware, detectors, services, decision-tree evaluator).
-- `config/production/` – shipping config + decision-tree example.
-- `ml/` – Python exporter scaffold for the new model pipeline.
-- `docs/` – high-level notes for the reset branch.
-- `public/dashboard/` – static snapshot of the legacy analytics UI (served as-is by Wrangler until we rebuild).
+- `config/production/` – shipping config + decision-tree models.
+- `cli/commands/model/` – Model training integration (decision tree training with scikit-learn via Python).
+- `docs/` – high-level documentation for the reset branch.
+- `dashboard/` – Astro + React analytics dashboard (builds to `public/dashboard/`).
+- `public/dashboard/` – Built dashboard served by Wrangler static assets.
 
 ## Developing
 
@@ -56,7 +57,7 @@ npm run cli features:export -- \
 npm run cli features:export -- --skip-mx
 ```
 
-Use the resulting CSV as the input to `ml/export_tree.py` (see `docs/DECISION_TREE.md`).
+Use the resulting CSV with `npm run tree:train` for automated training (see `docs/DECISION_TREE.md`).
 
 > MX-derived features hit Cloudflare’s DNS-over-HTTPS endpoint (`cloudflare-dns.com`). The exporter does that automatically; if you’re offline or testing without network access, pass `--skip-mx` so the CLI zeroes-out those columns instead of failing.
 
@@ -64,18 +65,41 @@ Use the resulting CSV as the input to `ml/export_tree.py` (see `docs/DECISION_TR
 
 ```bash
 # Export features, train the tree, and upload to KV (optional)
-npm run tree:train -- \
+npm run cli tree:train -- \
   --input data/main.csv \
   --output config/production/decision-tree.$(date +%F).json \
   --label-column label \
-  --max-depth 6 \
-  --min-samples-leaf 50 \
+  --max-depth 8 \
+  --min-samples-leaf 30 \
   --upload
 ```
 
-Under the hood this runs the Bun exporter, invokes `ml/export_tree.py`, and (when `--upload` is passed) pushes the JSON to `decision_tree.json` in the `CONFIG` binding.
+This runs the Bun feature exporter, trains the decision tree with scikit-learn (via Python subprocess), and (when `--upload` is passed) pushes the JSON to `decision_tree.json` in the `CONFIG` binding.
 
-## Next steps
+## Dashboard
 
-- Flesh out the Python exporter with validation metrics + version metadata.
-- Extend the dashboard to show loaded model versions and tree reasons.
+The analytics dashboard has been rebuilt with modern tooling:
+
+```bash
+# Build dashboard (Astro + React)
+cd dashboard
+npm install
+npm run build  # Output: ../public/dashboard/
+
+# Development
+npm run dev  # http://localhost:4321
+```
+
+**Features**:
+- Real-time metrics (validations, block rate, latency, error rate)
+- Block reasons distribution chart
+- Time series visualization (hourly trends)
+- Model performance metrics (accuracy, precision, recall, F1)
+- Model comparison (baseline vs MX-enhanced)
+- SQL query builder with export (CSV/JSON)
+- Auto-refresh with persistence
+- API key management with localStorage
+
+**Access**:
+- Local: `http://localhost:8787/dashboard/`
+- Production: `https://fraud.erfi.dev/dashboard/`

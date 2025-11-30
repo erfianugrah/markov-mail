@@ -40,33 +40,30 @@ Regenerate this file any time you add/remove features in TypeScript—don’t ha
 
 ## 2. Train + export the tree
 
-We ship a tiny reference trainer in `ml/export_tree.py`. Feel free to swap it out, but the defaults are tuned for ≤10 depth trees that keep latency sub-millisecond.
+Training is handled by the CLI via `npm run cli tree:train`. This runs feature export, trains with scikit-learn (DecisionTreeClassifier), and optionally uploads to KV.
 
 ```bash
-cd ml
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt  # create if you need pinned deps
-
-python export_tree.py \
-  --dataset ../data/features/export.csv \
-  --output ../config/production/decision-tree.$(date +%F).json \
-  --max-depth 6 \
-  --min-samples-leaf 50
+npm run cli tree:train -- \
+  --input data/main.csv \
+  --output config/production/decision-tree.$(date +%F).json \
+  --max-depth 8 \
+  --min-samples-leaf 30 \
+  --upload
 ```
 
-Inspect the JSON (each node/leaf should include `type`/`feature`/`reason`). Keep it in `config/production/` so it’s versioned alongside the Worker.
+The trained model defaults are tuned for ≤10 depth trees that keep latency sub-millisecond. Inspect the output JSON (each node/leaf should include `type`/`feature`/`reason`). Keep it in `config/production/` so it's versioned alongside the Worker.
 
-> Prefer automation? `npm run tree:train -- --upload` runs the exporter, Python trainer, and (optionally) uploads the resulting tree to KV in one go. Pass `--skip-mx` if you’re exporting features in an offline environment.
+> Pass `--skip-mx` if you're exporting features in an offline environment without network access.
 
 ## 3. Upload to KV
 
-Once you’re happy with the artifact, upload it to the `CONFIG` namespace under the well-known key `decision_tree.json`:
+If you used `--upload` in the previous step, the model is already in KV. Otherwise, upload manually:
 
 ```bash
 npm run cli kv:put -- \
   --binding CONFIG \
   decision_tree.json \
-  --file config/production/decision-tree.2025-01-15.json
+  --file config/production/decision-tree.2025-11-30.json
 ```
 
 Cold starts will pick up the new tree automatically. Hot isolates refresh the cache every ~60 seconds, or immediately if you redeploy/restart `wrangler dev`.

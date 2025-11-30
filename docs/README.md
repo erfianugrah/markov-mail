@@ -6,17 +6,19 @@ This branch is the decision-tree reboot of Markov Mail. Everything in this folde
 
 | Document | Description |
 |----------|-------------|
-| **[../README.md](../README.md)** | Project overview + current goals.
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | High-level view of the slimmed-down Worker + offline tooling.
-| **[DETECTORS.md](DETECTORS.md)** | Inventory of the feature extractors that still exist.
-| **[SCORING.md](SCORING.md)** | Snapshot of the decision-tree based scoring flow.
-| **[TRAINING.md](TRAINING.md)** | Minimal training/checklist for exporting trees.
-| **[DECISION_TREE.md](DECISION_TREE.md)** | Detailed exporter instructions + schema.
-| **[API_DECISION_TREE.md](API_DECISION_TREE.md)** | Lightweight request/response quickstart for the reset Worker.
-| **[CONFIGURATION.md](CONFIGURATION.md)** | How to ship `config.json` + `decision_tree.json` via KV.
-| **[CALIBRATION.md](CALIBRATION.md)** | Quick reminder that calibration happens offline now (no runtime knobs).
-| **[INVENTORY.md](../INVENTORY.md)** | Placeholder for the current decision-tree artifact inventory.
-| **[CLI/README](../cli/README.md)** | Current CLI quickstart (deploy/config/analytics + feature export).
+| **[../README.md](../README.md)** | Project overview + current goals. |
+| **[RELEASE_2025-11-30.md](RELEASE_2025-11-30.md)** | **Latest release notes: MX-enhanced model + dashboard rebuild.** |
+| **[SYSTEM_INVENTORY.md](SYSTEM_INVENTORY.md)** | Complete system inventory with file details and git status. |
+| **[ARCHITECTURE.md](ARCHITECTURE.md)** | High-level view of the slimmed-down Worker + offline tooling. |
+| **[DETECTORS.md](DETECTORS.md)** | Inventory of the feature extractors that still exist. |
+| **[SCORING.md](SCORING.md)** | Snapshot of the decision-tree based scoring flow. |
+| **[TRAINING.md](TRAINING.md)** | Minimal training/checklist for exporting trees. |
+| **[DECISION_TREE.md](DECISION_TREE.md)** | Detailed exporter instructions + schema. |
+| **[API_DECISION_TREE.md](API_DECISION_TREE.md)** | Lightweight request/response quickstart for the reset Worker. |
+| **[CONFIGURATION.md](CONFIGURATION.md)** | How to ship `config.json` + `decision_tree.json` via KV. |
+| **[CALIBRATION.md](CALIBRATION.md)** | Quick reminder that calibration happens offline now (no runtime knobs). |
+| **[INVENTORY.md](../INVENTORY.md)** | Placeholder for the current decision-tree artifact inventory. |
+| **[CLI/README](../cli/README.md)** | Current CLI quickstart (deploy/config/analytics + feature export). |
 
 The legacy docs have been removed from this branch. If you need to reference them, check the git history (pre-reset tags) or your favorite archive.
 
@@ -45,7 +47,7 @@ npm run cli
 
 # Feature Export & Model Upload
 npm run cli features:export -- --input data/main.csv --output data/features/export.csv
-python ml/export_tree.py --dataset data/features/export.csv --output config/production/decision-tree.latest.json
+npm run cli tree:train -- --input data/main.csv --output config/production/decision-tree.latest.json --upload
 npm run cli kv:put -- --binding CONFIG decision_tree.json --file config/production/decision-tree.latest.json
 
 # Deployment
@@ -75,15 +77,27 @@ npm run cli config:sync --remote      # Sync to production
 
 **For detailed usage, workflows, and examples:** See [CLI Reference](../cli/README.md).
 
-## 📊 Dashboard Snapshot
+## 📊 Analytics Dashboard
 
-`public/analytics.html` is the frozen UI operators can keep using. It now pulls the new D1 signals:
+The analytics dashboard has been rebuilt with Astro + React and includes:
 
-- **Identity Similarity** – groups validations into strong/partial/mismatch buckets so you can see when names no longer line up with email locals.
-- **Geo Consistency** – highlights language/timezone mismatches vs IP country.
-- **MX Providers** – shows the dominant MX providers (Google/Microsoft/self-hosted/etc.) plus average risk per provider.
+- **Real-time Metrics** – validations, block rate, latency, error rate (auto-refresh every 30s)
+- **Block Reasons** – distribution chart showing top 10 reasons with percentages
+- **Time Series** – hourly trends visualization (blocks, warns, allows)
+- **Model Performance** – accuracy, precision, recall, F1 score, confusion matrix
+- **Model Comparison** – side-by-side baseline vs MX-enhanced performance
+- **Query Builder** – SQL editor with 4 preset queries and CSV/JSON export
+- **Identity Similarity** – groups validations into strong/partial/mismatch buckets
+- **Geo Consistency** – highlights language/timezone mismatches vs IP country
+- **MX Providers** – shows dominant MX providers plus average risk per provider
 
-All panels read from `/admin/analytics?type=…` (see `src/database/queries.ts`). Make sure the admin API key is set in the UI before refreshing so the charts populate.
+All panels read from `/admin/analytics` (see `src/database/queries.ts`). Enter your admin API key in the dashboard UI to populate charts.
+
+**Access**:
+- Local: `http://localhost:8787/dashboard/`
+- Production: `https://fraud.erfi.dev/dashboard/`
+
+**Build**: `cd dashboard && npm run build` (outputs to `public/dashboard/`)
 
 ## 🗄️ Database Migrations
 

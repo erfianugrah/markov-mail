@@ -1,0 +1,632 @@
+{
+  "type": "node",
+  "feature": "domain_reputation_score",
+  "threshold": 0.949999988079071,
+  "operator": "<=",
+  "left": {
+    "type": "node",
+    "feature": "provider_is_free",
+    "threshold": 0.5,
+    "operator": "<=",
+    "left": {
+      "type": "node",
+      "feature": "repeated_char_ratio",
+      "threshold": 0.4226190447807312,
+      "operator": "<=",
+      "left": {
+        "type": "node",
+        "feature": "mx_record_count",
+        "threshold": 1.5,
+        "operator": "<=",
+        "left": {
+          "type": "leaf",
+          "value": 0.0,
+          "reason": "p=0.00 (0/1)"
+        },
+        "right": {
+          "type": "node",
+          "feature": "mx_record_count",
+          "threshold": 2.5,
+          "operator": "<=",
+          "left": {
+            "type": "node",
+            "feature": "vowel_gap_ratio",
+            "threshold": 0.10172414034605026,
+            "operator": "<=",
+            "left": {
+              "type": "node",
+              "feature": "local_length",
+              "threshold": 16.5,
+              "operator": "<=",
+              "left": {
+                "type": "node",
+                "feature": "avg_segment_length",
+                "threshold": 9.0,
+                "operator": "<=",
+                "left": {
+                  "type": "leaf",
+                  "value": 0.0,
+                  "reason": "p=0.00 (0/1)"
+                },
+                "right": {
+                  "type": "leaf",
+                  "value": 0.9028571428571428,
+                  "reason": "p=0.90 (0/1)"
+                }
+              },
+              "right": {
+                "type": "leaf",
+                "value": 0.0,
+                "reason": "p=0.00 (0/1)"
+              }
+            },
+            "right": {
+              "type": "node",
+              "feature": "digit_ratio",
+              "threshold": 0.14835165441036224,
+              "operator": "<=",
+              "left": {
+                "type": "node",
+                "feature": "max_consonant_cluster",
+                "threshold": 4.5,
+                "operator": "<=",
+                "left": {
+                  "type": "leaf",
+                  "value": 0.07158053668245144,
+                  "reason": "p=0.07 (0/1)"
+                },
+                "right": {
+                  "type": "leaf",
+                  "value": 0.23536036036036037,
+                  "reason": "p=0.24 (0/1)"
+                }
+              },
+              "right": {
+                "type": "node",
+                "feature": "max_digit_run",
+                "threshold": 3.5,
+                "operator": "<=",
+                "left": {
+                  "type": "leaf",
+                  "value": 0.49415384615384617,
+                  "reason": "p=0.49 (0/1)"
+                },
+                "right": {
+                  "type": "leaf",
+                  "value": 0.02902757619738752,
+                  "reason": "p=0.03 (0/1)"
+                }
+              }
+            }
+          },
+          "right": {
+            "type": "leaf",
+            "value": 0.0,
+            "reason": "p=0.00 (0/1)"
+          }
+        }
+      },
+      "right": {
+        "type": "node",
+        "feature": "mx_record_count",
+        "threshold": 1.5,
+        "operator": "<=",
+        "left": {
+          "type": "leaf",
+          "value": 0.0,
+          "reason": "p=0.00 (0/1)"
+        },
+        "right": {
+          "type": "node",
+          "feature": "digit_ratio",
+          "threshold": 0.19090909510850906,
+          "operator": "<=",
+          "left": {
+            "type": "leaf",
+            "value": 0.35294117647058826,
+            "reason": "p=0.35 (0/1)"
+          },
+          "right": {
+            "type": "node",
+            "feature": "local_length",
+            "threshold": 7.5,
+            "operator": "<=",
+            "left": {
+              "type": "node",
+              "feature": "entropy_score",
+              "threshold": 0.2366398274898529,
+              "operator": "<=",
+              "left": {
+                "type": "leaf",
+                "value": 0.8064516129032258,
+                "reason": "p=0.81 (0/1)"
+              },
+              "right": {
+                "type": "leaf",
+                "value": 1.0,
+                "reason": "p=1.00 (1/1)"
+              }
+            },
+            "right": {
+              "type": "leaf",
+              "value": 1.0,
+              "reason": "p=1.00 (1/1)"
+            }
+          }
+        }
+      }
+    },
+    "right": {
+      "type": "node",
+      "feature": "has_word_boundaries",
+      "threshold": 0.5,
+      "operator": "<=",
+      "left": {
+        "type": "node",
+        "feature": "digit_ratio",
+        "threshold": 0.21240601688623428,
+        "operator": "<=",
+        "left": {
+          "type": "node",
+          "feature": "mx_record_count",
+          "threshold": 2.5,
+          "operator": "<=",
+          "left": {
+            "type": "node",
+            "feature": "mx_provider_microsoft",
+            "threshold": 0.5,
+            "operator": "<=",
+            "left": {
+              "type": "node",
+              "feature": "mx_provider_yahoo",
+              "threshold": 0.5,
+              "operator": "<=",
+              "left": {
+                "type": "node",
+                "feature": "vowel_gap_ratio",
+                "threshold": 0.30384616553783417,
+                "operator": "<=",
+                "left": {
+                  "type": "leaf",
+                  "value": 0.675645342312009,
+                  "reason": "p=0.68 (0/1)"
+                },
+                "right": {
+                  "type": "leaf",
+                  "value": 0.9193929173693086,
+                  "reason": "p=0.92 (0/1)"
+                }
+              },
+              "right": {
+                "type": "leaf",
+                "value": 0.0,
+                "reason": "p=0.00 (0/1)"
+              }
+            },
+            "right": {
+              "type": "node",
+              "feature": "vowel_ratio",
+              "threshold": 0.34166666865348816,
+              "operator": "<=",
+              "left": {
+                "type": "node",
+                "feature": "pronounceability",
+                "threshold": 0.6276041567325592,
+                "operator": "<=",
+                "left": {
+                  "type": "leaf",
+                  "value": 0.4309623430962343,
+                  "reason": "p=0.43 (0/1)"
+                },
+                "right": {
+                  "type": "leaf",
+                  "value": 0.8483516483516483,
+                  "reason": "p=0.85 (0/1)"
+                }
+              },
+              "right": {
+                "type": "node",
+                "feature": "unique_char_ratio",
+                "threshold": 0.8284313678741455,
+                "operator": "<=",
+                "left": {
+                  "type": "leaf",
+                  "value": 0.15384615384615385,
+                  "reason": "p=0.15 (0/1)"
+                },
+                "right": {
+                  "type": "leaf",
+                  "value": 0.3319672131147541,
+                  "reason": "p=0.33 (0/1)"
+                }
+              }
+            }
+          },
+          "right": {
+            "type": "node",
+            "feature": "vowel_ratio",
+            "threshold": 0.34166666865348816,
+            "operator": "<=",
+            "left": {
+              "type": "node",
+              "feature": "pronounceability",
+              "threshold": 0.6276041567325592,
+              "operator": "<=",
+              "left": {
+                "type": "node",
+                "feature": "pronounceability",
+                "threshold": 0.4103383868932724,
+                "operator": "<=",
+                "left": {
+                  "type": "leaf",
+                  "value": 0.5172844648063307,
+                  "reason": "p=0.52 (0/1)"
+                },
+                "right": {
+                  "type": "leaf",
+                  "value": 0.16490891658676893,
+                  "reason": "p=0.16 (0/1)"
+                }
+              },
+              "right": {
+                "type": "node",
+                "feature": "unique_char_ratio",
+                "threshold": 0.7416666746139526,
+                "operator": "<=",
+                "left": {
+                  "type": "leaf",
+                  "value": 0.5866666666666667,
+                  "reason": "p=0.59 (0/1)"
+                },
+                "right": {
+                  "type": "leaf",
+                  "value": 0.806881243063263,
+                  "reason": "p=0.81 (0/1)"
+                }
+              }
+            },
+            "right": {
+              "type": "node",
+              "feature": "syllable_estimate",
+              "threshold": 3.5,
+              "operator": "<=",
+              "left": {
+                "type": "node",
+                "feature": "impossible_cluster_count",
+                "threshold": 0.5,
+                "operator": "<=",
+                "left": {
+                  "type": "leaf",
+                  "value": 0.2006841505131129,
+                  "reason": "p=0.20 (0/1)"
+                },
+                "right": {
+                  "type": "leaf",
+                  "value": 0.42997542997543,
+                  "reason": "p=0.43 (0/1)"
+                }
+              },
+              "right": {
+                "type": "node",
+                "feature": "unique_char_ratio",
+                "threshold": 0.9128788113594055,
+                "operator": "<=",
+                "left": {
+                  "type": "leaf",
+                  "value": 0.04887459807073955,
+                  "reason": "p=0.05 (0/1)"
+                },
+                "right": {
+                  "type": "leaf",
+                  "value": 0.3548387096774194,
+                  "reason": "p=0.35 (0/1)"
+                }
+              }
+            }
+          }
+        },
+        "right": {
+          "type": "node",
+          "feature": "max_digit_run",
+          "threshold": 3.5,
+          "operator": "<=",
+          "left": {
+            "type": "node",
+            "feature": "avg_segment_length",
+            "threshold": 6.5,
+            "operator": "<=",
+            "left": {
+              "type": "node",
+              "feature": "repeated_char_ratio",
+              "threshold": 0.4166666716337204,
+              "operator": "<=",
+              "left": {
+                "type": "leaf",
+                "value": 0.0,
+                "reason": "p=0.00 (0/1)"
+              },
+              "right": {
+                "type": "leaf",
+                "value": 1.0,
+                "reason": "p=1.00 (1/1)"
+              }
+            },
+            "right": {
+              "type": "node",
+              "feature": "mx_provider_yahoo",
+              "threshold": 0.5,
+              "operator": "<=",
+              "left": {
+                "type": "node",
+                "feature": "mx_provider_microsoft",
+                "threshold": 0.5,
+                "operator": "<=",
+                "left": {
+                  "type": "leaf",
+                  "value": 0.9842306825861681,
+                  "reason": "p=0.98 (0/1)"
+                },
+                "right": {
+                  "type": "leaf",
+                  "value": 0.8539156626506024,
+                  "reason": "p=0.85 (0/1)"
+                }
+              },
+              "right": {
+                "type": "node",
+                "feature": "entropy_score",
+                "threshold": 0.26567187905311584,
+                "operator": "<=",
+                "left": {
+                  "type": "leaf",
+                  "value": 1.0,
+                  "reason": "p=1.00 (1/1)"
+                },
+                "right": {
+                  "type": "leaf",
+                  "value": 0.6607773851590106,
+                  "reason": "p=0.66 (0/1)"
+                }
+              }
+            }
+          },
+          "right": {
+            "type": "node",
+            "feature": "mx_provider_self_hosted",
+            "threshold": 0.5,
+            "operator": "<=",
+            "left": {
+              "type": "node",
+              "feature": "sequential_confidence",
+              "threshold": 0.32499998807907104,
+              "operator": "<=",
+              "left": {
+                "type": "node",
+                "feature": "digit_ratio",
+                "threshold": 0.41421568393707275,
+                "operator": "<=",
+                "left": {
+                  "type": "leaf",
+                  "value": 0.1111111111111111,
+                  "reason": "p=0.11 (0/1)"
+                },
+                "right": {
+                  "type": "leaf",
+                  "value": 0.46153846153846156,
+                  "reason": "p=0.46 (0/1)"
+                }
+              },
+              "right": {
+                "type": "node",
+                "feature": "local_length",
+                "threshold": 8.5,
+                "operator": "<=",
+                "left": {
+                  "type": "leaf",
+                  "value": 0.23333333333333334,
+                  "reason": "p=0.23 (0/1)"
+                },
+                "right": {
+                  "type": "leaf",
+                  "value": 0.039603960396039604,
+                  "reason": "p=0.04 (0/1)"
+                }
+              }
+            },
+            "right": {
+              "type": "node",
+              "feature": "digit_ratio",
+              "threshold": 0.4305555522441864,
+              "operator": "<=",
+              "left": {
+                "type": "leaf",
+                "value": 0.43333333333333335,
+                "reason": "p=0.43 (0/1)"
+              },
+              "right": {
+                "type": "leaf",
+                "value": 0.782608695652174,
+                "reason": "p=0.78 (0/1)"
+              }
+            }
+          }
+        }
+      },
+      "right": {
+        "type": "node",
+        "feature": "digit_ratio",
+        "threshold": 0.39444445073604584,
+        "operator": "<=",
+        "left": {
+          "type": "node",
+          "feature": "max_digit_run",
+          "threshold": 1.5,
+          "operator": "<=",
+          "left": {
+            "type": "node",
+            "feature": "segment_count",
+            "threshold": 2.5,
+            "operator": "<=",
+            "left": {
+              "type": "node",
+              "feature": "entropy_score",
+              "threshold": 0.4468117207288742,
+              "operator": "<=",
+              "left": {
+                "type": "node",
+                "feature": "entropy_score",
+                "threshold": 0.44017186760902405,
+                "operator": "<=",
+                "left": {
+                  "type": "leaf",
+                  "value": 0.0,
+                  "reason": "p=0.00 (0/1)"
+                },
+                "right": {
+                  "type": "leaf",
+                  "value": 0.0045662100456621,
+                  "reason": "p=0.00 (0/1)"
+                }
+              },
+              "right": {
+                "type": "leaf",
+                "value": 0.0,
+                "reason": "p=0.00 (0/1)"
+              }
+            },
+            "right": {
+              "type": "node",
+              "feature": "mx_provider_yahoo",
+              "threshold": 0.5,
+              "operator": "<=",
+              "left": {
+                "type": "leaf",
+                "value": 0.11764705882352941,
+                "reason": "p=0.12 (0/1)"
+              },
+              "right": {
+                "type": "leaf",
+                "value": 0.0,
+                "reason": "p=0.00 (0/1)"
+              }
+            }
+          },
+          "right": {
+            "type": "node",
+            "feature": "mx_provider_self_hosted",
+            "threshold": 0.5,
+            "operator": "<=",
+            "left": {
+              "type": "node",
+              "feature": "digit_ratio",
+              "threshold": 0.12916667014360428,
+              "operator": "<=",
+              "left": {
+                "type": "leaf",
+                "value": 0.05405405405405406,
+                "reason": "p=0.05 (0/1)"
+              },
+              "right": {
+                "type": "leaf",
+                "value": 0.0,
+                "reason": "p=0.00 (0/1)"
+              }
+            },
+            "right": {
+              "type": "node",
+              "feature": "max_digit_run",
+              "threshold": 2.5,
+              "operator": "<=",
+              "left": {
+                "type": "leaf",
+                "value": 0.6451612903225806,
+                "reason": "p=0.65 (0/1)"
+              },
+              "right": {
+                "type": "leaf",
+                "value": 0.4782608695652174,
+                "reason": "p=0.48 (0/1)"
+              }
+            }
+          }
+        },
+        "right": {
+          "type": "node",
+          "feature": "entropy_score",
+          "threshold": 0.47347840666770935,
+          "operator": "<=",
+          "left": {
+            "type": "leaf",
+            "value": 0.26666666666666666,
+            "reason": "p=0.27 (0/1)"
+          },
+          "right": {
+            "type": "leaf",
+            "value": 0.5217391304347826,
+            "reason": "p=0.52 (0/1)"
+          }
+        }
+      }
+    }
+  },
+  "right": {
+    "type": "node",
+    "feature": "vowel_gap_ratio",
+    "threshold": 0.2928571552038193,
+    "operator": "<=",
+    "left": {
+      "type": "node",
+      "feature": "vowel_gap_ratio",
+      "threshold": 0.2792207896709442,
+      "operator": "<=",
+      "left": {
+        "type": "node",
+        "feature": "vowel_ratio",
+        "threshold": 0.30384616553783417,
+        "operator": "<=",
+        "left": {
+          "type": "node",
+          "feature": "vowel_ratio",
+          "threshold": 0.2613636404275894,
+          "operator": "<=",
+          "left": {
+            "type": "leaf",
+            "value": 1.0,
+            "reason": "p=1.00 (1/1)"
+          },
+          "right": {
+            "type": "leaf",
+            "value": 0.9666666666666667,
+            "reason": "p=0.97 (0/1)"
+          }
+        },
+        "right": {
+          "type": "leaf",
+          "value": 1.0,
+          "reason": "p=1.00 (1/1)"
+        }
+      },
+      "right": {
+        "type": "node",
+        "feature": "entropy_score",
+        "threshold": 0.413457527756691,
+        "operator": "<=",
+        "left": {
+          "type": "leaf",
+          "value": 0.9666666666666667,
+          "reason": "p=0.97 (0/1)"
+        },
+        "right": {
+          "type": "leaf",
+          "value": 1.0,
+          "reason": "p=1.00 (1/1)"
+        }
+      }
+    },
+    "right": {
+      "type": "leaf",
+      "value": 1.0,
+      "reason": "p=1.00 (1/1)"
+    }
+  }
+}

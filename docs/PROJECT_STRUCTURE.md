@@ -10,10 +10,10 @@ markov-mail/
 │   ├── utils/            # Shared helpers (feature vector builder, metrics, etc.)
 │   └── routes/           # `/admin` API + debug endpoints
 ├── cli/                  # Bun CLI (`npm run cli <command>`)
-│   └── commands/         # Deploy, KV, analytics, AB testing, feature exporter
-├── ml/                   # Python exporter (`export_tree.py`) for offline training
+│   └── commands/         # Deploy, KV, analytics, AB testing, feature exporter, tree training (with Python)
+├── dashboard/            # Astro + React dashboard source (builds to public/dashboard/)
 ├── config/production/    # Shipping `config.json` + decision-tree artifacts
-├── public/dashboard/     # Archived dashboard bundle served as static assets
+├── public/dashboard/     # Built dashboard bundle served as static assets
 ├── docs/                 # Active decision-tree docs (legacy content removed in this reset)
 ├── tests/                # Vitest suites (unit, integration, e2e, performance)
 ├── public/               # Static assets served via Wrangler
@@ -34,8 +34,10 @@ markov-mail/
 
 ### Model Workflow
 
-1. Export features with `npm run cli features:export`.
-2. Train/export a tree via `ml/export_tree.py`.
-3. Upload the JSON to `CONFIG` KV as `decision_tree.json` (e.g., `npm run cli kv:put -- --binding CONFIG decision_tree.json --file ...`).
+1. One-liner: `npm run cli tree:train -- --input data/main.csv --output config/production/decision-tree.$(date +%F).json --upload`
+2. Or manually:
+   - Export features: `npm run cli features:export`
+   - Train (handled by CLI internally via Python/scikit-learn)
+   - Upload: `npm run cli kv:put -- --binding CONFIG decision_tree.json --file ...`
 
 That’s it—no pre-reset calibration artifacts remain on this branch.

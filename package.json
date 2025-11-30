@@ -10,7 +10,7 @@
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "cf-typegen": "wrangler types",
-    "tree:train": "node scripts/train-decision-tree.mjs",
+    "tree:train": "bun run cli/index.ts tree:train",
     "test": "vitest",
     "test:unit": "vitest tests/ --exclude tests/e2e/** --exclude tests/performance/**",
     "test:e2e": "vitest tests/e2e/",
