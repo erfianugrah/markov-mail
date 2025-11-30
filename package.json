@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "cli": "bun run cli/index.ts",
+    "build": "npm run build:dashboard",
+    "build:dashboard": "cd dashboard && npm run build",
     "typecheck": "tsc --noEmit",
-    "predeploy": "npm run typecheck",
-    "deploy": "wrangler deploy",
+    "deploy": "npm run typecheck && npm run build && wrangler deploy",
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "cf-typegen": "wrangler types",
