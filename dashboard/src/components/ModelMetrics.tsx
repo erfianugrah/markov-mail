@@ -38,7 +38,7 @@ export default function ModelMetrics({ apiKey }: ModelMetricsProps) {
             SUM(CASE WHEN decision = 'allow' THEN 1 ELSE 0 END) as tn,
             SUM(CASE WHEN decision = 'warn' THEN 1 ELSE 0 END) as fp,
             0 as fn
-          FROM VALIDATIONS
+          FROM validations
           WHERE decision_tree_reason IS NOT NULL
             AND timestamp >= datetime('now', '-7 days')
         `;

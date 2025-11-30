@@ -33,7 +33,7 @@ export default function ModelComparison({ apiKey }: ModelComparisonProps) {
             AVG(CASE WHEN decision = 'block' THEN 0.0 WHEN decision = 'allow' THEN 100.0 ELSE 50.0 END) as accuracy,
             AVG(latency) as avg_latency,
             COUNT(*) as predictions
-          FROM VALIDATIONS
+          FROM validations
           WHERE decision_tree_reason IS NOT NULL
             AND timestamp >= datetime('now', '-7 days')
             AND model_version IS NOT NULL

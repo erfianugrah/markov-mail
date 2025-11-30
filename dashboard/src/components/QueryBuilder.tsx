@@ -17,7 +17,7 @@ interface QueryResult {
 const EXAMPLE_QUERIES = [
   {
     name: 'Last 100 Validations',
-    sql: 'SELECT * FROM VALIDATIONS ORDER BY timestamp DESC LIMIT 100',
+    sql: 'SELECT * FROM validations ORDER BY timestamp DESC LIMIT 100',
   },
   {
     name: 'Block Rate by Hour',
@@ -26,7 +26,7 @@ const EXAMPLE_QUERIES = [
   COUNT(*) as total,
   SUM(CASE WHEN decision = 'block' THEN 1 ELSE 0 END) as blocks,
   ROUND(SUM(CASE WHEN decision = 'block' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as block_rate
-FROM VALIDATIONS
+FROM validations
 WHERE timestamp >= datetime('now', '-24 hours')
 GROUP BY hour
 ORDER BY hour DESC`,
@@ -37,7 +37,7 @@ ORDER BY hour DESC`,
   email_local_part || '@' || domain as email,
   COUNT(*) as block_count,
   GROUP_CONCAT(DISTINCT block_reason) as reasons
-FROM VALIDATIONS
+FROM validations
 WHERE decision = 'block'
   AND timestamp >= datetime('now', '-7 days')
 GROUP BY email
@@ -51,7 +51,7 @@ LIMIT 20`,
   COUNT(*) as count,
   ROUND(AVG(latency), 2) as avg_latency,
   ROUND(AVG(risk_score), 3) as avg_risk_score
-FROM VALIDATIONS
+FROM validations
 WHERE decision_tree_reason IS NOT NULL
   AND timestamp >= datetime('now', '-24 hours')
 GROUP BY decision`,
@@ -118,7 +118,7 @@ export default function QueryBuilder({ apiKey }: QueryBuilderProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-full h-32 p-3 text-sm font-mono rounded-md border border-border bg-background resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-            placeholder="SELECT * FROM VALIDATIONS LIMIT 10"
+            placeholder="SELECT * FROM validations LIMIT 10"
           />
         </div>
 

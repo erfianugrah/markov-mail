@@ -103,7 +103,7 @@ export async function getMetricsSummary(
       SUM(CASE WHEN decision = 'allow' THEN 1 ELSE 0 END) as legitCount,
       AVG(latency) as avgLatency,
       0.0 as errorRate
-    FROM VALIDATIONS
+    FROM validations
     WHERE timestamp >= datetime('now', '-${hours} hours')
   `;
 
@@ -131,8 +131,8 @@ export async function getBlockReasons(
     SELECT
       block_reason as reason,
       COUNT(*) as count,
-      (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM VALIDATIONS WHERE decision = 'block' AND timestamp >= datetime('now', '-${hours} hours'))) as percentage
-    FROM VALIDATIONS
+      (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM validations WHERE decision = 'block' AND timestamp >= datetime('now', '-${hours} hours'))) as percentage
+    FROM validations
     WHERE decision = 'block'
       AND timestamp >= datetime('now', '-${hours} hours')
       AND block_reason IS NOT NULL
@@ -163,7 +163,7 @@ export async function getTimeSeriesData(
       COUNT(*) as count,
       SUM(CASE WHEN decision = 'block' THEN 1 ELSE 0 END) as blocks,
       SUM(CASE WHEN decision = 'warn' THEN 1 ELSE 0 END) as warns
-    FROM VALIDATIONS
+    FROM validations
     WHERE timestamp >= datetime('now', '-${hours} hours')
     GROUP BY hour
     ORDER BY hour ASC
