@@ -389,9 +389,9 @@ describe("Benford's Law Analysis", () => {
   describe('Edge cases and robustness', () => {
     it('should handle emails without numbers', () => {
       const noNumbers = [
-        'person1@example.com',
-        'person2@example.com',
-        'person4@example.com'
+        'person.one@example.com',
+        'person.two@example.com',
+        'person.four@example.com',
       ];
 
       const result = analyzeBenfordsLaw(noNumbers);

@@ -20,6 +20,7 @@ declare global {
 
 		// Feature flags (optional, for Phase 2)
 		AUTO_PROMOTE_TO_CANARY?: string;  // Set to "true" to enable auto-promotion
+		ALERT_WEBHOOK_URL?: string;
 	}
 }
 

@@ -1,0 +1,313 @@
+{
+  "type": "node",
+  "feature": "domain_reputation_score",
+  "threshold": 0.949999988079071,
+  "operator": "<=",
+  "left": {
+    "type": "node",
+    "feature": "provider_is_free",
+    "threshold": 0.5,
+    "operator": "<=",
+    "left": {
+      "type": "node",
+      "feature": "repeated_char_ratio",
+      "threshold": 0.4226190447807312,
+      "operator": "<=",
+      "left": {
+        "type": "node",
+        "feature": "vowel_gap_ratio",
+        "threshold": 0.0919661745429039,
+        "operator": "<=",
+        "left": {
+          "type": "node",
+          "feature": "avg_segment_length",
+          "threshold": 10.625,
+          "operator": "<=",
+          "left": {
+            "type": "leaf",
+            "value": 0.0,
+            "reason": "p=0.00 (0/1)"
+          },
+          "right": {
+            "type": "node",
+            "feature": "local_length",
+            "threshold": 16.5,
+            "operator": "<=",
+            "left": {
+              "type": "leaf",
+              "value": 0.6370370370370371,
+              "reason": "p=0.64 (0/1)"
+            },
+            "right": {
+              "type": "leaf",
+              "value": 0.0,
+              "reason": "p=0.00 (0/1)"
+            }
+          }
+        },
+        "right": {
+          "type": "node",
+          "feature": "digit_ratio",
+          "threshold": 0.15192308276891708,
+          "operator": "<=",
+          "left": {
+            "type": "node",
+            "feature": "avg_segment_length",
+            "threshold": 8.833333492279053,
+            "operator": "<=",
+            "left": {
+              "type": "leaf",
+              "value": 0.007951391493511364,
+              "reason": "p=0.01 (0/1)"
+            },
+            "right": {
+              "type": "leaf",
+              "value": 0.03166903626885228,
+              "reason": "p=0.03 (0/1)"
+            }
+          },
+          "right": {
+            "type": "node",
+            "feature": "max_consonant_cluster",
+            "threshold": 5.5,
+            "operator": "<=",
+            "left": {
+              "type": "leaf",
+              "value": 0.060360863095238096,
+              "reason": "p=0.06 (0/1)"
+            },
+            "right": {
+              "type": "leaf",
+              "value": 0.5190217391304348,
+              "reason": "p=0.52 (0/1)"
+            }
+          }
+        }
+      },
+      "right": {
+        "type": "node",
+        "feature": "digit_ratio",
+        "threshold": 0.17424242943525314,
+        "operator": "<=",
+        "left": {
+          "type": "leaf",
+          "value": 0.041237113402061855,
+          "reason": "p=0.04 (0/1)"
+        },
+        "right": {
+          "type": "node",
+          "feature": "digit_ratio",
+          "threshold": 0.4017857164144516,
+          "operator": "<=",
+          "left": {
+            "type": "node",
+            "feature": "entropy_score",
+            "threshold": 0.21237850934267044,
+            "operator": "<=",
+            "left": {
+              "type": "leaf",
+              "value": 1.0,
+              "reason": "p=1.00 (1/1)"
+            },
+            "right": {
+              "type": "leaf",
+              "value": 0.967032967032967,
+              "reason": "p=0.97 (0/1)"
+            }
+          },
+          "right": {
+            "type": "leaf",
+            "value": 0.7640449438202247,
+            "reason": "p=0.76 (0/1)"
+          }
+        }
+      }
+    },
+    "right": {
+      "type": "node",
+      "feature": "has_word_boundaries",
+      "threshold": 0.5,
+      "operator": "<=",
+      "left": {
+        "type": "node",
+        "feature": "digit_ratio",
+        "threshold": 0.21240601688623428,
+        "operator": "<=",
+        "left": {
+          "type": "node",
+          "feature": "vowel_ratio",
+          "threshold": 0.34166666865348816,
+          "operator": "<=",
+          "left": {
+            "type": "node",
+            "feature": "local_length",
+            "threshold": 13.5,
+            "operator": "<=",
+            "left": {
+              "type": "leaf",
+              "value": 0.6580386794295761,
+              "reason": "p=0.66 (0/1)"
+            },
+            "right": {
+              "type": "leaf",
+              "value": 0.013333333333333334,
+              "reason": "p=0.01 (0/1)"
+            }
+          },
+          "right": {
+            "type": "node",
+            "feature": "vowel_gap_ratio",
+            "threshold": 0.10172414034605026,
+            "operator": "<=",
+            "left": {
+              "type": "leaf",
+              "value": 0.9067357512953368,
+              "reason": "p=0.91 (0/1)"
+            },
+            "right": {
+              "type": "leaf",
+              "value": 0.29014039051153784,
+              "reason": "p=0.29 (0/1)"
+            }
+          }
+        },
+        "right": {
+          "type": "node",
+          "feature": "max_digit_run",
+          "threshold": 3.5,
+          "operator": "<=",
+          "left": {
+            "type": "node",
+            "feature": "local_length",
+            "threshold": 6.5,
+            "operator": "<=",
+            "left": {
+              "type": "leaf",
+              "value": 0.2222222222222222,
+              "reason": "p=0.22 (0/1)"
+            },
+            "right": {
+              "type": "leaf",
+              "value": 0.911728647323253,
+              "reason": "p=0.91 (0/1)"
+            }
+          },
+          "right": {
+            "type": "node",
+            "feature": "sequential_confidence",
+            "threshold": 0.32499998807907104,
+            "operator": "<=",
+            "left": {
+              "type": "leaf",
+              "value": 0.3674911660777385,
+              "reason": "p=0.37 (0/1)"
+            },
+            "right": {
+              "type": "leaf",
+              "value": 0.10714285714285714,
+              "reason": "p=0.11 (0/1)"
+            }
+          }
+        }
+      },
+      "right": {
+        "type": "node",
+        "feature": "digit_ratio",
+        "threshold": 0.39444445073604584,
+        "operator": "<=",
+        "left": {
+          "type": "node",
+          "feature": "max_digit_run",
+          "threshold": 1.5,
+          "operator": "<=",
+          "left": {
+            "type": "node",
+            "feature": "segment_count",
+            "threshold": 2.5,
+            "operator": "<=",
+            "left": {
+              "type": "leaf",
+              "value": 0.00029244041526538966,
+              "reason": "p=0.00 (0/1)"
+            },
+            "right": {
+              "type": "leaf",
+              "value": 0.06060606060606061,
+              "reason": "p=0.06 (0/1)"
+            }
+          },
+          "right": {
+            "type": "node",
+            "feature": "segments_without_vowels_ratio",
+            "threshold": 0.2916666716337204,
+            "operator": "<=",
+            "left": {
+              "type": "leaf",
+              "value": 0.03414634146341464,
+              "reason": "p=0.03 (0/1)"
+            },
+            "right": {
+              "type": "leaf",
+              "value": 0.19576719576719576,
+              "reason": "p=0.20 (0/1)"
+            }
+          }
+        },
+        "right": {
+          "type": "leaf",
+          "value": 0.42105263157894735,
+          "reason": "p=0.42 (0/1)"
+        }
+      }
+    }
+  },
+  "right": {
+    "type": "node",
+    "feature": "vowel_gap_ratio",
+    "threshold": 0.2928571552038193,
+    "operator": "<=",
+    "left": {
+      "type": "node",
+      "feature": "vowel_gap_ratio",
+      "threshold": 0.2792207896709442,
+      "operator": "<=",
+      "left": {
+        "type": "node",
+        "feature": "vowel_ratio",
+        "threshold": 0.30384616553783417,
+        "operator": "<=",
+        "left": {
+          "type": "leaf",
+          "value": 0.9894736842105263,
+          "reason": "p=0.99 (0/1)"
+        },
+        "right": {
+          "type": "leaf",
+          "value": 1.0,
+          "reason": "p=1.00 (1/1)"
+        }
+      },
+      "right": {
+        "type": "node",
+        "feature": "avg_segment_length",
+        "threshold": 8.5,
+        "operator": "<=",
+        "left": {
+          "type": "leaf",
+          "value": 0.9807692307692307,
+          "reason": "p=0.98 (0/1)"
+        },
+        "right": {
+          "type": "leaf",
+          "value": 1.0,
+          "reason": "p=1.00 (1/1)"
+        }
+      }
+    },
+    "right": {
+      "type": "leaf",
+      "value": 1.0,
+      "reason": "p=1.00 (1/1)"
+    }
+  }
+}

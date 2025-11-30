@@ -603,34 +603,50 @@
                 </div>
             </div>
 
-            <!-- Keyboard Walk Detection -->
-            <div class="panel" id="panel-keyboard">
+            <!-- Identity Similarity -->
+            <div class="panel" id="panel-identity">
                 <div class="panel-header">
-                    <div class="panel-title">Keyboard Walk Patterns</div>
+                    <div class="panel-title">Identity Similarity</div>
                     <div class="panel-actions">
-                        <button onclick="refreshPanel('keyboard')" title="Refresh">🔄</button>
-                        <button onclick="toggleFullscreen('panel-keyboard')" title="Fullscreen">⛶</button>
+                        <button onclick="refreshPanel('identity')" title="Refresh">🔄</button>
+                        <button onclick="toggleFullscreen('panel-identity')" title="Fullscreen">⛶</button>
                     </div>
                 </div>
                 <div class="panel-body">
                     <div class="chart-container">
-                        <canvas id="chart-keyboard"></canvas>
+                        <canvas id="chart-identity"></canvas>
                     </div>
                 </div>
             </div>
 
-            <!-- Gibberish Detection -->
-            <div class="panel" id="panel-gibberish">
+            <!-- Geo Consistency -->
+            <div class="panel" id="panel-geo">
                 <div class="panel-header">
-                    <div class="panel-title">Gibberish Detection</div>
+                    <div class="panel-title">Geo Consistency</div>
                     <div class="panel-actions">
-                        <button onclick="refreshPanel('gibberish')" title="Refresh">🔄</button>
-                        <button onclick="toggleFullscreen('panel-gibberish')" title="Fullscreen">⛶</button>
+                        <button onclick="refreshPanel('geo')" title="Refresh">🔄</button>
+                        <button onclick="toggleFullscreen('panel-geo')" title="Fullscreen">⛶</button>
                     </div>
                 </div>
                 <div class="panel-body">
                     <div class="chart-container">
-                        <canvas id="chart-gibberish"></canvas>
+                        <canvas id="chart-geo"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MX Providers -->
+            <div class="panel" id="panel-mx">
+                <div class="panel-header">
+                    <div class="panel-title">MX Providers</div>
+                    <div class="panel-actions">
+                        <button onclick="refreshPanel('mx')" title="Refresh">🔄</button>
+                        <button onclick="toggleFullscreen('panel-mx')" title="Fullscreen">⛶</button>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="chart-container">
+                        <canvas id="chart-mx"></canvas>
                     </div>
                 </div>
             </div>
@@ -1627,43 +1643,79 @@ LIMIT 100</textarea>
             });
         }
 
-        // DEPRECATED (v2.2.0): Keyboard walk and gibberish detectors removed
-        // These functions are kept for backwards compatibility but always return empty data
-        async function loadKeyboard() {
-            // Deprecated: Keyboard walk detector removed in v2.2.0
-            createChart('keyboard', {
+        async function loadIdentity() {
+            const hours = document.getElementById('timeRange').value;
+            const response = await apiCall(`/admin/analytics?type=identitySignals&hours=${hours}`);
+            const rows = response.data || [];
+            const labelMap = {
+                strong_match: 'Strong Match (≥0.8)',
+                partial_match: 'Partial Match (0.4-0.8)',
+                mismatch: 'Mismatch (<0.4)',
+                unknown: 'Unknown',
+            };
+
+            const dataset = rows.length ? rows : [{ bucket: 'unknown', count: 1 }];
+
+            createChart('identity', {
                 type: 'doughnut',
                 data: {
-                    labels: ['DEPRECATED (v2.2.0)'],
+                    labels: dataset.map(row => labelMap[row.bucket] || row.bucket || 'Unknown'),
                     datasets: [{
-                        data: [1],
-                        backgroundColor: ['#999'],
+                        data: dataset.map(row => parseInt(row.count, 10) || 0),
+                        backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#6c757d'],
                     }],
                 },
                 options: {
                     plugins: {
-                        legend: { display: false },
-                        title: { display: true, text: 'Keyboard Walk - DEPRECATED (v2.2.0)' }
+                        legend: { position: 'bottom' },
                     },
                 },
             });
         }
 
-        async function loadGibberish() {
-            // Deprecated: Gibberish detector removed in v2.2.0
-            createChart('gibberish', {
-                type: 'doughnut',
+        async function loadGeo() {
+            const hours = document.getElementById('timeRange').value;
+            const response = await apiCall(`/admin/analytics?type=geoSignals&hours=${hours}`);
+            const rows = response.data || [];
+            const dataset = rows.length ? rows : [{ label: 'No data', count: 0, avg_risk_score: null }];
+
+            createChart('geo', {
+                type: 'bar',
                 data: {
-                    labels: ['DEPRECATED (v2.2.0)'],
+                    labels: dataset.map(row => row.label),
                     datasets: [{
-                        data: [1],
-                        backgroundColor: ['#999'],
+                        label: 'Count',
+                        data: dataset.map(row => parseInt(row.count, 10) || 0),
+                        backgroundColor: '#28a745',
                     }],
                 },
                 options: {
                     plugins: {
                         legend: { display: false },
-                        title: { display: true, text: 'Gibberish - DEPRECATED (v2.2.0)' }
+                    },
+                },
+            });
+        }
+
+        async function loadMx() {
+            const hours = document.getElementById('timeRange').value;
+            const response = await apiCall(`/admin/analytics?type=mxProviders&hours=${hours}`);
+            const rows = response.data || [];
+            const dataset = rows.length ? rows : [{ provider: 'unknown', count: 0, avg_risk_score: null }];
+
+            createChart('mx', {
+                type: 'bar',
+                data: {
+                    labels: dataset.map(row => (row.provider || 'unknown').toUpperCase()),
+                    datasets: [{
+                        label: 'Count',
+                        data: dataset.map(row => parseInt(row.count, 10) || 0),
+                        backgroundColor: '#17a2b8',
+                    }],
+                },
+                options: {
+                    plugins: {
+                        legend: { display: false },
                     },
                 },
             });
@@ -1985,8 +2037,9 @@ LIMIT 100</textarea>
                     case 'disposable': await loadDisposable(); break;
                     case 'free': await loadFree(); break;
                     case 'plus': await loadPlus(); break;
-                    case 'keyboard': await loadKeyboard(); break;
-                    case 'gibberish': await loadGibberish(); break;
+                    case 'identity': await loadIdentity(); break;
+                    case 'geo': await loadGeo(); break;
+                    case 'mx': await loadMx(); break;
                     case 'entropy': await loadEntropy(); break;
                     case 'bot': await loadBot(); break;
                     case 'latency': await loadLatency(); break;
@@ -2025,8 +2078,9 @@ LIMIT 100</textarea>
                     loadDisposable(),
                     loadFree(),
                     loadPlus(),
-                    loadKeyboard(),
-                    loadGibberish(),
+                    loadIdentity(),
+                    loadGeo(),
+                    loadMx(),
                     loadEntropy(),
                     loadBot(),
                     loadLatency(),
@@ -2120,29 +2174,29 @@ LIMIT 100</textarea>
         // Show column mapping
         function showColumnMapping() {
             const mapping = {
-                blob1: 'decision (allow/warn/block)',
-                blob2: 'block_reason',
-                blob3: 'country',
-                blob4: 'risk_bucket',
-                blob5: 'domain',
-                blob6: 'tld',
-                blob7: 'pattern_type',
-                blob8: 'pattern_family',
-                blob9: 'is_disposable',
-                blob10: 'is_free_provider',
-                blob11: 'has_plus_addressing',
-                blob12: 'has_keyboard_walk (DEPRECATED v2.2.0)',
-                blob13: 'is_gibberish (DEPRECATED v2.2.0)',
-                blob14: 'email_local_part',
-                double1: 'risk_score',
-                double2: 'entropy_score',
-                double3: 'bot_score',
-                double4: 'asn',
-                double5: 'latency_ms',
-                double6: 'tld_risk_score',
-                double7: 'domain_reputation_score',
-                double8: 'pattern_confidence',
-                index1: 'fingerprint_hash',
+                decision: 'allow / warn / block',
+                block_reason: 'Reason when decision = block',
+                country: 'IP country',
+                risk_score: 'Final risk (0-1)',
+                entropy_score: 'Local-part entropy (0-1)',
+                bot_score: 'cf-client-trust-score (0-100)',
+                latency: 'Validation latency (ms)',
+                pattern_type: 'Detected pattern type',
+                pattern_family: 'Pattern family hash',
+                is_disposable: '1 if disposable domain',
+                is_free_provider: '1 if known free provider',
+                has_plus_addressing: '1 if + tag present',
+                identity_similarity: 'Name/email similarity (0-1)',
+                identity_token_overlap: 'Fraction of name tokens present in email (0-1)',
+                identity_name_in_email: '1 if any name token appears in email',
+                geo_language_mismatch: '1 if IP country vs Accept-Language mismatch',
+                geo_timezone_mismatch: '1 if IP timezone vs client timezone mismatch',
+                geo_anomaly_score: 'Combined geo anomaly score (0-1)',
+                mx_has_records: '1 if MX lookup succeeded',
+                mx_record_count: 'Number of MX records observed',
+                mx_primary_provider: 'Provider classification (google, microsoft, etc.)',
+                mx_provider_hits: 'JSON map of provider hits used in feature export',
+                mx_ttl: 'TTL (seconds) returned by DoH lookup',
             };
 
             const html = `

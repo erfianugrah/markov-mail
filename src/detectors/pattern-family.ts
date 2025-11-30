@@ -22,8 +22,6 @@ export type PatternType =
   | 'sequential'        // user1, user2, user3
   | 'dated'            // firstname.lastname.2024
   | 'plus-addressing'  // user+1, user+2
-  | 'keyboard-walk'    // qwerty, asdfgh (consecutive keys)
-  | 'keyboard-mashing' // ioanerst, asdfasdf (region clustering)
   | 'formatted'        // firstname.lastname, first.last
   | 'random'           // xk9m2qw7r4p3
   | 'simple'           // john, test, admin

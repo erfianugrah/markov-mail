@@ -202,7 +202,7 @@ console.log({
 - [ ] Test legitimate emails (should allow)
 - [ ] Test sequential patterns (should block/warn)
 - [ ] Test disposable domains (should block)
-- [ ] Test gibberish emails (should block/warn)
+- [ ] Test high-entropy/random emails (should block/warn)
 - [ ] Test service failures (should fail open)
 - [ ] Load test (ensure no bottleneck)
 

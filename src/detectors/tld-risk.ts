@@ -1339,6 +1339,50 @@ export interface TLDRiskAnalysis {
   riskScore: number;
   category: string;
   hasProfile: boolean;
+  registrableDomain: string;
+  subdomainDepth: number;
+  isHostedPlatform: boolean;
+  hostingPlatform: string | null;
+}
+
+const HOSTED_PLATFORM_SUFFIXES: Record<string, { platform: string; riskBoost: number }> = {
+  'vercel.app': { platform: 'vercel', riskBoost: 0.15 },
+  'vercel.dev': { platform: 'vercel', riskBoost: 0.15 },
+  'herokuapp.com': { platform: 'heroku', riskBoost: 0.15 },
+  'onrender.com': { platform: 'render', riskBoost: 0.15 },
+  'netlify.app': { platform: 'netlify', riskBoost: 0.15 },
+  'pages.dev': { platform: 'cloudflare-pages', riskBoost: 0.15 },
+  'webflow.io': { platform: 'webflow', riskBoost: 0.15 },
+  'github.io': { platform: 'github-pages', riskBoost: 0.12 },
+  'fly.dev': { platform: 'fly.io', riskBoost: 0.15 },
+  'cloudfront.net': { platform: 'cloudfront', riskBoost: 0.12 },
+};
+
+function getRegistrableDomain(parts: string[], suffixLength: number): string {
+  if (parts.length <= suffixLength) {
+    return parts.join('.');
+  }
+  return parts.slice(-1 * (suffixLength + 1)).join('.');
+}
+
+function detectHostedPlatform(domain: string) {
+  const parts = domain.toLowerCase().split('.');
+  for (let i = 0; i < parts.length - 1; i++) {
+    const suffix = parts.slice(i).join('.');
+    const platform = HOSTED_PLATFORM_SUFFIXES[suffix];
+    if (platform) {
+      const registrableDomain = getRegistrableDomain(parts, suffix.split('.').length);
+      const registrableParts = registrableDomain.split('.');
+      const subdomainDepth = Math.max(0, parts.length - registrableParts.length);
+      return {
+        platform: platform.platform,
+        riskBoost: platform.riskBoost,
+        registrableDomain,
+        subdomainDepth,
+      };
+    }
+  }
+  return null;
 }
 
 /**
@@ -1356,25 +1400,35 @@ function extractTLD(domain: string): string {
  * @returns TLD risk analysis
  */
 export function analyzeTLDRisk(domain: string, customProfiles?: Map<string, TLDRiskProfile>): TLDRiskAnalysis {
-  const tld = extractTLD(domain);
+  const normalizedDomain = domain.toLowerCase();
+  const tld = extractTLD(normalizedDomain);
   const profiles = customProfiles && customProfiles.size > 0 ? customProfiles : TLD_RISK_PROFILES;
   const profile = profiles.get(tld) || null;
+  const hostedPlatform = detectHostedPlatform(normalizedDomain);
+  const registrableDomain = hostedPlatform
+    ? hostedPlatform.registrableDomain
+    : getRegistrableDomain(normalizedDomain.split('.'), 1);
+  const registrableParts = registrableDomain.split('.');
+  const subdomainDepth = Math.max(0, normalizedDomain.split('.').length - registrableParts.length);
 
   if (!profile) {
-    // Unknown TLD - assign moderate risk
     return {
       tld,
       profile: null,
-      riskScore: 0.15, // Moderate default risk
+      riskScore: hostedPlatform ? Math.min(1, 0.25 + hostedPlatform.riskBoost) : 0.15,
       category: 'unknown',
       hasProfile: false,
+      registrableDomain,
+      subdomainDepth,
+      isHostedPlatform: Boolean(hostedPlatform),
+      hostingPlatform: hostedPlatform?.platform ?? null,
     };
   }
 
-  // Calculate risk score from profile
-  // Range: 0 (trusted) to 1 (high risk)
-  // Formula: (multiplier - 0.2) / 2.8 = normalizes 0.2-3.0 to 0-1
-  const riskScore = Math.max(0, Math.min(1, (profile.riskMultiplier - 0.2) / 2.8));
+  let riskScore = Math.max(0, Math.min(1, (profile.riskMultiplier - 0.2) / 2.8));
+  if (hostedPlatform) {
+    riskScore = Math.min(1, riskScore + hostedPlatform.riskBoost + subdomainDepth * 0.02);
+  }
 
   return {
     tld,
@@ -1382,6 +1436,10 @@ export function analyzeTLDRisk(domain: string, customProfiles?: Map<string, TLDR
     riskScore,
     category: profile.category,
     hasProfile: true,
+    registrableDomain,
+    subdomainDepth,
+    isHostedPlatform: Boolean(hostedPlatform),
+    hostingPlatform: hostedPlatform?.platform ?? null,
   };
 }
 

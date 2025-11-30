@@ -8,6 +8,22 @@ describe('buildFeatureVector', () => {
 			plusRisk: -0.5,
 			localPartLength: 200,
 			digitRatio: 2,
+			nameSimilarityScore: 1.5,
+			nameTokenOverlap: -1,
+			nameInEmail: true,
+			geoLanguageMismatch: true,
+			geoTimezoneMismatch: true,
+			geoAnomalyScore: 1.4,
+			mxHasRecords: true,
+			mxRecordCount: 40,
+			mxProviderGoogle: true,
+			mxProviderMicrosoft: false,
+			mxProviderIcloud: false,
+			mxProviderYahoo: true,
+			mxProviderZoho: false,
+			mxProviderProton: false,
+			mxProviderSelfHosted: true,
+			mxProviderOther: true,
 			providerIsFree: true,
 			providerIsDisposable: false,
 			tldRisk: 1.5,
@@ -38,6 +54,18 @@ describe('buildFeatureVector', () => {
 		expect(vector.plus_risk).toBe(0);
 		expect(vector.local_length).toBe(128);
 		expect(vector.digit_ratio).toBe(1);
+		expect(vector.name_similarity_score).toBe(1);
+		expect(vector.name_token_overlap).toBe(0);
+		expect(vector.name_in_email).toBe(1);
+		expect(vector.geo_language_mismatch).toBe(1);
+		expect(vector.geo_timezone_mismatch).toBe(1);
+		expect(vector.geo_anomaly_score).toBe(1);
+		expect(vector.mx_has_records).toBe(1);
+		expect(vector.mx_record_count).toBe(32);
+		expect(vector.mx_provider_google).toBe(1);
+		expect(vector.mx_provider_yahoo).toBe(1);
+		expect(vector.mx_provider_self_hosted).toBe(1);
+		expect(vector.mx_provider_other).toBe(1);
 		expect(vector.provider_is_free).toBe(1);
 		expect(vector.provider_is_disposable).toBe(0);
 		expect(vector.tld_risk_score).toBe(1);
@@ -55,5 +83,8 @@ describe('buildFeatureVector', () => {
 		expect(vector.plus_risk).toBe(0);
 		expect(vector.local_length).toBe(0);
 		expect(vector.domain_reputation_score).toBe(0);
+		expect(vector.name_similarity_score).toBe(0);
+		expect(vector.geo_anomaly_score).toBe(0);
+		expect(vector.mx_has_records).toBe(0);
 	});
 });

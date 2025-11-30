@@ -7,6 +7,22 @@ export interface FeatureVectorInput {
 	plusRisk?: number;
 	localPartLength?: number;
 	digitRatio?: number;
+	nameSimilarityScore?: number;
+	nameTokenOverlap?: number;
+	nameInEmail?: boolean;
+	geoLanguageMismatch?: boolean;
+	geoTimezoneMismatch?: boolean;
+	geoAnomalyScore?: number;
+	mxHasRecords?: boolean;
+	mxRecordCount?: number;
+	mxProviderGoogle?: boolean;
+	mxProviderMicrosoft?: boolean;
+	mxProviderIcloud?: boolean;
+	mxProviderYahoo?: boolean;
+	mxProviderZoho?: boolean;
+	mxProviderProton?: boolean;
+	mxProviderSelfHosted?: boolean;
+	mxProviderOther?: boolean;
 	providerIsFree?: boolean;
 	providerIsDisposable?: boolean;
 	tldRisk?: number;
@@ -54,6 +70,22 @@ export function buildFeatureVector(input: FeatureVectorInput): FeatureVector {
 		plus_risk: sanitize(input.plusRisk, 0, { min: 0, max: 1 }),
 		local_length: sanitize(input.localPartLength, 0, { min: 0, max: 128 }),
 		digit_ratio: sanitize(input.digitRatio, 0, { min: 0, max: 1 }),
+		name_similarity_score: sanitize(input.nameSimilarityScore, 0, { min: 0, max: 1 }),
+		name_token_overlap: sanitize(input.nameTokenOverlap, 0, { min: 0, max: 1 }),
+		name_in_email: input.nameInEmail ? 1 : 0,
+		geo_language_mismatch: input.geoLanguageMismatch ? 1 : 0,
+		geo_timezone_mismatch: input.geoTimezoneMismatch ? 1 : 0,
+		geo_anomaly_score: sanitize(input.geoAnomalyScore, 0, { min: 0, max: 1 }),
+		mx_has_records: input.mxHasRecords ? 1 : 0,
+		mx_record_count: sanitize(input.mxRecordCount, 0, { min: 0, max: 32 }),
+		mx_provider_google: input.mxProviderGoogle ? 1 : 0,
+		mx_provider_microsoft: input.mxProviderMicrosoft ? 1 : 0,
+		mx_provider_icloud: input.mxProviderIcloud ? 1 : 0,
+		mx_provider_yahoo: input.mxProviderYahoo ? 1 : 0,
+		mx_provider_zoho: input.mxProviderZoho ? 1 : 0,
+		mx_provider_proton: input.mxProviderProton ? 1 : 0,
+		mx_provider_self_hosted: input.mxProviderSelfHosted ? 1 : 0,
+		mx_provider_other: input.mxProviderOther ? 1 : 0,
 		provider_is_free: input.providerIsFree ? 1 : 0,
 		provider_is_disposable: input.providerIsDisposable ? 1 : 0,
 		tld_risk_score: sanitize(input.tldRisk, 0, { min: 0, max: 1 }),

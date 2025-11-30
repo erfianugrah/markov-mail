@@ -75,6 +75,26 @@ npm run cli config:sync --remote      # Sync to production
 
 **For detailed usage, workflows, and examples:** See [CLI Reference](../cli/README.md).
 
+## 📊 Dashboard Snapshot
+
+`public/analytics.html` is the frozen UI operators can keep using. It now pulls the new D1 signals:
+
+- **Identity Similarity** – groups validations into strong/partial/mismatch buckets so you can see when names no longer line up with email locals.
+- **Geo Consistency** – highlights language/timezone mismatches vs IP country.
+- **MX Providers** – shows the dominant MX providers (Google/Microsoft/self-hosted/etc.) plus average risk per provider.
+
+All panels read from `/admin/analytics?type=…` (see `src/database/queries.ts`). Make sure the admin API key is set in the UI before refreshing so the charts populate.
+
+## 🗄️ Database Migrations
+
+Identity/geo/MX telemetry lives in the `validations` table. Apply the migrations anytime you pull a new release:
+
+```bash
+wrangler d1 migrations apply markov-mail
+```
+
+That command will re-run the reset migration plus `0002_add_identity_geo_mx_columns.sql`, so existing D1 databases gain the new columns without data loss. Run it before deploying Workers that emit the new metrics.
+
 The sections that used to live here (detection capabilities, analytics, long-form release notes) were deleted with the reset. New write-ups will land once the decision-tree workflow stabilizes.
 
 ---

@@ -6,7 +6,7 @@ This branch is the clean slate for Markov Mail. The Worker will stay extremely s
 
 | Component | Status |
 |-----------|--------|
-| Worker entry (`src/`) | ✅ Minimal middleware + decision-tree evaluator |
+| Worker entry (`src/`) | ✅ Minimal middleware + decision-tree evaluator (+ identity/geo/MX feature extraction) |
 | Dashboard source (`dashboard/`) | ❌ Removed (archived static bundle lives in `public/dashboard`) |
 | D1 schema & migrations | ✅ Fully intact (single reset migration) |
 | CLI tooling | ✅ Focused on KV/config/analytics utilities |
@@ -35,7 +35,7 @@ npm run typecheck
 npm run test
 ```
 
-> Testing tip: by default `npm test` uses the Cloudflare Workers pool (wrangler spins up a proxy and may require network permissions). Set `VITEST_CLOUDFLARE_POOL=off npm test` to fall back to plain Node threads when running in a sandbox or offline.
+> Testing tip: by default `npm test` runs in a plain Node environment, which works inside sandboxes. Set `VITEST_CLOUDFLARE_POOL=on npm test` if you need to exercise the Cloudflare Workers pool via Wrangler.
 
 CLI helpers: `npm run cli -- <command>` (deploy, kv:list, analytics:stats, config:get, features:export, etc.).
 
@@ -51,9 +51,29 @@ npm run cli features:export -- \
   --output tmp/features.csv \
   --include-email \
   --limit 10000
+
+# Skip DNS MX lookups (useful when offline)
+npm run cli features:export -- --skip-mx
 ```
 
 Use the resulting CSV as the input to `ml/export_tree.py` (see `docs/DECISION_TREE.md`).
+
+> MX-derived features hit Cloudflare’s DNS-over-HTTPS endpoint (`cloudflare-dns.com`). The exporter does that automatically; if you’re offline or testing without network access, pass `--skip-mx` so the CLI zeroes-out those columns instead of failing.
+
+### One-liner training helper
+
+```bash
+# Export features, train the tree, and upload to KV (optional)
+npm run tree:train -- \
+  --input data/main.csv \
+  --output config/production/decision-tree.$(date +%F).json \
+  --label-column label \
+  --max-depth 6 \
+  --min-samples-leaf 50 \
+  --upload
+```
+
+Under the hood this runs the Bun exporter, invokes `ml/export_tree.py`, and (when `--upload` is passed) pushes the JSON to `decision_tree.json` in the `CONFIG` binding.
 
 ## Next steps
 

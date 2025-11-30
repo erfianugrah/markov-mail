@@ -12,6 +12,7 @@ describe('Config defaults (decision-tree reset)', () => {
 		expect(DEFAULT_CONFIG.features.enableDisposableCheck).toBe(true);
 		expect(DEFAULT_CONFIG.features.enablePatternCheck).toBe(true);
 		expect(DEFAULT_CONFIG.features.enableTLDRiskProfiling).toBe(true);
+		expect(DEFAULT_CONFIG.features.enableMXCheck).toBe(true);
 
 		expect(DEFAULT_CONFIG.riskWeights.domainReputation).toBeGreaterThan(0);
 		expect(DEFAULT_CONFIG.riskWeights.tldRisk).toBeGreaterThan(0);

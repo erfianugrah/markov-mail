@@ -143,41 +143,6 @@ describe('API Endpoints E2E', () => {
 			}
 		});
 
-		test('should detect keyboard walks', async () => {
-			const keyboardWalkEmails = [
-				'qwerty@example.com',
-				'asdfgh@test.com',
-				'123456@example.com',
-				'zxcvbn@company.com',
-			];
-
-			for (const email of keyboardWalkEmails) {
-				const result = await client.validate(email);
-
-				console.log(`\n⌨️  Keyboard walk ${email}: ${result.decision}`);
-
-				expect(['warn', 'block']).toContain(result.decision);
-				expect(result.signals.hasKeyboardWalk).toBe(true);
-			}
-		});
-
-		test('should detect gibberish patterns', async () => {
-			const gibberishEmails = [
-				'xk9m2qw7r4p3@example.com',
-				'zxkj3mq9wr@test.com',
-				'qmwk9xz3r7@company.com',
-			];
-
-			for (const email of gibberishEmails) {
-				const result = await client.validate(email);
-
-				console.log(`\n🗑️  Gibberish ${email}: ${result.decision}`);
-
-				expect(result.decision).toBe('block');
-				expect(result.signals.isGibberish).toBe(true);
-			}
-		});
-
 		test('should flag high-risk TLDs', async () => {
 			const highRiskTLDs = [
 				'user@example.tk',

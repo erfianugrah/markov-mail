@@ -127,6 +127,7 @@ describe('A/B Testing Framework', () => {
 					enableDisposableCheck: true,
 					enablePatternCheck: true,
 					enableTLDRiskProfiling: true,
+					enableMXCheck: true,
 				},
 				logging: {
 					logAllValidations: true,
@@ -211,6 +212,7 @@ describe('A/B Testing Framework', () => {
 					enableDisposableCheck: true,
 					enablePatternCheck: true,
 					enableTLDRiskProfiling: true,
+					enableMXCheck: true,
 				},
 				logging: {
 					logAllValidations: true,

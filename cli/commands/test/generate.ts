@@ -65,8 +65,7 @@ function generateFraudEmails(count: number) {
   const fraudTypes = [
     'sequential',
     'dated',
-    'keyboard',
-    'gibberish',
+    'entropy',
     'disposable'
   ];
 
@@ -97,18 +96,7 @@ function generateFraudEmails(count: number) {
         category = 'fraud-dated';
         break;
 
-      case 'keyboard':
-        const walks = [
-          'qwerty', 'asdfgh', 'zxcvbn', 'qazwsx', 'poiuyt', 'lkjhgf',
-          '123456', '098765', 'abcdef', 'qweasd', 'zxcasd'
-        ];
-        const walk = walks[Math.floor(Math.random() * walks.length)];
-        const suffix = Math.floor(Math.random() * 1000);
-        email = `${walk}${suffix > 0 ? suffix : ''}@gmail.com`;
-        category = 'fraud-keyboard';
-        break;
-
-      case 'gibberish':
+      case 'entropy':
         const length = Math.floor(Math.random() * 8) + 8;
         let local = '';
         for (let j = 0; j < length; j++) {
@@ -120,7 +108,7 @@ function generateFraudEmails(count: number) {
           local = char.repeat(3) + local.substring(3);
         }
         email = `${local}@gmail.com`;
-        category = 'fraud-gibberish';
+        category = 'fraud-entropy';
         break;
 
       case 'disposable':

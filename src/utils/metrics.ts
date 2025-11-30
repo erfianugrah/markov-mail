@@ -75,6 +75,19 @@ export interface ValidationMetric {
   // RPC Metadata (v2.5.1+)
   consumer?: string;            // Consumer service name (e.g., "FORMINATOR")
   flow?: string;                // Request flow type (e.g., "REGISTRATION", "LOGIN")
+  // Identity / Geo / MX (Decision-tree reset enhancements)
+  identitySimilarity?: number;
+  identityTokenOverlap?: number;
+  identityNameInEmail?: boolean;
+  geoLanguageMismatch?: boolean;
+  geoTimezoneMismatch?: boolean;
+  geoAnomalyScore?: number;
+  mxHasRecords?: boolean;
+  mxRecordCount?: number;
+  mxPrimaryProvider?: string | null;
+  mxProviderHits?: Record<string, number>;
+  mxLookupFailure?: string;
+  mxTTL?: number;
 }
 
 /**

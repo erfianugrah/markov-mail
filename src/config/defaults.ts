@@ -20,6 +20,7 @@ export interface FraudDetectionConfig {
 		enableDisposableCheck: boolean;
 		enablePatternCheck: boolean;
 		enableTLDRiskProfiling: boolean;
+		enableMXCheck: boolean;
 	};
 	logging: {
 		logAllValidations: boolean;
@@ -73,6 +74,7 @@ export const DEFAULT_CONFIG: FraudDetectionConfig = {
 		enableDisposableCheck: true,
 		enablePatternCheck: true,
 		enableTLDRiskProfiling: true,
+		enableMXCheck: true,
 	},
 	logging: {
 		logAllValidations: true,

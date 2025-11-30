@@ -1,7 +1,7 @@
 import { defineWorkersConfig } from '@cloudflare/vitest-pool-workers/config';
 import { defineConfig } from 'vitest/config';
 
-const useWorkersPool = process.env.VITEST_CLOUDFLARE_POOL !== 'off';
+const useWorkersPool = process.env.VITEST_CLOUDFLARE_POOL === 'on';
 
 export default useWorkersPool
 	? defineWorkersConfig({

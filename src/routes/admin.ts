@@ -420,6 +420,9 @@ admin.get('/analytics', async (c) => {
 				fingerprints: D1Queries.topFingerprints,
 				disposableDomains: D1Queries.disposableDomains,
 				patternFamilies: D1Queries.patternFamilies,
+				identitySignals: D1Queries.identitySignals,
+				geoSignals: D1Queries.geoSignals,
+				mxProviders: D1Queries.mxProviders,
 			};
 
 			if (!allowedQueries[queryType]) {
@@ -715,6 +718,21 @@ admin.get('/analytics/queries', (c) => {
 			name: 'Pattern Families',
 			description: 'Analysis of detected pattern families',
 			sql: D1Queries.patternFamilies(hours).trim(),
+		},
+		identitySignals: {
+			name: 'Identity Similarity Buckets',
+			description: 'Distribution of name/email similarity buckets',
+			sql: D1Queries.identitySignals(hours).trim(),
+		},
+		geoSignals: {
+			name: 'Geo Consistency Summary',
+			description: 'Language/timezone mismatch counts',
+			sql: D1Queries.geoSignals(hours).trim(),
+		},
+		mxProviders: {
+			name: 'MX Provider Distribution',
+			description: 'Primary MX providers observed with average risk',
+			sql: D1Queries.mxProviders(hours).trim(),
 		},
 	};
 

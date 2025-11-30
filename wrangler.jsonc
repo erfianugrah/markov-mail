@@ -6,7 +6,7 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "markov-mail",
 	"main": "src/index.ts",
-	"compatibility_date": "2025-10-11", // RPC enabled (requires 2024-04-03+)
+	"compatibility_date": "2024-10-11", // RPC enabled (requires 2024-04-03+)
 	"observability": {
 		"enabled": true
 	},

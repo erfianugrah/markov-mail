@@ -23,10 +23,6 @@ import {
   areEmailsEquivalent,
   getPlusAddressingRiskScore
 } from '../../../src/detectors/plus-addressing';
-import {
-  detectKeyboardWalk,
-  getKeyboardWalkRiskScore
-} from '../../../src/detectors/keyboard-walk';
 
 describe('Sequential Pattern Detector', () => {
   it('should detect simple sequential patterns', () => {
@@ -88,7 +84,7 @@ describe('Plus-addressing risk score', () => {
   });
 
   it('should stack suspicious tags and multi-alias abuse', () => {
-    const score = getPlusAddressingRiskScore('user+1@gmail.com', ['user+2@gmail.com']);
+    const score = getPlusAddressingRiskScore('user+1@gmail.com', ['user+2@gmail.com', 'user+3@gmail.com']);
     expect(score).toBeCloseTo(0.9, 2);
   });
 
@@ -339,9 +335,9 @@ describe('Plus-Addressing Normalizer', () => {
   });
 
   it('should handle Gmail dot-ignoring', () => {
-    const result = normalizeEmail('personA@gmail.com');
-    expect(result.providerNormalized).toBe('personA@gmail.com');
-    expect(result.metadata?.dotsRemoved).toBe(0);
+    const result = normalizeEmail('person.a@gmail.com');
+    expect(result.providerNormalized).toBe('persona@gmail.com');
+    expect(result.metadata?.dotsRemoved).toBe(1);
   });
 
   it('should detect suspicious plus tags', () => {
@@ -396,67 +392,6 @@ describe('Plus-Addressing Normalizer', () => {
     const email1 = 'personA+test@gmail.com';
     const email2 = 'personA@gmail.com';
     expect(areEmailsEquivalent(email1, email2)).toBe(true);
-  });
-});
-
-describe('Keyboard Walk Detector', () => {
-  it('should detect horizontal keyboard walks', () => {
-    const result = detectKeyboardWalk('qwerty@example.com');
-    expect(result.hasKeyboardWalk).toBe(true);
-    expect(result.walkType).toBe('horizontal');
-    expect(result.confidence).toBeGreaterThan(0.7);
-  });
-
-  it('should detect asdfgh pattern', () => {
-    const result = detectKeyboardWalk('asdfgh@example.com');
-    expect(result.hasKeyboardWalk).toBe(true);
-    expect(result.walkType).toBe('horizontal');
-  });
-
-  it('should detect vertical keyboard walks', () => {
-    const result = detectKeyboardWalk('qaz@example.com');
-    expect(result.hasKeyboardWalk).toBe(true);
-    expect(result.walkType).toBe('vertical');
-  });
-
-  it('should detect diagonal patterns', () => {
-    const result = detectKeyboardWalk('qweasd@example.com');
-    expect(result.hasKeyboardWalk).toBe(true);
-    expect(result.walkType).toBe('diagonal');
-  });
-
-  it('should detect numeric sequences', () => {
-    const result = detectKeyboardWalk('user123456@example.com');
-    expect(result.hasKeyboardWalk).toBe(true);
-    expect(result.walkType).toBe('numeric');
-  });
-
-  it('should detect repeated digits', () => {
-    const result = detectKeyboardWalk('user111@example.com');
-    expect(result.hasKeyboardWalk).toBe(true);
-    expect(result.walkType).toBe('numeric');
-  });
-
-  it('should not detect legitimate emails', () => {
-    const result = detectKeyboardWalk('personA@example.com');
-    expect(result.hasKeyboardWalk).toBe(false);
-  });
-
-  it('should calculate risk score for keyboard walks', () => {
-    const result = detectKeyboardWalk('qwerty@example.com');
-    const risk = getKeyboardWalkRiskScore(result);
-    expect(risk).toBeGreaterThan(0.5);
-  });
-
-  it('should detect backward walks', () => {
-    const result = detectKeyboardWalk('trewq@example.com');
-    expect(result.hasKeyboardWalk).toBe(true);
-    expect(result.walkType).toBe('horizontal');
-  });
-
-  it('should handle mixed patterns', () => {
-    const result = detectKeyboardWalk('myqwerty123@example.com');
-    expect(result.hasKeyboardWalk).toBe(true);
   });
 });
 

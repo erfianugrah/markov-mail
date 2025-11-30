@@ -55,7 +55,7 @@ export const testCases = [
       entropyRange: [0.3, 0.5],
     },
   },
-  // High entropy + gibberish
+  // High entropy local part
   {
     email: 'xk9m2qw7r4p3@example.com',
     expected: {

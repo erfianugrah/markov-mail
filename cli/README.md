@@ -43,7 +43,7 @@ Store them in `.dev.vars`, export in your shell, or pass `--url` / `--api-key` f
 - `tld:*` – manage TLD risk profiles.
 
 ### Model Workflow
-- `features:export` – mirror the runtime feature vector into a CSV (see `docs/TRAINING.md`).
+- `features:export` – mirror the runtime feature vector into a CSV (see `docs/TRAINING.md`). Pass `--skip-mx` if you’re exporting in an environment without outbound DNS-over-HTTPS access.
 - Upload the exported decision tree via `kv:put -- --binding CONFIG decision_tree.json --file …`.
 
 ### Testing
@@ -52,9 +52,6 @@ Store them in `.dev.vars`, export in your shell, or pass `--url` / `--api-key` f
 
 ### Experimentation
 - `ab:create`, `ab:status`, `ab:analyze`, `ab:stop` – manage KV-backed experiments from the CLI.
-
-### Utilities
-- `analyze:weights` – placeholder for future risk-weight tuning.
 
 ## Troubleshooting
 

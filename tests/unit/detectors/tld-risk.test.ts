@@ -94,9 +94,11 @@ describe('TLD Risk Profiling', () => {
       unknownDomains.forEach(domain => {
         const analysis = analyzeTLDRisk(domain);
         expect(analysis.category).toBe('unknown');
-        expect(analysis.riskScore).toBe(0.15); // Default moderate risk
+        expect(analysis.riskScore).toBeGreaterThanOrEqual(0.15);
+        expect(analysis.riskScore).toBeLessThanOrEqual(0.4);
         expect(analysis.hasProfile).toBe(false);
         expect(analysis.profile).toBeNull();
+        expect(analysis.registrableDomain).toContain('.');
       });
     });
 
@@ -106,6 +108,8 @@ describe('TLD Risk Profiling', () => {
 
       expect(analysis.tld).toBe('com');
       expect(analysis.category).toBe('standard');
+      expect(analysis.subdomainDepth).toBe(1);
+      expect(analysis.registrableDomain).toBe('example.com');
     });
 
     it('should be case-insensitive', () => {
@@ -120,6 +124,14 @@ describe('TLD Risk Profiling', () => {
       expect(result1.riskScore).toBe(result2.riskScore);
       expect(result1.riskScore).toBe(result3.riskScore);
       expect(result1.category).toBe(result2.category);
+    });
+
+    it('should boost risk for hosted application suffixes', () => {
+      const analysis = analyzeTLDRisk('scam-site.vercel.app');
+      expect(analysis.isHostedPlatform).toBe(true);
+      expect(analysis.hostingPlatform).toBe('vercel');
+      expect(analysis.riskScore).toBeGreaterThan(0.3);
+      expect(analysis.registrableDomain).toBe('scam-site.vercel.app');
     });
 
     it('should provide detailed profile information', () => {

@@ -19,6 +19,9 @@ import { buildFeatureVector } from '../../../src/utils/feature-vector';
 import { extractLocalPartFeatureSignals } from '../../../src/detectors/linguistic-features';
 import { validateEmail } from '../../../src/validators/email';
 import { validateDomain, getDomainReputationScore } from '../../../src/validators/domain';
+import { computeIdentitySignals } from '../../../src/utils/identity-signals';
+import { computeGeoSignals } from '../../../src/utils/geo-signals';
+import { resolveMXRecords, type MXAnalysis } from '../../../src/services/mx-resolver';
 
 interface DatasetRow {
 	email: string;
@@ -41,6 +44,11 @@ OPTIONS
   --input <path>          Source CSV with columns: email,label (default: data/main.csv)
   --output <path>         Destination CSV for features  (default: data/features/export.csv)
   --label-column <name>   Label column name             (default: label)
+  --name-column <name>    Column containing display name (default: name)
+  --country-column <name> Column containing IP country   (default: ip_country)
+  --language-column <name>Column containing Accept-Language (default: accept_language)
+  --timezone-column <name>Column containing client timezone (default: timezone)
+  --skip-mx               Skip DNS MX lookups (faster, but omits MX features)
   --include-email         Keep original email column in output
   --limit <n>             Only process the first n rows (for sampling)
   --help, -h              Show this help message
@@ -66,7 +74,19 @@ function normalizeLabel(value: string | number): number {
 	return 0;
 }
 
-function computeFeatures(email: string) {
+interface ColumnHints {
+	nameColumn: string;
+	countryColumn: string;
+	languageColumn: string;
+	timezoneColumn: string;
+}
+
+interface FeatureOptions {
+	skipMX: boolean;
+	mxCache: Map<string, Promise<MXAnalysis>>;
+}
+
+async function computeFeatures(email: string, row: DatasetRow, columns: ColumnHints, options: FeatureOptions) {
 	const emailValidation = validateEmail(email);
 	if (!emailValidation.valid) {
 		// We still compute features because downstream training can decide how to treat them.
@@ -86,11 +106,50 @@ function computeFeatures(email: string) {
 	const domainValidation = domain ? validateDomain(domain) : null;
 
 	const domainReputation = domain ? getDomainReputationScore(domain) : 0;
+	const nameValue = columns.nameColumn && row[columns.nameColumn] ? String(row[columns.nameColumn]) : undefined;
+	const countryValue = columns.countryColumn && row[columns.countryColumn] ? String(row[columns.countryColumn]) : undefined;
+	const languageValue = columns.languageColumn && row[columns.languageColumn] ? String(row[columns.languageColumn]) : undefined;
+	const timezoneValue = columns.timezoneColumn && row[columns.timezoneColumn] ? String(row[columns.timezoneColumn]) : undefined;
+	const identitySignals = computeIdentitySignals(nameValue, localPart);
+	const geoSignals = computeGeoSignals({
+		ipCountry: countryValue,
+		acceptLanguage: languageValue,
+		clientTimezone: timezoneValue,
+		edgeTimezone: timezoneValue,
+	});
+	let mxAnalysis: MXAnalysis | null = null;
+	if (!options.skipMX && domain) {
+		const cacheKey = domain.toLowerCase();
+		if (!options.mxCache.has(cacheKey)) {
+			options.mxCache.set(cacheKey, resolveMXRecords(cacheKey));
+		}
+		try {
+			mxAnalysis = await options.mxCache.get(cacheKey)!;
+		} catch {
+			mxAnalysis = null;
+		}
+	}
 	const featureVector = buildFeatureVector({
 		sequentialConfidence: sequential.confidence,
 		plusRisk,
 		localPartLength: localFeatures.statistical.length,
 		digitRatio: localFeatures.statistical.digitRatio,
+		nameSimilarityScore: identitySignals.similarityScore,
+		nameTokenOverlap: identitySignals.tokenOverlap,
+		nameInEmail: identitySignals.nameInEmail,
+		geoLanguageMismatch: geoSignals.languageMismatch,
+		geoTimezoneMismatch: geoSignals.timezoneMismatch,
+		geoAnomalyScore: geoSignals.anomalyScore,
+		mxHasRecords: mxAnalysis?.hasRecords,
+		mxRecordCount: mxAnalysis?.recordCount,
+		mxProviderGoogle: mxAnalysis ? mxAnalysis.providerHits.google > 0 : false,
+		mxProviderMicrosoft: mxAnalysis ? mxAnalysis.providerHits.microsoft > 0 : false,
+		mxProviderIcloud: mxAnalysis ? mxAnalysis.providerHits.icloud > 0 : false,
+		mxProviderYahoo: mxAnalysis ? mxAnalysis.providerHits.yahoo > 0 : false,
+		mxProviderZoho: mxAnalysis ? mxAnalysis.providerHits.zoho > 0 : false,
+		mxProviderProton: mxAnalysis ? mxAnalysis.providerHits.proton > 0 : false,
+		mxProviderSelfHosted: mxAnalysis ? mxAnalysis.providerHits.self_hosted > 0 : false,
+		mxProviderOther: mxAnalysis ? mxAnalysis.providerHits.other > 0 : false,
 		providerIsFree: domainValidation?.isFreeProvider,
 		providerIsDisposable: domainValidation?.isDisposable,
 		tldRisk: tldRiskScore,
@@ -130,8 +189,15 @@ export default async function exportFeatures(args: string[]) {
 	const inputPath = resolve(getOption(parsed, 'input') || 'data/main.csv');
 	const outputPath = resolve(getOption(parsed, 'output') || 'data/features/export.csv');
 	const labelColumn = getOption(parsed, 'label-column') || 'label';
+	const nameColumn = getOption(parsed, 'name-column') || 'name';
+	const countryColumn = getOption(parsed, 'country-column') || 'ip_country';
+	const languageColumn = getOption(parsed, 'language-column') || 'accept_language';
+	const timezoneColumn = getOption(parsed, 'timezone-column') || 'timezone';
 	const limit = getOption(parsed, 'limit') ? Number(getOption(parsed, 'limit')) : undefined;
 	const includeEmail = hasFlag(parsed, 'include-email');
+	const skipMX = hasFlag(parsed, 'skip-mx');
+	const columnHints: ColumnHints = { nameColumn, countryColumn, languageColumn, timezoneColumn };
+	const mxCache = new Map<string, Promise<MXAnalysis>>();
 
 	logger.section('✨ Exporting feature matrix');
 	logger.info(`Input:  ${inputPath}`);
@@ -162,7 +228,7 @@ export default async function exportFeatures(args: string[]) {
 		}
 
 		try {
-			const features = computeFeatures(email);
+			const features = await computeFeatures(email, row, columnHints, { skipMX, mxCache });
 			Object.keys(features).forEach((key) => featureKeys.add(key));
 
 			const record: Record<string, any> = { ...features };

@@ -157,12 +157,6 @@ const COMMANDS = {
 		usage: 'config:sync',
 	},
 
-	// Analytics / tuning helpers
-	'analyze:weights': {
-		description: 'Analyze and optimize risk weights (WIP)',
-		file: 'commands/analyze/weights.ts',
-		usage: 'analyze:weights',
-	},
 	'features:export': {
 		description: 'Generate feature matrix for decision-tree training',
 		file: 'commands/features/export.ts',
@@ -220,10 +214,9 @@ Usage: npm run cli <command> [options]
   test:api                  Call /validate with sample emails
   test:multilang            Inspect n-gram language support
 
-⚙️ CONFIGURATION & ANALYSIS
+⚙️ CONFIGURATION
   config:get|set|list       Inspect/update runtime config
   config:upload|sync        Push config files to KV
-  analyze:weights           (WIP) Analyze risk weight tuning
 
 🛠️ MODEL PIPELINE
   features:export           Mirror runtime feature vector for decision-tree training

@@ -10,7 +10,8 @@
   "features": {
     "enableDisposableCheck": true,
     "enablePatternCheck": true,
-    "enableTLDRiskProfiling": true
+    "enableTLDRiskProfiling": true,
+    "enableMXCheck": true
   },
   "logging": {
     "logAllValidations": true,

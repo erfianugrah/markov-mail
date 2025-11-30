@@ -29,6 +29,10 @@ import { loadTLDRiskProfiles } from '../services/tld-risk-updater';
 import { writeValidationMetric } from '../utils/metrics';
 import { getConfig } from '../config';
 import { buildFeatureVector, type FeatureVector } from '../utils/feature-vector';
+import { computeIdentitySignals } from '../utils/identity-signals';
+import { computeGeoSignals } from '../utils/geo-signals';
+import { resolveMXRecords, getCachedMXRecords } from '../services/mx-resolver';
+import { sendAnomalyAlert } from '../services/alerting';
 import { extractLocalPartFeatureSignals, type LocalPartFeatureSignals } from '../detectors/linguistic-features';
 import { logger } from '../logger';
 import {
@@ -40,6 +44,7 @@ import {
 
 const PATTERN_CLASSIFICATION_VERSION = '2.5.0';
 const AB_CONFIG_CACHE_TTL = 60000; // 1 minute
+const MX_LOOKUP_TIMEOUT_MS = 350;
 
 let cachedABTestConfig: ABTestConfig | null = null;
 let abConfigCacheTimestamp = 0;
@@ -62,9 +67,12 @@ async function getActiveABTestConfig(kv: KVNamespace | undefined): Promise<ABTes
 
 export async function fraudDetectionMiddleware(c: Context, next: Next) {
 	const startTime = Date.now();
+	const rawRequest = c.req.raw;
+	const headers = rawRequest.headers;
+	const cf = (rawRequest as any).cf || {};
 
 	if (c.get('skipFraudDetection') === true) {
-		return next();
+	  	return next();
 	}
 
 	const path = c.req.path;
@@ -114,6 +122,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 	const email = requestBody.email;
 	const consumer = requestBody.consumer;
 	const flow = requestBody.flow;
+	const displayName = typeof requestBody.name === 'string' ? requestBody.name : undefined;
 
 	c.set('requestBody', requestBody);
 
@@ -136,7 +145,14 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			ORIGIN_URL: c.env.ORIGIN_URL,
 		});
 
-		const fingerprint = await generateFingerprint(c.req.raw);
+		const fingerprint = await generateFingerprint(rawRequest);
+		const geoSignals = computeGeoSignals({
+			ipCountry: headers.get('cf-ipcountry') || cf.country,
+			acceptLanguage: headers.get('accept-language'),
+			clientTimezone: headers.get('sec-ch-ua-timezone') || headers.get('timezone') || headers.get('x-timezone'),
+			edgeTimezone: cf.timezone || headers.get('cf-timezone'),
+		});
+		let identitySignals = computeIdentitySignals(displayName, '');
 
 		// Apply active A/B experiment overrides (if any)
 		let config = baseConfig;
@@ -184,6 +200,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 		let domainValidation;
 		let domainReputationScore = 0;
 		let tldRiskScore = 0;
+		let mxAnalysis = null as Awaited<ReturnType<typeof resolveMXRecords>> | null;
 
 		if (emailValidation.valid) {
 			const [, domain] = email.split('@');
@@ -194,6 +211,52 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 				if (config.features.enableTLDRiskProfiling) {
 					const tldAnalysis = analyzeTLDRisk(domain, tldRiskProfiles);
 					tldRiskScore = tldAnalysis.riskScore;
+				}
+
+				if (config.features.enableMXCheck && domainValidation && !domainValidation.isDisposable) {
+					const cachedMx = getCachedMXRecords(domain);
+					if (cachedMx) {
+						mxAnalysis = cachedMx;
+					} else {
+						const mxPromise = resolveMXRecords(domain);
+						try {
+							let timeoutId: ReturnType<typeof setTimeout> | undefined;
+							const timeoutPromise = new Promise<null>((resolve) => {
+								timeoutId = setTimeout(() => {
+									timeoutId = undefined;
+									resolve(null);
+								}, MX_LOOKUP_TIMEOUT_MS);
+							});
+							const lookupResult = await Promise.race([mxPromise, timeoutPromise]);
+							if (timeoutId) {
+								clearTimeout(timeoutId);
+							}
+							if (lookupResult) {
+								mxAnalysis = lookupResult;
+							} else {
+								logger.warn({
+									event: 'mx_lookup_timeout',
+									domain,
+									timeoutMs: MX_LOOKUP_TIMEOUT_MS,
+								}, 'MX lookup timed out, deferring to background');
+								c.executionCtx.waitUntil(
+									mxPromise.catch((error) => {
+										logger.warn({
+											event: 'mx_lookup_failed',
+											domain,
+											error: error instanceof Error ? error.message : String(error),
+										}, 'MX lookup failed');
+									})
+								);
+							}
+						} catch (error) {
+							logger.warn({
+								event: 'mx_lookup_failed',
+								domain,
+								error: error instanceof Error ? error.message : String(error),
+							}, 'MX lookup failed');
+						}
+					}
 				}
 			}
 		}
@@ -251,11 +314,31 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			sequentialConfidence = sequentialResult?.confidence ?? 0;
 			plusRisk = normalizedEmailResult ? getPlusAddressingRiskScore(email) : 0;
 
+			identitySignals = computeIdentitySignals(displayName, providerLocalPart);
+
+			const providerHits = mxAnalysis?.providerHits;
+
 			featureVector = buildFeatureVector({
 				sequentialConfidence,
 				plusRisk,
 				localPartLength,
 				digitRatio,
+				nameSimilarityScore: identitySignals.similarityScore,
+				nameTokenOverlap: identitySignals.tokenOverlap,
+				nameInEmail: identitySignals.nameInEmail,
+				geoLanguageMismatch: geoSignals.languageMismatch,
+				geoTimezoneMismatch: geoSignals.timezoneMismatch,
+				geoAnomalyScore: geoSignals.anomalyScore,
+				mxHasRecords: mxAnalysis?.hasRecords,
+				mxRecordCount: mxAnalysis?.recordCount,
+				mxProviderGoogle: providerHits ? providerHits.google > 0 : false,
+				mxProviderMicrosoft: providerHits ? providerHits.microsoft > 0 : false,
+				mxProviderIcloud: providerHits ? providerHits.icloud > 0 : false,
+				mxProviderYahoo: providerHits ? providerHits.yahoo > 0 : false,
+				mxProviderZoho: providerHits ? providerHits.zoho > 0 : false,
+				mxProviderProton: providerHits ? providerHits.proton > 0 : false,
+				mxProviderSelfHosted: providerHits ? providerHits.self_hosted > 0 : false,
+				mxProviderOther: providerHits ? providerHits.other > 0 : false,
 				providerIsFree: domainValidation?.isFreeProvider,
 				providerIsDisposable: domainValidation?.isDisposable,
 				tldRisk: tldRiskScore,
@@ -332,6 +415,8 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			decision = config.actionOverride;
 		}
 
+		const elapsedMs = Date.now() - startTime;
+
 		logger.info({
 			event: 'fraud_detection_decision',
 			decision,
@@ -343,14 +428,45 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			email: email.substring(0, 3) + '***',
 			experimentId: abAssignment?.experimentId,
 			experimentVariant: abAssignment?.variant,
-			latency: Date.now() - startTime,
+			latency: elapsedMs,
 		}, `Decision: ${decision} (score: ${riskScore.toFixed(2)}, reason: ${blockReason})`);
+
+		const alertReasons: string[] = [];
+		if (identitySignals.name && identitySignals.similarityScore < 0.2) {
+			alertReasons.push('low_identity_similarity');
+		}
+		if (geoSignals.languageMismatch) {
+			alertReasons.push('geo_language_mismatch');
+		}
+		if (geoSignals.timezoneMismatch) {
+			alertReasons.push('geo_timezone_mismatch');
+		}
+		if (mxAnalysis && !mxAnalysis.hasRecords) {
+			alertReasons.push('missing_mx_records');
+		}
+
+		const shouldAlert =
+			c.env.ALERT_WEBHOOK_URL &&
+			alertReasons.length > 0 &&
+			riskScore >= config.riskThresholds.warn;
+
+		if (shouldAlert) {
+			const maskedEmail = email.replace(/^(.{3}).+(@.+)$/, (_, start, end) => `${start}***${end}`);
+			c.executionCtx.waitUntil(sendAnomalyAlert(c.env, {
+				email: maskedEmail,
+				riskScore,
+				decision,
+				reasons: alertReasons,
+				identitySimilarity: identitySignals.similarityScore,
+				geoLanguageMismatch: geoSignals.languageMismatch,
+				geoTimezoneMismatch: geoSignals.timezoneMismatch,
+				mxProvider: mxAnalysis?.primaryProvider ?? null,
+				timestamp: new Date().toISOString(),
+			}));
+		}
 
 		const [localPart, domain] = email.split('@');
 		const tld = domain ? domain.split('.').pop() : undefined;
-		const cf = (c.req.raw as any).cf || {};
-		const headers = c.req.raw.headers;
-
 		c.executionCtx.waitUntil(writeValidationMetric(c.env.DB, {
 			decision,
 			riskScore,
@@ -360,7 +476,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			asn: fingerprint.asn,
 			blockReason: decision === 'block' ? blockReason : undefined,
 			fingerprintHash: fingerprint.hash,
-			latency: Date.now() - startTime,
+			latency: elapsedMs,
 			experimentId: abAssignment?.experimentId,
 			variant: abAssignment?.variant,
 			bucket: abAssignment?.bucket,
@@ -416,6 +532,18 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			})(),
 			consumer,
 			flow,
+			identitySimilarity: identitySignals.similarityScore,
+			identityTokenOverlap: identitySignals.tokenOverlap,
+			identityNameInEmail: identitySignals.nameInEmail,
+			geoLanguageMismatch: geoSignals.languageMismatch,
+			geoTimezoneMismatch: geoSignals.timezoneMismatch,
+			geoAnomalyScore: geoSignals.anomalyScore,
+			mxHasRecords: mxAnalysis?.hasRecords,
+			mxRecordCount: mxAnalysis?.recordCount,
+			mxPrimaryProvider: mxAnalysis?.primaryProvider ?? null,
+			mxProviderHits: mxAnalysis?.providerHits,
+			mxLookupFailure: mxAnalysis?.failure,
+			mxTTL: mxAnalysis?.ttl,
 			patternClassificationVersion: PATTERN_CLASSIFICATION_VERSION,
 		}));
 
@@ -424,6 +552,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			riskScore: Math.round(riskScore * 100) / 100,
 			blockReason,
 			valid: emailValidation.valid && (!domainValidation || !domainValidation.isDisposable),
+			latencyMs: elapsedMs,
 			signals: {
 				formatValid: emailValidation.signals.formatValid,
 				entropyScore: Math.round(emailValidation.signals.entropyScore * 100) / 100,
@@ -439,6 +568,19 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 				tldRiskScore: Math.round(tldRiskScore * 100) / 100,
 				plusAddressingRisk: Math.round(plusRisk * 100) / 100,
 				sequentialPatternRisk: Math.round(sequentialConfidence * 100) / 100,
+				identitySignals: {
+					name: identitySignals.name,
+					nameInEmail: identitySignals.nameInEmail,
+					tokenOverlap: Math.round(identitySignals.tokenOverlap * 100) / 100,
+					similarityScore: Math.round(identitySignals.similarityScore * 100) / 100,
+				},
+				geoSignals: {
+					ipCountry: geoSignals.ipCountry,
+					acceptLanguageCountry: geoSignals.acceptLanguageCountry,
+					languageMismatch: geoSignals.languageMismatch,
+					timezoneMismatch: geoSignals.timezoneMismatch,
+					anomalyScore: Math.round(geoSignals.anomalyScore * 100) / 100,
+				},
 				...(abAssignment && {
 					experimentId: abAssignment.experimentId,
 					experimentVariant: abAssignment.variant,
@@ -468,6 +610,13 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 					vowelGapRatio: Math.round(localPartFeatures.statistical.vowelGapRatio * 100) / 100,
 					entropy: Math.round(localPartFeatures.statistical.entropy * 100) / 100,
 				},
+				mxSignals: {
+					hasRecords: mxAnalysis?.hasRecords ?? false,
+					recordCount: mxAnalysis?.recordCount ?? 0,
+					primaryProvider: mxAnalysis?.primaryProvider ?? null,
+					ttl: mxAnalysis?.ttl ?? null,
+					failure: mxAnalysis?.failure,
+				},
 			},
 		});
 
@@ -479,7 +628,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 				decision,
 				riskScore: Math.round(riskScore * 100) / 100,
 				blockReason,
-				latency: Date.now() - startTime,
+				latency: elapsedMs,
 			}, `[MONITOR] Fraud detection: ${decision} (risk: ${riskScore.toFixed(2)})`);
 			if (abAssignment) {
 				c.header('X-Experiment-Id', abAssignment.experimentId);

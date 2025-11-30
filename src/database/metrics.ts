@@ -41,7 +41,10 @@ export async function writeValidationMetricToD1(
           client_trust_score, verified_bot, js_detection_passed, detection_ids,
           ja3_hash, ja4, ja4_signals,
           pattern_classification_version,
-          latency
+          latency,
+          identity_similarity, identity_token_overlap, identity_name_in_email,
+          geo_language_mismatch, geo_timezone_mismatch, geo_anomaly_score,
+          mx_has_records, mx_record_count, mx_primary_provider, mx_provider_hits, mx_lookup_failure, mx_ttl
         ) VALUES (
           ?1, ?2, ?3,
           ?4, ?5, ?6, ?7,
@@ -58,7 +61,10 @@ export async function writeValidationMetricToD1(
           ?44, ?45, ?46, ?47,
           ?48, ?49, ?50,
           ?51,
-          ?52
+          ?52,
+          ?53, ?54, ?55,
+          ?56, ?57, ?58,
+          ?59, ?60, ?61, ?62, ?63, ?64
         )
       `)
       .bind(
@@ -113,7 +119,19 @@ export async function writeValidationMetricToD1(
         metric.ja4 || null,
         metric.ja4Signals ? JSON.stringify(metric.ja4Signals) : null,
         metric.patternClassificationVersion || null,
-        metric.latency
+        metric.latency,
+        metric.identitySimilarity ?? null,
+        metric.identityTokenOverlap ?? null,
+        metric.identityNameInEmail === undefined ? null : metric.identityNameInEmail ? 1 : 0,
+        metric.geoLanguageMismatch === undefined ? null : metric.geoLanguageMismatch ? 1 : 0,
+        metric.geoTimezoneMismatch === undefined ? null : metric.geoTimezoneMismatch ? 1 : 0,
+        metric.geoAnomalyScore ?? null,
+        metric.mxHasRecords === undefined ? null : metric.mxHasRecords ? 1 : 0,
+        metric.mxRecordCount ?? null,
+        metric.mxPrimaryProvider || null,
+        metric.mxProviderHits ? JSON.stringify(metric.mxProviderHits) : null,
+        metric.mxLookupFailure || null,
+        metric.mxTTL ?? null
       )
       .run();
   } catch (error) {

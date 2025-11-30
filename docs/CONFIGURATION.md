@@ -71,6 +71,38 @@ Override the normal decision logic for specific use cases.
 
 **Recommended**: block=0.6, warn=0.3 (91.8% accuracy)
 
+## Feature Flags
+
+Toggle runtime detectors/inputs without redeploying:
+
+```json
+{
+  "features": {
+    "enableDisposableCheck": true,
+    "enablePatternCheck": true,
+    "enableTLDRiskProfiling": true,
+    "enableMXCheck": true
+  }
+}
+```
+
+- `enableMXCheck` controls both runtime MX lookups (via Cloudflare DNS over HTTPS) and the feature exporter’s defaults. Leave it `true` for production—the decision tree now expects `mx_*` inputs. When running fully offline you can disable it or pass `--skip-mx` to the exporter so those columns zero out cleanly.
+
+## Alert Webhook
+
+Set the `ALERT_WEBHOOK_URL` secret (Slack/Teams/webhook) if you want proactive notifications when high-risk geo/identity anomalies appear. The Worker sends a JSON payload whenever:
+
+- `riskScore >= warnThreshold`, and
+- name/email similarity is < 0.2, or
+- Geo headers conflict (language/timezone), or
+- MX lookups fail for a non-disposable domain.
+
+```bash
+wrangler secret put ALERT_WEBHOOK_URL
+```
+
+If the secret is unset no alerts are sent (fully opt-in).
+
 ## See Also
 
 - [Training Guide](./TRAINING.md)

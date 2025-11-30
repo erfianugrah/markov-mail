@@ -13,12 +13,10 @@ export interface ValidationResponse {
 		entropyScore: number;
 		patternType?: string;
 		patternFamily?: string;
-		isDisposableDomain: boolean;
-		isFreeProvider: boolean;
-		hasKeyboardWalk?: boolean;
-		isGibberish?: boolean;
-		hasPlusAddressing?: boolean;
-		[key: string]: unknown;
+	isDisposableDomain: boolean;
+	isFreeProvider: boolean;
+	hasPlusAddressing?: boolean;
+	[key: string]: unknown;
 	};
 	fingerprint: {
 		hash: string;
@@ -27,6 +25,7 @@ export interface ValidationResponse {
 		botScore?: number;
 	};
 	latency_ms: number;
+	latency?: number;
 }
 
 export interface BatchValidationResult {
@@ -196,6 +195,19 @@ export class FraudAPIClient {
 	}
 }
 
+function extractLatency(result?: ValidationResponse): number {
+	if (!result) {
+		return 0;
+	}
+	if (typeof result.latency_ms === 'number') {
+		return result.latency_ms;
+	}
+	if (typeof result.latency === 'number') {
+		return result.latency;
+	}
+	return 0;
+}
+
 /**
  * Analyze batch validation results
  */
@@ -230,7 +242,7 @@ export function analyzeBatchResults(results: BatchValidationResult[]): BatchAnal
 		if (r.result) {
 			decisions[r.result.decision]++;
 			totalRisk += r.result.riskScore;
-			totalLatency += r.result.latency_ms;
+			totalLatency += extractLatency(r.result);
 		}
 	});
 

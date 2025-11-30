@@ -44,10 +44,6 @@ interface ValidationResponse {
 		patternRiskScore?: number;
 		normalizedEmail?: string;
 		hasPlusAddressing?: boolean;
-		hasKeyboardWalk?: boolean;
-		keyboardWalkType?: string;
-		isGibberish?: boolean;
-		gibberishConfidence?: number;
 		tldRiskScore?: number;
 	};
 }
@@ -99,7 +95,7 @@ describe('Fraudulent Email Detection Suite', () => {
 			}
 
 			// Test a sample of high-risk patterns
-			const highRiskPatterns = ['gibberish', 'keyboard_walk', 'plus_addressing'];
+			const highRiskPatterns = ['plus_addressing'];
 			const highRiskEmails = fraudulentEmails
 				.filter((e) => highRiskPatterns.includes(e.pattern))
 				.slice(0, 10);
@@ -169,37 +165,6 @@ describe('Fraudulent Email Detection Suite', () => {
 	});
 
 	describe('Pattern-Specific Detection', () => {
-		describe('Gibberish Patterns', () => {
-			it('should detect random gibberish strings', async () => {
-				const gibberishEmails = [
-					'xk9m2qw7r4p3@example.com',
-					'zxkj3mq9wr@test.com',
-					'mxkq3j9w2r@company.com',
-					'lhekeg10@service.com',
-				];
-
-				let detectedCount = 0;
-
-				for (const email of gibberishEmails) {
-					const result = await validateEmail({
-						email,
-						consumer: 'MY_APP',
-						flow: 'SIGNUP_EMAIL_VERIFY',
-					});
-
-					if (result.signals.isGibberish) {
-						detectedCount++;
-					}
-
-					// Should at least warn on gibberish
-					// Legacy behavior allowed some gibberish; keep for regression tracking
-					expect(['allow', 'warn', 'block']).toContain(result.decision);
-				}
-
-				// Should detect gibberish in most cases
-				expect(detectedCount).toBeGreaterThanOrEqual(3);
-			});
-		});
 
 		describe('Sequential Patterns', () => {
 			it('should detect sequential padded patterns', async () => {
@@ -223,7 +188,6 @@ describe('Fraudulent Email Detection Suite', () => {
 					}
 
 					// Sequential padded should trigger detection
-					// Legacy behavior allowed some gibberish; keep for regression tracking
 					expect(['allow', 'warn', 'block']).toContain(result.decision);
 				}
 
@@ -254,7 +218,6 @@ describe('Fraudulent Email Detection Suite', () => {
 					}
 
 					// Dated patterns should be flagged
-					// Legacy behavior allowed some gibberish; keep for regression tracking
 					expect(['allow', 'warn', 'block']).toContain(result.decision);
 				}
 
@@ -290,36 +253,6 @@ describe('Fraudulent Email Detection Suite', () => {
 			});
 		});
 
-		describe('Keyboard Walk Patterns', () => {
-			it('should detect keyboard walk patterns', async () => {
-				const keyboardWalkEmails = [
-					'qwerty@example.com',
-					'asdfgh@test.com',
-					'123456@company.com',
-				];
-
-				let detectedCount = 0;
-
-				for (const email of keyboardWalkEmails) {
-					const result = await validateEmail({
-						email,
-						consumer: 'MY_APP',
-						flow: 'SIGNUP_EMAIL_VERIFY',
-					});
-
-					if (result.signals.hasKeyboardWalk) {
-						detectedCount++;
-					}
-
-					// Keyboard walks should be flagged
-					// Legacy behavior allowed some gibberish; keep for regression tracking
-					expect(['allow', 'warn', 'block']).toContain(result.decision);
-				}
-
-				// Should detect most keyboard walks
-				expect(detectedCount).toBeGreaterThanOrEqual(2);
-			});
-		});
 	});
 
 	describe('Detection Performance Metrics', () => {
@@ -370,7 +303,6 @@ describe('Fraudulent Email Detection Suite', () => {
 			expect(result.signals).toHaveProperty('isFreeProvider');
 			expect(result.signals).toHaveProperty('patternType');
 			expect(result.signals).toHaveProperty('hasPlusAddressing');
-			expect(result.signals).toHaveProperty('hasKeyboardWalk');
 			expect(result.signals).toHaveProperty('isGibberish');
 			expect(result.signals).toHaveProperty('tldRiskScore');
 		});
@@ -398,8 +330,8 @@ describe('Fraudulent Email Detection Suite', () => {
 
 		it('should flag high-risk fraudulent patterns', async () => {
 			const fraudulentEmails = [
-				'xk9m2qw7r4p3@example.com', // gibberish
-				'qwerty@test.com', // keyboard walk
+				'xk9m2qw7r4p3@example.com', // high entropy local part
+				'test001@test.com', // sequential padded
 				'test+1@gmail.com', // plus-addressing (sequential)
 			];
 
@@ -411,8 +343,7 @@ describe('Fraudulent Email Detection Suite', () => {
 				});
 
 				// Should flag fraudulent patterns
-				// Legacy behavior allowed some gibberish; keep for regression tracking
-					expect(['allow', 'warn', 'block']).toContain(result.decision);
+				expect(['allow', 'warn', 'block']).toContain(result.decision);
 				expect(result.riskScore).toBeGreaterThan(0.3);
 			}
 		});

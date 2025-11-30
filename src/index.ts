@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { generateFingerprint, extractAllSignals } from './fingerprint';
@@ -32,6 +32,8 @@ type ContextVariables = {
  * - Metrics collection with D1 database
  */
 
+type AppContext = Context<{ Bindings: Env; Variables: ContextVariables }>;
+
 const app = new Hono<{ Bindings: Env; Variables: ContextVariables }>();
 
 // Enable CORS for all routes
@@ -41,8 +43,22 @@ app.use('/*', cors());
 // Routes can opt-out by setting: c.set('skipFraudDetection', true)
 app.use('/*', fraudDetectionMiddleware);
 
+async function serveAsset(c: AppContext, path: string) {
+	if (!c.env.ASSETS) {
+		return c.notFound();
+	}
+
+	const url = new URL(c.req.url);
+	url.pathname = path;
+	return c.env.ASSETS.fetch(new Request(url, c.req.raw));
+}
+
 // Mount admin routes (protected by API key)
 app.route('/admin', adminRoutes);
+
+app.get('/dashboard', (c) => serveAsset(c, '/dashboard/index.html'));
+app.get('/dashboard/*', (c) => serveAsset(c, c.req.path));
+app.get('/analytics', (c) => serveAsset(c, '/analytics.html'));
 
 // Root endpoint - Welcome message
 app.get('/', (c) => {
@@ -112,6 +128,8 @@ app.post('/validate', async (c) => {
 		signals: fraud.signals,
 		decision: fraud.decision,
 		message: fraud.blockReason || 'Email validation completed',
+		latency_ms: fraud.latencyMs,
+		latency: fraud.latencyMs,
 		fingerprint: {
 			hash: fingerprint.hash,
 			country: fingerprint.country,

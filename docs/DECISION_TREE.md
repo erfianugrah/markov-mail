@@ -14,7 +14,10 @@ This document describes how the new decision-tree scoring pipeline works and how
   * Linguistic metrics (pronounceability, vowel ratio, consonant clusters, syllable estimates…)
   * Structural metrics (segment counts, vowel-free segments…)
   * Statistical metrics (digit ratio, unique char ratio, entropy…)
-  * Domain/TLD risk scores
+  * Domain/TLD risk scores + hosted-platform flags
+  * Identity/name vs. email similarity signals
+  * Geo-consistency checks (IP vs. Accept-Language/timezone)
+  * MX record presence + provider fingerprints (Google/Microsoft/self-hosted/etc.)
 
 > Feel free to add more engineered features in TypeScript—just remember to regenerate your training dataset so the offline tree sees the same columns.
 

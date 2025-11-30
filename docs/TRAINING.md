@@ -26,7 +26,7 @@ What you get:
 
 - A CSV where every column (except `label`/`email`) maps 1:1 to `src/utils/feature-vector.ts`
 - Booleans already normalized to `0/1`
-- Consistent entropy, plus-addressing, linguistic, structural, and domain features between training + production
+- Consistent entropy, plus-addressing, linguistic, structural, identity, geo-consistency, MX, and domain features between training + production
 
 Sanity-check the output before training:
 
@@ -35,6 +35,8 @@ head -n 5 data/features/export.csv | column -t -s,
 ```
 
 Regenerate this file any time you add/remove features in TypeScript—don’t hand-edit it.
+
+> MX lookups happen via Cloudflare’s DNS-over-HTTPS endpoint so the tree can learn “provider fingerprints” (Google Apps vs. self-hosted, etc.). If you’re exporting in an environment without outbound network access, pass `--skip-mx` so those columns are zeroed rather than failing the run.
 
 ## 2. Train + export the tree
 
@@ -53,6 +55,8 @@ python export_tree.py \
 ```
 
 Inspect the JSON (each node/leaf should include `type`/`feature`/`reason`). Keep it in `config/production/` so it’s versioned alongside the Worker.
+
+> Prefer automation? `npm run tree:train -- --upload` runs the exporter, Python trainer, and (optionally) uploads the resulting tree to KV in one go. Pass `--skip-mx` if you’re exporting features in an offline environment.
 
 ## 3. Upload to KV
 

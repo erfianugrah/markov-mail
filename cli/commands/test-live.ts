@@ -71,16 +71,12 @@ const TEST_CASES: TestCase[] = [
   { email: 'test_jan2025@outlook.com', expectedDecision: 'block', category: 'fraud-dated', notes: 'Month and year' },
   { email: 'signup20250104@yahoo.com', expectedDecision: 'block', category: 'fraud-dated', notes: 'Full date stamp' },
 
-  // Keyboard walks - laziness indicator
-  { email: 'qwerty123@gmail.com', expectedDecision: 'block', category: 'fraud-keyboard', notes: 'QWERTY keyboard walk' },
-  { email: 'asdfgh@outlook.com', expectedDecision: 'block', category: 'fraud-keyboard', notes: 'ASDFGH keyboard walk' },
-  { email: 'zxcvbn@gmail.com', expectedDecision: 'block', category: 'fraud-keyboard', notes: 'ZXCVBN keyboard walk' },
-  { email: '123456789@yahoo.com', expectedDecision: 'block', category: 'fraud-keyboard', notes: 'Numeric sequence' },
+  { email: '123456789@yahoo.com', expectedDecision: 'block', category: 'fraud-sequential', notes: 'Numeric sequence' },
 
-  // Gibberish - random character spam
-  { email: 'xkjgh2k9qw@gmail.com', expectedDecision: 'block', category: 'fraud-gibberish', notes: 'Random character spam' },
-  { email: 'asdfjkl123@outlook.com', expectedDecision: 'block', category: 'fraud-gibberish', notes: 'Gibberish pattern' },
-  { email: 'zzz999xxx@gmail.com', expectedDecision: 'block', category: 'fraud-gibberish', notes: 'Repetitive gibberish' },
+  // High entropy / random strings
+  { email: 'xkjgh2k9qw@gmail.com', expectedDecision: 'block', category: 'fraud-entropy', notes: 'Random character spam' },
+  { email: 'asdfjkl123@outlook.com', expectedDecision: 'block', category: 'fraud-entropy', notes: 'High entropy local part' },
+  { email: 'zzz999xxx@gmail.com', expectedDecision: 'block', category: 'fraud-entropy', notes: 'Repetitive random pattern' },
 
   // Disposable domains - temporary email services
   { email: 'test@tempmail.com', expectedDecision: 'block', category: 'fraud-disposable', notes: 'Tempmail service' },
@@ -111,7 +107,7 @@ const TEST_CASES: TestCase[] = [
   { email: 'oarnimstiaremtn@gmail.com', expectedDecision: 'warn', category: 'ood-severe', notes: 'Random anagram - high entropy on both models' },
   { email: 'aremtinsoartmsient@gmail.com', expectedDecision: 'warn', category: 'ood-severe', notes: 'Long anagram pattern - abnormal structure' },
   { email: 'rtmaenisoartmstien@outlook.com', expectedDecision: 'warn', category: 'ood-severe', notes: 'Cross-shuffle pattern - unfamiliar transitions' },
-  { email: 'ksjdnfpqowiemznxc@gmail.com', expectedDecision: 'warn', category: 'ood-severe', notes: 'Novel gibberish - not in training distribution' },
+  { email: 'ksjdnfpqowiemznxc@gmail.com', expectedDecision: 'warn', category: 'ood-severe', notes: 'Novel high-entropy local part' },
 
   // Moderate OOD - above threshold but not extreme (3.0-4.0 nats) - should WARN
   { email: 'inearkstioaermst@gmail.com', expectedDecision: 'warn', category: 'ood-moderate', notes: 'Moderate entropy anagram (H~3.99)' },
