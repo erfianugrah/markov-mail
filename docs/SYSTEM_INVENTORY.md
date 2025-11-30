@@ -432,7 +432,6 @@ D scripts/                    # Removed (training now via CLI)
 
 ## 📞 Support & Feedback
 
-- **Issues**: https://github.com/anthropics/claude-code/issues
 - **CLI Help**: `npm run cli -- --help`
 - **Command Help**: `npm run cli <command> -- --help`
 

@@ -12,7 +12,7 @@ The fraud detection system is configured via JSON stored in Cloudflare KV. This 
 
 Upload both files to the `CONFIG` KV namespace (see [`config/production/README.md`](../config/production/README.md) for the exact commands). Once the tree is in KV the Worker automatically picks it up on the next cold start—no redeploy needed.
 
-The rest of this document covers the fields inside `config.json`. The decision-tree reset removed the old calibration knobs entirely, so the JSON is intentionally small.
+The rest of this document covers the fields inside `config.json`. The configuration is intentionally minimal, focusing on essential risk thresholds and feature flags.
 
 ## Action Overrides
 
