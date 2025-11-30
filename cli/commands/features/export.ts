@@ -22,6 +22,7 @@ import { validateDomain, getDomainReputationScore } from '../../../src/validator
 import { computeIdentitySignals } from '../../../src/utils/identity-signals';
 import { computeGeoSignals } from '../../../src/utils/geo-signals';
 import { resolveMXRecords, type MXAnalysis } from '../../../src/services/mx-resolver';
+import { getWellKnownMX, isWellKnownProvider } from '../../utils/known-mx-providers';
 
 interface DatasetRow {
 	email: string;
@@ -173,6 +174,7 @@ async function computeFeatures(email: string, row: DatasetRow, columns: ColumnHi
 			uniqueCharRatio: localFeatures.statistical.uniqueCharRatio,
 			vowelGapRatio: localFeatures.statistical.vowelGapRatio,
 			maxDigitRun: localFeatures.statistical.maxDigitRun,
+			bigramEntropy: localFeatures.statistical.bigramEntropy,
 		},
 	});
 
@@ -212,6 +214,76 @@ export default async function exportFeatures(args: string[]) {
 	if (rows.length === 0) {
 		logger.warn('No rows found in dataset.');
 		return;
+	}
+
+	// Optimization: Pre-fetch all MX records if not skipping
+	if (!skipMX) {
+		logger.info('Pre-fetching MX records for unique domains...');
+		const uniqueDomains = new Set<string>();
+		for (const row of rows) {
+			const email = row.email?.trim();
+			if (email && email.includes('@')) {
+				const domain = email.split('@')[1]?.toLowerCase();
+				if (domain) uniqueDomains.add(domain);
+			}
+		}
+		logger.info(`Found ${uniqueDomains.size.toLocaleString()} unique domains`);
+
+		// Pre-populate cache with optimized parallel MX lookups
+		const domains = Array.from(uniqueDomains);
+		const concurrencyLimit = 500; // Increased from 100 for 5x speedup
+		let wellKnownHits = 0;
+		let dnsQueries = 0;
+		let completed = 0;
+
+		// Create a simple concurrency limiter
+		const runWithConcurrency = async (tasks: (() => Promise<any>)[], limit: number) => {
+			const results: any[] = [];
+			const executing: Promise<any>[] = [];
+
+			for (const task of tasks) {
+				const promise = task().then(result => {
+					executing.splice(executing.indexOf(promise), 1);
+					return result;
+				});
+				results.push(promise);
+				executing.push(promise);
+
+				if (executing.length >= limit) {
+					await Promise.race(executing);
+				}
+			}
+
+			return Promise.allSettled(results);
+		};
+
+		// Create tasks for all domains
+		const tasks = domains.map(domain => async () => {
+			if (!mxCache.has(domain)) {
+				// Check well-known providers first (instant lookup)
+				const wellKnown = getWellKnownMX(domain);
+				if (wellKnown) {
+					mxCache.set(domain, Promise.resolve(wellKnown));
+					wellKnownHits++;
+				} else {
+					// Fallback to DNS lookup
+					mxCache.set(domain, resolveMXRecords(domain));
+					dnsQueries++;
+				}
+			}
+
+			// Progress logging
+			completed++;
+			if (completed % 1000 === 0 || completed === domains.length) {
+				logger.info(`Fetched MX for ${completed.toLocaleString()}/${domains.length.toLocaleString()} domains (${wellKnownHits} cached, ${dnsQueries} DNS)...`);
+			}
+
+			return mxCache.get(domain)!;
+		});
+
+		await runWithConcurrency(tasks, concurrencyLimit);
+
+		logger.info(`✓ MX pre-fetch complete: ${wellKnownHits} from cache (${((wellKnownHits/domains.length)*100).toFixed(1)}%), ${dnsQueries} DNS queries`);
 	}
 
 	const processed: Record<string, any>[] = [];
