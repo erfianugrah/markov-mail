@@ -30,6 +30,11 @@ export default function TimeSeriesChart({ apiKey, hours = 24 }: TimeSeriesChartP
         setError(null);
         const timeSeries = await getTimeSeriesData(hours, apiKey);
 
+        // Validate response
+        if (!timeSeries || !Array.isArray(timeSeries)) {
+          throw new Error('Invalid response format from API');
+        }
+
         // Transform API data to chart format
         const chartData = timeSeries.map((row) => ({
           timestamp: new Date(row.timestamp).toLocaleTimeString('en-US', {
@@ -44,7 +49,9 @@ export default function TimeSeriesChart({ apiKey, hours = 24 }: TimeSeriesChartP
 
         setData(chartData);
       } catch (err) {
+        console.error('TimeSeriesChart error:', err);
         setError(err instanceof Error ? err.message : 'Failed to load data');
+        setData([]); // Set empty array on error
       } finally {
         setLoading(false);
       }

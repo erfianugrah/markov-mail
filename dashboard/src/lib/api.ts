@@ -171,6 +171,10 @@ export async function getTimeSeriesData(
 
   const response = await queryAnalytics({ query: sql, hours }, apiKey);
 
+  if (!response.results || !Array.isArray(response.results)) {
+    return [];
+  }
+
   return response.results.map((row) => ({
     timestamp: row.hour,
     count: row.count,
