@@ -3,8 +3,8 @@ import { DEFAULT_CONFIG, validateConfig } from '../../src/config/defaults';
 
 describe('Config defaults (decision-tree reset)', () => {
 	it('exposes the lean set of tuning knobs we expect', () => {
-		expect(DEFAULT_CONFIG.riskThresholds.block).toBeCloseTo(0.65);
-		expect(DEFAULT_CONFIG.riskThresholds.warn).toBeCloseTo(0.35);
+		expect(DEFAULT_CONFIG.riskThresholds.block).toBeCloseTo(0.85);
+		expect(DEFAULT_CONFIG.riskThresholds.warn).toBeCloseTo(0.6);
 
 		expect(DEFAULT_CONFIG.baseRiskScores.invalidFormat).toBeGreaterThan(0.5);
 		expect(DEFAULT_CONFIG.baseRiskScores.disposableDomain).toBeGreaterThan(0.9);

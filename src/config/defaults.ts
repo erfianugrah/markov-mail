@@ -63,8 +63,8 @@ export interface FraudDetectionConfig {
 
 export const DEFAULT_CONFIG: FraudDetectionConfig = {
 	riskThresholds: {
-		block: 0.65,
-		warn: 0.35,
+		block: 0.85,
+		warn: 0.6,
 	},
 	baseRiskScores: {
 		invalidFormat: 0.8,
@@ -110,8 +110,8 @@ export const DEFAULT_CONFIG: FraudDetectionConfig = {
 		professionalAbnormalityFactor: 0.6,
 	},
 	ood: {
-		maxRisk: 0.65,
-		warnZoneMin: 0.35,
+		maxRisk: 0.85,
+		warnZoneMin: 0.6,
 	},
 };
 

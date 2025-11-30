@@ -97,6 +97,11 @@ const COMMANDS = {
 		file: 'commands/data/synthetic.ts',
 		usage: 'data:synthetic [--count <n>] [--output <path>] [--legit-ratio <0-1>] [--append] [--seed <n>]',
 	},
+	'data:enron:clean': {
+		description: 'Normalize raw Enron CSV export into model-ready format',
+		file: 'commands/data/clean_enron.ts',
+		usage: 'data:enron:clean [--input <path>] [--output <path>]',
+	},
 
 	// Testing commands
 	'test:live': {
@@ -177,6 +182,11 @@ const COMMANDS = {
 		file: 'commands/model/tune_model.ts',
 		usage: 'model:tune [--dataset <path>] [--n-iter <n>] [--output <path>]',
 	},
+	'model:calibrate': {
+		description: 'Calibrate Random Forest scores via Platt scaling',
+		file: 'commands/model/calibrate.ts',
+		usage: 'model:calibrate [--input <path>] [--output <path>]',
+	},
 	'model:analyze': {
 		description: 'Analyze a trained model (e.g., view feature importances)',
 		file: 'commands/model/analyze_model.ts',
@@ -228,12 +238,14 @@ Usage: npm run cli <command> [options]
   deploy                    Deploy worker to Cloudflare
   deploy:status             Check deployment status
 
-💾 DATA & TELEMETRY
+	💾 DATA & TELEMETRY
   kv:list|get|put|delete    Inspect/update KV namespaces
   analytics:query           Run D1 SQL via /admin/analytics
   analytics:stats           Show block/warn summaries
   domains:*                 Manage disposable domain snapshots
   tld:*                     Manage TLD risk profiles
+  data:synthetic            Generate balanced synthetic training datasets
+  data:enron:clean          Normalize raw Enron exports into model-ready CSV
 
 🧪 TESTING
   test:live                 Run curated regression tests
@@ -252,6 +264,7 @@ Usage: npm run cli <command> [options]
   features:export           Mirror runtime feature vector for model training
   model:train               Train model (1 tree = decision tree, 10+ = random forest)
   model:tune                Randomized search for optimal RF hyperparameters
+  model:calibrate           Run Platt scaling on validation scores
   model:analyze             Analyze a trained model (e.g., view feature importances)
   tree:train                [DEPRECATED] Use model:train --n-trees 1
   forest:train              [DEPRECATED] Use model:train --n-trees 10

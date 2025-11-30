@@ -149,7 +149,7 @@ EXAMPLES
   }
 
   // Route to subcommand based on how it was called
-  const command = process.argv[3]; // Get the original command
+  const command = process.argv[2]; // Get the original command
   if (command.includes(':list')) {
     await list(args);
   } else if (command.includes(':get')) {

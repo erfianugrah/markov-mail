@@ -19,7 +19,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, precision_score, recall_score, confusion_matrix
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import precision_score, recall_score, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.tree import _tree
 
@@ -34,6 +35,7 @@ def parse_args() -> argparse.Namespace:
     args.add_argument("--min-samples-leaf", type=int, default=20, help="Minimum samples per leaf (default: 20)")
     args.add_argument("--conflict-weight", type=float, default=20.0, help="Weight for conflict zone samples (default: 20.0)")
     args.add_argument("--no-split", action="store_true", help="Train on 100%% of data (no train/test split for production)")
+    args.add_argument("--calibration-output", default="data/calibration/latest.csv", help="CSV path for holdout scores/labels")
     return args.parse_args()
 
 
@@ -157,6 +159,8 @@ def main():
 
     clf.fit(X_train, y_train, sample_weight=w_train)
 
+    calibration_info = None
+
     # Evaluate (only if we have a test set)
     if not args.no_split:
         print(f"\n{'=' * 80}")
@@ -165,6 +169,7 @@ def main():
 
         y_pred_train = clf.predict(X_train)
         y_pred_test = clf.predict(X_test)
+        y_score_test = clf.predict_proba(X_test)[:, 1]
 
         print(f"\nTRAIN SET:")
         print(f"  Precision: {precision_score(y_train, y_pred_train):.3f}")
@@ -178,6 +183,34 @@ def main():
         cm = confusion_matrix(y_test, y_pred_test)
         print(f"  TN: {cm[0,0]:,}  FP: {cm[0,1]:,}")
         print(f"  FN: {cm[1,0]:,}  TP: {cm[1,1]:,}")
+
+        calibration_path = Path(args.calibration_output)
+        calibration_path.parent.mkdir(parents=True, exist_ok=True)
+        calibration_inputs = y_score_test.reshape(-1, 1)
+
+        calibrator = LogisticRegression()
+        calibrator.fit(calibration_inputs, y_test)
+        calibrated_scores = calibrator.predict_proba(calibration_inputs)[:, 1]
+
+        calibration_info = {
+            "method": "platt",
+            "intercept": float(calibrator.intercept_[0]),
+            "coef": float(calibrator.coef_[0][0]),
+            "samples": int(len(y_test)),
+        }
+
+        print(f"\nCalibration (Platt scaling):")
+        print(f"  Intercept: {calibration_info['intercept']:.6f}")
+        print(f"  Coefficient: {calibration_info['coef']:.6f}")
+        print(f"  Samples: {calibration_info['samples']}")
+
+        calibration_df = pd.DataFrame({
+            "score": y_score_test,
+            "label": y_test.reset_index(drop=True),
+            "calibrated_score": calibrated_scores,
+        })
+        calibration_df.to_csv(calibration_path, index=False)
+        print(f"\nSaved calibration dataset to {calibration_path.resolve()}")
 
         # Conflict zone performance
         if 'bigram_entropy' in X_test.columns and 'domain_reputation_score' in X_test.columns:
@@ -252,6 +285,9 @@ def main():
         },
         "forest": forest_json
     }
+
+    if calibration_info:
+        artifact["meta"]["calibration"] = calibration_info
 
     output_path = Path(args.output)
     output_path.write_text(json.dumps(artifact, separators=(',', ':')))

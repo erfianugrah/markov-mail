@@ -169,26 +169,30 @@ if (!mxAnalysis.hasRecords) {
 
 | Score Range | Typical Causes | Examples |
 |-------------|---------------|----------|
-| 0.90-1.00 | Sequential pattern + free provider | `user123@gmail.com`, `test001@hotmail.com` |
-| 0.80-0.89 | High entropy + disposable TLD | `xkzqwrtpl@mail.ru`, `asjdhkjah@tk` |
-| 0.70-0.79 | Name mismatch + geo anomaly | Name: "John", Email: `fraud@tempmail.com` |
-| 0.65-0.69 | Multiple weak signals | Borderline cases (review queue) |
+| 0.95-1.00 | Sequential pattern + free provider + bot score | `user123@gmail.com`, `test001@hotmail.com` |
+| 0.90-0.94 | High entropy + disposable / risky TLD | `xkzqwrtpl@mail.ru`, `asjdhkjah@tk` |
+| 0.85-0.89 | Exceeds block threshold after calibration | Auto-block region |
+| 0.60-0.84 | Warn zone – requires additional heuristics / rate limits |
 
 ### Legitimate Indicators (Low Score)
 
 | Score Range | Typical Causes | Examples |
 |-------------|---------------|----------|
-| 0.00-0.19 | Structured name + trusted provider | `john.smith@company.com` |
-| 0.20-0.34 | Real name + standard TLD | `jsmith1985@gmail.com` (birth year) |
-| 0.35-0.49 | Mixed signals | Unusual but plausible patterns |
+| 0.00-0.24 | Structured name + trusted provider | `john.smith@company.com` |
+| 0.25-0.44 | Real name + standard TLD | `jsmith1985@gmail.com` (birth year) |
+| 0.45-0.59 | Mixed signals (no automatic action) |
 
 ## Calibration
 
-**Status**: No runtime calibration is performed.
+**Status**: Platt scaling is applied at runtime (since v3.0.0, Nov 2025).
 
-The Random Forest and Decision Tree models encode final probabilities directly in their leaf nodes. Scores represent the **proportion of fraud samples** in the training data that reached each leaf.
+Workflow:
 
-If you need post-training calibration (e.g., Platt scaling), apply it during the training phase before exporting the model JSON. The adjusted probabilities should be embedded in the `value` fields of leaf nodes.
+1. `npm run cli model:train` keeps a validation split (unless `--no-split`) and emits `data/calibration/latest.csv`.
+2. The trainer fits a single-variable logistic regression (`calibrated = σ(intercept + coef * raw_score)`) and records the coefficients in the model metadata.
+3. `src/models/random-forest.ts` reads `meta.calibration` and converts every forest vote into a calibrated probability before the middleware compares it with the warn/block thresholds.
+
+Use `npm run cli model:calibrate -- --input data/calibration/latest.csv --output data/calibration/calibrated.csv` if you need to recompute calibrations on a newer dataset or generate ROC/PR reports. Always embed the final coefficients in the JSON (`meta.calibration`) so the Worker stays synchronized with the published thresholds.
 
 ## Logging & Analytics
 

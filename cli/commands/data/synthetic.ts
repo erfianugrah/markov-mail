@@ -187,6 +187,29 @@ const typosquattedDomains = [
   "gmaiil.com", "yahho.com", "hotnail.com", "0utlook.com"
 ];
 
+const vpnDomains = [
+  "vpn-mail.net", "secure-node.io", "exitrelay.net", "privacy-mail.org", "fastproxymail.com"
+];
+
+const aiSyllables = [
+  "zor", "vex", "lum", "qir", "aex", "nem", "tal", "syn", "qu", "viz", "dra", "pha", "ion", "rak", "umi"
+];
+
+const nearMissTags = ["verify", "account", "profile", "secure", "support", "update", "review", "edge", "client", "signin"];
+
+const NEAR_MISS_LEGIT_RATIO = 0.2;
+
+const homoglyphMap: Record<string, string[]> = {
+  a: ['a', '@', '4'],
+  e: ['e', '3'],
+  i: ['i', '1', 'l'],
+  o: ['o', '0'],
+  s: ['s', '5'],
+  l: ['l', '1'],
+  t: ['t', '7'],
+  g: ['g', '9'],
+};
+
 // Accent removal for email addresses
 function removeAccents(text: string): string {
   const accents: Record<string, string> = {
@@ -212,6 +235,20 @@ function removeAccents(text: string): string {
   };
 
   return text.split('').map(char => accents[char] || char).join('');
+}
+
+function applyHomoglyphs(text: string): string {
+  return text
+    .split('')
+    .map((char) => {
+      const lower = char.toLowerCase();
+      if (homoglyphMap[lower]) {
+        const replacements = homoglyphMap[lower];
+        return replacements[Math.floor(Math.random() * replacements.length)];
+      }
+      return char;
+    })
+    .join('');
 }
 
 // Random helper
@@ -507,6 +544,61 @@ function generateTyposquattedDomainFraud(culture: string): { email: string; name
   return { email, name };
 }
 
+function generateVpnProxyFraud(culture: string): { email: string; name: string } {
+  const names = namesByCulture[culture];
+  const first = randomChoice(names.first);
+  const last = randomChoice(names.last);
+  const ip = Array.from({ length: 4 }, () => Math.floor(Math.random() * 220) + 10).join('-');
+  const markers = ['vpn', 'proxy', 'exit', 'tor', 'node'];
+  const prefix = `${randomChoice(markers)}-${ip}-${Math.floor(Math.random() * 999)}`;
+  const domain = randomChoice(vpnDomains);
+  const email = `${prefix}@${domain}`;
+  const name = `${first} ${last}`;
+  return { email, name };
+}
+
+function generateHomoglyphFraud(culture: string): { email: string; name: string } {
+  const names = namesByCulture[culture];
+  const first = removeAccents(randomChoice(names.first).toLowerCase());
+  const last = removeAccents(randomChoice(names.last).toLowerCase());
+  const domain = randomChoice(cultureDomains[culture] || ['gmail.com', 'outlook.com']);
+  const base = `${first}.${last}`;
+  const mutated = applyHomoglyphs(base);
+  const email = `${mutated}@${domain}`;
+  const name = `${randomChoice(names.first)} ${randomChoice(names.last)}`;
+  return { email, name };
+}
+
+function generateAIGibberishFraud(_culture: string): { email: string; name: string } {
+  const length = Math.floor(Math.random() * 4) + 3;
+  const chunks: string[] = [];
+  for (let i = 0; i < length; i++) {
+    const syllable = randomChoice(aiSyllables);
+    chunks.push(Math.random() < 0.4 ? syllable.toUpperCase() : syllable);
+    if (Math.random() < 0.3) {
+      chunks.push(String(Math.floor(Math.random() * 10)));
+    }
+  }
+  const local = chunks.join('');
+  const domains = [...disposableDomains, ...vpnDomains, 'mail.ai', 'llm-mail.com'];
+  const email = `${local}@${randomChoice(domains)}`;
+  return { email, name: 'Synthetic Agent' };
+}
+
+function generateNearMissLegitEmail(culture: string): { email: string; name: string } {
+  const names = namesByCulture[culture];
+  const first = randomChoice(names.first);
+  const last = randomChoice(names.last);
+  const base = removeAccents(`${first}.${last}`.toLowerCase());
+  const tag = randomChoice(nearMissTags);
+  const separator = randomChoice(['-', '_', '.']);
+  const noisySuffix = `${tag}${separator}${Math.floor(Math.random() * 9000 + 1000)}`;
+  const domainPool = [...(cultureDomains[culture] || []), 'outlook.com', 'gmail.com'];
+  const email = `${base}${separator}${noisySuffix}@${randomChoice(domainPool)}`;
+  const name = `${first} ${last}`;
+  return { email, name };
+}
+
 async function execute(args: ParsedArgs) {
   console.log('============================================================');
   console.log('  🎲 Generating Synthetic Training Data');
@@ -551,8 +643,14 @@ async function execute(args: ParsedArgs) {
       logger.info(`  Generated ${(i + 1).toLocaleString()}/${legitCount.toLocaleString()} legitimate emails`);
     }
     const culture = randomChoice(cultures);
-    const { email, name } = generateLegitEmail(culture);
-    emails.push({ email, name, label: 'legitimate', source: 'synthetic' });
+    const useNearMiss = Math.random() < NEAR_MISS_LEGIT_RATIO;
+    const { email, name } = useNearMiss ? generateNearMissLegitEmail(culture) : generateLegitEmail(culture);
+    emails.push({
+      email,
+      name,
+      label: 'legitimate',
+      source: useNearMiss ? 'synthetic_near_legit' : 'synthetic_legit',
+    });
   }
 
   // Generate fraud emails
@@ -568,6 +666,9 @@ async function execute(args: ParsedArgs) {
     generateMixedCaseFraud,
     generateHeavyNumberFraud,
     generateTyposquattedDomainFraud,
+    generateVpnProxyFraud,
+    generateHomoglyphFraud,
+    generateAIGibberishFraud,
   ];
 
   for (let i = 0; i < fraudCount; i++) {

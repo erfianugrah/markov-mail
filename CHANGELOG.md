@@ -5,7 +5,21 @@
 ### Detectors & Features
 - Implemented the multilingual n-gram detector end-to-end: feature export, runtime middleware, and model inputs now emit `ngram_*` scores and risk signals to capture gibberish local parts.
 - Added six new n-gram features to the normalized vector (bigram/trigram/overall scores, confidence, risk, naturalness flag) plus documentation/test coverage so training sets remain consistent.
-- Built a reproducible 1M-row canonical dataset (`data/main.csv`) by cleaning the Enron corpus, generating 327,194 synthetic legit emails, and 500,000 synthetic fraud samples (exactly 50/50); documented the pipeline and added `scripts/clean_enron.py` for repeatable preprocessing.
+- Built a reproducible 1M-row canonical dataset (`data/main.csv`) by cleaning the Enron corpus, generating 327,194 synthetic legit emails, and 500,000 synthetic fraud samples (exactly 50/50); documented the pipeline and shipped `data:enron:clean` for repeatable preprocessing.
+
+### Model Pipeline
+- Added Bun CLI wrappers for feature importance introspection (`model:analyze`) and RandomizedSearchCV-driven hyperparameter tuning (`model:tune`) along with the underlying Python helpers.
+- Extended `model:train` to export per-feature importance maps, emit calibration datasets, and embed Platt-scaling coefficients directly into the Random Forest metadata.
+- New `model:calibrate` command (wrapping `scripts/calibrate_scores.py`) produces calibrated probability columns plus logistic coefficients for auditing/plotting.
+
+### Runtime Scoring
+- Worker now reads `meta.calibration` and applies Platt scaling before comparing scores with the warn/block thresholds; Random Forest metadata schema updated accordingly.
+- Introduced heuristic risk bumps (high-risk TLDs/domains, sequential/digit-heavy locals, plus-tag abuse, high Cloudflare bot scores) to shrink false negatives without increasing false positives.
+- Raised production/default thresholds to `warn=0.60`, `block=0.85` (post-calibration) and log every heuristic adjustment for observability.
+
+### Documentation & Ops
+- Updated `docs/MODEL_TRAINING`, `docs/CALIBRATION`, `docs/SCORING`, and `config/production/README` with the new calibration, tuning, and deployment workflow.
+- Trimmed legacy model files and documented the exact KV push commands for `random_forest.json`.
 
 ## 2025-11-30
 

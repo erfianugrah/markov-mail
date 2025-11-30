@@ -9,13 +9,14 @@ Everything in this directory is safe to upload directly to Cloudflare KV. It rep
 | File | Description |
 |------|-------------|
 | `config.json` | Runtime configuration (risk thresholds, feature toggles, logging) |
+| `random-forest-*.json` | Exported Random Forest models (primary runtime scorer) |
 | `decision-tree.example.json` | Sample JSON model illustrating the required schema |
 
 ### `config.json`
 
 Key sections:
 
-* `riskThresholds`: `warn` / `block` cutoffs (defaults: warn ≥ 0.35, block ≥ 0.65).
+* `riskThresholds`: `warn` / `block` cutoffs (current: warn ≥ 0.60, block ≥ 0.85 after calibration).
 * `baseRiskScores`: deterministic blockers (invalid format, disposable domains, high entropy).
 * `features`: toggles for disposable domain checks, pattern detection, and TLD risk profiling.
 * `logging`: log level + block logging flags.
@@ -27,6 +28,24 @@ Upload with:
 ```bash
 npm run cli config:upload -- config/production/config.json
 ```
+
+### `random-forest-balanced.2025-12-01.json`
+
+Latest calibrated Random Forest bundle:
+
+* 267 trees (`max_depth=14`, `min_samples_leaf=11`, conflict weight 50)
+* Embedded feature-importance map for CLI introspection (`model:analyze`)
+* `meta.calibration` contains Platt-scaling coefficients so the worker can convert raw forest votes into calibrated probabilities before applying the new thresholds.
+
+Upload it to KV as the active scorer:
+
+```bash
+npm run cli -- kv:put random_forest.json \
+  --binding CONFIG \
+  --file config/production/random-forest-balanced.2025-12-01.json
+```
+
+(Older `random-forest-balanced.*.json` files can be deleted once the new model is live.)
 
 ### `decision-tree.example.json`
 

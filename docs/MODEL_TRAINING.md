@@ -149,7 +149,20 @@ npm run cli features:export --skip-mx
 
 **Output**: `data/features/export.csv` (45 features + label column)
 
-### Step 2: Train Model
+### (Optional) Hyperparameter Tuning
+
+Use the Bun CLI wrapper to run the Python `RandomizedSearchCV` helper when you need to refresh the forest shape:
+
+```bash
+npm run cli model:tune -- \
+  --dataset data/features/export.csv \
+  --n-iter 40 \
+  --output tmp/rf-tuning.json
+```
+
+The command shells into `cli/commands/model/tune_hyperparameters.py`, reports the best `n_estimators`, `max_depth`, and `min_samples_leaf`, and stores the leaderboard so you can pin the configuration you push to production.
+
+### Step 2: Train & Export
 
 ```bash
 # Uses existing feature export, trains Random Forest
@@ -159,10 +172,33 @@ npm run cli model:train -- --n-trees 50 --upload
 **Process**:
 1. ✅ Feature export (reuses existing if fresh, otherwise regenerates)
 2. 🌲 Python training (scikit-learn RandomForestClassifier)
-3. 📦 JSON export (minified t/f/v/l/r format)
-4. ☁️ KV upload (optional, requires `--upload` flag)
+3. 🧮 Automatic Platt calibration (`meta.calibration`)
+4. 📦 JSON export (minified t/f/v/l/r format + feature importances)
+5. ☁️ KV upload (optional, requires `--upload` flag)
 
-### Step 3: Deploy
+Inspect the exported importance map any time with:
+
+```bash
+npm run cli model:analyze -- config/production/random-forest-balanced.2025-12-01.json
+```
+
+This dumps the ranked feature list and highlights which detectors are carrying the most weight in the current forest.
+
+### Step 3: Calibrate & pick thresholds
+
+1. **Calibrated scores** – the trainer emits `data/calibration/latest.csv` automatically. Refit (or audit) with the CLI:
+
+   ```bash
+   npm run cli -- model:calibrate -- \
+     --input data/calibration/latest.csv \
+     --output data/calibration/calibrated.csv
+   ```
+
+2. **Threshold sweep** – run a quick ROC/PR sweep (see `docs/CALIBRATION.md` for snippets) to locate the smallest block threshold that still meets the current SLO (`recall ≥ 95%` and `FP/FN < 5%`). For the 2025‑11‑30 build this lands at **block = 0.85** and **warn = 0.60**.
+
+3. **Update configs** – write the chosen thresholds to `config/production/config.json` (and `DEFAULT_CONFIG` if they become the new baseline) before uploading.
+
+### Step 4: Deploy
 
 ```bash
 npm run deploy

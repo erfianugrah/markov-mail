@@ -302,6 +302,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 
 		let riskScore = 0;
 		let blockReason = '';
+		const heuristicsApplied: string[] = [];
 
 		if (!emailValidation.valid) {
 			riskScore = config.baseRiskScores.invalidFormat;
@@ -437,6 +438,61 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 		const blockThreshold = config.riskThresholds.block;
 		const warnThreshold = config.riskThresholds.warn;
 
+		const heuristicsEligible = blockReason !== 'invalid_format' && blockReason !== 'disposable_domain';
+		const scoreBeforeHeuristics = riskScore;
+
+		const elevateRisk = (target: 'warn' | 'block', reason: string, minScore?: number) => {
+			const baseline = target === 'block' ? blockThreshold : warnThreshold;
+			const bump = target === 'block' ? 0.05 : 0.03;
+			const requestedScore = Math.min(1, minScore ?? baseline + bump);
+			if (riskScore >= requestedScore) {
+				return;
+			}
+
+			riskScore = requestedScore;
+			heuristicsApplied.push(reason);
+		};
+
+		if (heuristicsEligible) {
+			if (tldRiskScore >= 0.9) {
+				elevateRisk('block', 'heuristic_tld_extreme', blockThreshold + 0.1);
+			} else if (tldRiskScore >= 0.8) {
+				elevateRisk('warn', 'heuristic_tld_high', warnThreshold + 0.1);
+			}
+
+			if (domainReputationScore >= 0.95) {
+				elevateRisk('block', 'heuristic_domain_reputation_critical', blockThreshold + 0.08);
+			} else if (domainReputationScore >= 0.85) {
+				elevateRisk('warn', 'heuristic_domain_reputation_watch', warnThreshold + 0.08);
+			}
+
+			if (sequentialConfidence >= 0.98 || digitRatio >= 0.9) {
+				elevateRisk('block', 'heuristic_sequence_numeric_extreme', blockThreshold + 0.05);
+			} else if (sequentialConfidence >= 0.9 || digitRatio >= 0.8) {
+				elevateRisk('warn', 'heuristic_sequence_numeric_high', warnThreshold + 0.05);
+			}
+
+			if (plusRisk >= 0.8) {
+				elevateRisk('block', 'heuristic_plus_tag_abuse', blockThreshold + 0.03);
+			}
+
+			const botScore = fingerprint.botScore ?? 0;
+			if (botScore >= 75) {
+				elevateRisk('block', 'heuristic_bot_score_extreme', blockThreshold + 0.02);
+			} else if (botScore >= 60) {
+				elevateRisk('warn', 'heuristic_bot_score_high', warnThreshold + 0.04);
+			}
+
+			if (heuristicsApplied.length > 0) {
+				logger.info({
+					event: 'heuristic_risk_adjustment',
+					heuristicsApplied,
+					previousScore: Math.round(scoreBeforeHeuristics * 100) / 100,
+					adjustedScore: Math.round(riskScore * 100) / 100,
+				}, 'Applied heuristic risk adjustments');
+			}
+		}
+
 		let decision: 'allow' | 'warn' | 'block' =
 			riskScore > blockThreshold ? 'block' :
 			riskScore > warnThreshold ? 'warn' :
@@ -471,6 +527,9 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			experimentId: abAssignment?.experimentId,
 			experimentVariant: abAssignment?.variant,
 			latency: elapsedMs,
+			heuristicsApplied,
+			heuristicsCount: heuristicsApplied.length,
+			scoreBeforeHeuristics: Math.round(scoreBeforeHeuristics * 100) / 100,
 		}, `Decision: ${decision} (score: ${riskScore.toFixed(2)}, reason: ${blockReason})`);
 
 		const alertReasons: string[] = [];

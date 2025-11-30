@@ -16,18 +16,29 @@ export type CompactTreeNode =
 			r: CompactTreeNode; // Right child
 	  };
 
-export interface ForestModel {
-	meta: {
-		version: string;
-		features: string[];
-		tree_count: number;
-		config?: {
-			n_trees?: number;
-			max_depth?: number;
-			min_samples_leaf?: number;
-			conflict_weight?: number;
-		};
+export interface ForestCalibrationMeta {
+	method?: string;
+	intercept: number;
+	coef: number;
+	samples?: number;
+}
+
+export interface ForestMeta {
+	version: string;
+	features: string[];
+	tree_count: number;
+	feature_importance?: Record<string, number>;
+	calibration?: ForestCalibrationMeta;
+	config?: {
+		n_trees?: number;
+		max_depth?: number;
+		min_samples_leaf?: number;
+		conflict_weight?: number;
 	};
+}
+
+export interface ForestModel {
+	meta: ForestMeta;
 	forest: CompactTreeNode[];
 }
 
@@ -156,6 +167,21 @@ export function validateForestModel(model: unknown): model is ForestModel {
 
 	if (typeof m.meta.tree_count !== 'number' || m.meta.tree_count <= 0) {
 		return false;
+	}
+
+	if (m.meta.feature_importance) {
+		for (const value of Object.values(m.meta.feature_importance)) {
+			if (typeof value !== 'number' || Number.isNaN(value)) {
+				return false;
+			}
+		}
+	}
+
+	if (m.meta.calibration) {
+		const { intercept, coef } = m.meta.calibration as ForestCalibrationMeta;
+		if (typeof intercept !== 'number' || typeof coef !== 'number') {
+			return false;
+		}
 	}
 
 	// Check forest array

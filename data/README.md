@@ -48,10 +48,10 @@ See [docs/DECISION_TREE.md](../docs/DECISION_TREE.md) for the complete workflow.
 
 ## Enron Cleanup
 
-We keep the original dump (`data/enron.csv`) untouched and generate a normalized version (`data/enron-clean.csv`) with lowercase emails, trimmed punctuation, and deduplicated records. Use the helper script any time you need to refresh the cleaned dataset:
+We keep the original dump (`data/enron.csv`) untouched and generate a normalized version (`data/enron-clean.csv`) with lowercase emails, trimmed punctuation, and deduplicated records. Use the CLI command any time you need to refresh the cleaned dataset:
 
 ```bash
-scripts/clean_enron.py \
+npm run cli -- data:enron:clean -- \
   --input data/enron.csv \
   --output data/enron-clean.csv
 ```
