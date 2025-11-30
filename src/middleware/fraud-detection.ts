@@ -15,6 +15,8 @@ import {
 	normalizeEmail,
 	analyzeTLDRisk,
 	getPlusAddressingRiskScore,
+	analyzeNGramNaturalness,
+	getNGramRiskScore,
 } from '../detectors';
 import { detectSequentialPattern } from '../detectors/sequential';
 import {
@@ -321,6 +323,8 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			digitRatio = localPartFeatures.statistical.digitRatio;
 			sequentialConfidence = sequentialResult?.confidence ?? 0;
 			plusRisk = normalizedEmailResult ? getPlusAddressingRiskScore(email) : 0;
+			const ngramAnalysis = analyzeNGramNaturalness(providerLocalPart);
+			const ngramRiskScore = getNGramRiskScore(providerLocalPart);
 
 			identitySignals = computeIdentitySignals(displayName, providerLocalPart);
 
@@ -371,6 +375,14 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 					vowelGapRatio: localPartFeatures.statistical.vowelGapRatio,
 					maxDigitRun: localPartFeatures.statistical.maxDigitRun,
 					bigramEntropy: localPartFeatures.statistical.bigramEntropy,
+				},
+				ngram: {
+					bigramScore: ngramAnalysis.bigramScore,
+					trigramScore: ngramAnalysis.trigramScore,
+					overallScore: ngramAnalysis.overallScore,
+					confidence: ngramAnalysis.confidence,
+					riskScore: ngramRiskScore,
+					isNatural: ngramAnalysis.isNatural,
 				},
 			});
 

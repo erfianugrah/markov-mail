@@ -145,22 +145,30 @@ Extracts entropy and character distribution metrics.
 ### 6. N-Gram Analysis (Multilingual)
 **Source**: `src/detectors/ngram-multilang.ts`, `src/detectors/ngram-analysis.ts`
 
-Evaluates naturalness of local part using language-specific n-gram models.
+Evaluates how “natural” the local part looks across seven language models (EN, ES, FR, DE, IT, PT, Romanized). The detector now emits dedicated features rather than acting as a placeholder.
 
 **Features Produced**:
-- `entropy_score` (0-16): Combined bigram/trigram entropy
+
+| Feature | Type | Description | Range |
+|---------|------|-------------|-------|
+| `ngram_bigram_score` | number | Percentage of matching language bigrams | 0-1 |
+| `ngram_trigram_score` | number | Percentage of matching language trigrams | 0-1 |
+| `ngram_overall_score` | number | Weighted blend of bigram/trigram hits | 0-1 |
+| `ngram_confidence` | number | Confidence derived from sample size | 0-1 |
+| `ngram_risk_score` | number | Inverted naturalness (1 = gibberish) | 0-1 |
+| `ngram_is_natural` | flag | 1 if local part resembles natural language | 0/1 |
 
 **Detection Logic**:
-- Trained on legitimate email corpus (116K+ samples)
-- Supports multiple languages via character-level models
-- Low entropy = natural patterns (e.g., "john", "marie")
-- High entropy = random strings (e.g., "xkzqwrtpl")
+- Detects most likely language using frequency analysis
+- Scores how many bigrams/trigrams fall inside that language’s corpus
+- Produces risk score inversely proportional to naturalness
+- Confidence scales with available n-grams (short strings remain low-risk)
 
 **Models**:
-- Not currently deployed (placeholder for future ML enhancement)
-- System uses raw entropy features instead
+- Baked-in character frequency tables (no external service calls)
+- Same logic shared between runtime detector and feature exporter
 
-**Used By**: Language-agnostic fraud detection (works across international names)
+**Used By**: Feature vector powering Random Forest / Decision Tree models, plus runtime heuristics inside `pattern-family`.
 
 ---
 
@@ -356,7 +364,7 @@ const result = evaluateRandomForest(features);
 // Output: { score: 0.92, reason: "high_sequential_confidence" }
 ```
 
-### Feature Count (39 Total)
+### Feature Count (45 Total)
 
 | Category | Count | Examples |
 |----------|-------|----------|
@@ -364,13 +372,14 @@ const result = evaluateRandomForest(features);
 | Linguistic | 6 | `pronounceability`, `vowel_ratio`, `max_consonant_cluster` |
 | Structural | 4 | `has_word_boundaries`, `segment_count`, `avg_segment_length` |
 | Statistical | 4 | `unique_char_ratio`, `bigram_entropy`, `max_digit_run` |
+| N-gram | 6 | `ngram_*` scores + `ngram_is_natural` |
 | Identity | 3 | `name_similarity_score`, `name_token_overlap`, `name_in_email` |
 | Geo | 3 | `geo_language_mismatch`, `geo_timezone_mismatch`, `geo_anomaly_score` |
 | MX | 9 | `mx_has_records`, `mx_provider_*` (8 providers) |
 | Domain | 3 | `tld_risk_score`, `domain_reputation_score`, `provider_is_free` |
 | Basic | 5 | `local_length`, `digit_ratio`, `entropy_score`, etc. |
 
-**Full List**: See `src/utils/feature-vector.ts:68-115`
+**Full List**: See `src/utils/feature-vector.ts`
 
 ---
 

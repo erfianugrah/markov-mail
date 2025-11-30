@@ -23,6 +23,7 @@ import { computeIdentitySignals } from '../../../src/utils/identity-signals';
 import { computeGeoSignals } from '../../../src/utils/geo-signals';
 import { resolveMXRecords, type MXAnalysis } from '../../../src/services/mx-resolver';
 import { getWellKnownMX, isWellKnownProvider } from '../../utils/known-mx-providers';
+import { analyzeNGramNaturalness, getNGramRiskScore } from '../../../src/detectors/ngram-analysis';
 
 interface DatasetRow {
 	email: string;
@@ -102,6 +103,8 @@ async function computeFeatures(email: string, row: DatasetRow, columns: ColumnHi
 	const sequential = detectSequentialPattern(providerNormalized);
 	const plusRisk = getPlusAddressingRiskScore(email);
 	const localFeatures = extractLocalPartFeatureSignals(localPart);
+	const ngramAnalysis = analyzeNGramNaturalness(localPart);
+	const ngramRiskScore = getNGramRiskScore(localPart);
 	const tldAnalysis = domain ? analyzeTLDRisk(domain) : undefined;
 	const tldRiskScore = tldAnalysis?.riskScore ?? 0;
 	const domainValidation = domain ? validateDomain(domain) : null;
@@ -175,6 +178,14 @@ async function computeFeatures(email: string, row: DatasetRow, columns: ColumnHi
 			vowelGapRatio: localFeatures.statistical.vowelGapRatio,
 			maxDigitRun: localFeatures.statistical.maxDigitRun,
 			bigramEntropy: localFeatures.statistical.bigramEntropy,
+		},
+		ngram: {
+			bigramScore: ngramAnalysis.bigramScore,
+			trigramScore: ngramAnalysis.trigramScore,
+			overallScore: ngramAnalysis.overallScore,
+			confidence: ngramAnalysis.confidence,
+			riskScore: ngramRiskScore,
+			isNatural: ngramAnalysis.isNatural,
 		},
 	});
 

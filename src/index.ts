@@ -81,7 +81,7 @@ curl -X POST https://your-worker.dev/validate \\
 # New: Any POST endpoint with email gets validated
 curl -X POST https://your-worker.dev/signup \\
   -H "Content-Type: application/json" \\
-  -d '{"email":"user@example.com","password":"secret"}'
+  -d '{"email":"user@example.com","password":"<your-password>"}'
 
 Monitoring Mode: Set "actionOverride": "allow" in config.json
 `);

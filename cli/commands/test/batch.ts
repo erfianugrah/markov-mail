@@ -124,10 +124,11 @@ function calculateMetrics(results: TestResult[]) {
   const legitimateTests = validResults.filter(r => r.expected === 'legit');
   const fraudTests = validResults.filter(r => r.expected === 'fraud');
 
-  const truePositives = fraudTests.filter(r => (r.actual === 'block' || r.actual === 'warn') && r.passed).length;
-  const falseNegatives = fraudTests.filter(r => r.actual === 'allow').length;
-  const trueNegatives = legitimateTests.filter(r => r.actual === 'allow' && r.passed).length;
-  const falsePositives = legitimateTests.filter(r => (r.actual === 'block' || r.actual === 'warn')).length;
+  // Strict semantics: only "block" catches fraud, "warn" is allowed through
+  const truePositives = fraudTests.filter(r => r.actual === 'block').length;
+  const falseNegatives = fraudTests.filter(r => r.actual === 'allow' || r.actual === 'warn').length;
+  const trueNegatives = legitimateTests.filter(r => r.actual === 'allow' || r.actual === 'warn').length;
+  const falsePositives = legitimateTests.filter(r => r.actual === 'block').length;
 
   const accuracy = (passed / totalTests) * 100;
   const precision = truePositives / (truePositives + falsePositives) || 0;
@@ -1157,9 +1158,12 @@ EXAMPLES
     const batchPromises = batch.map(async (emailData) => {
       const result = await testEmail(emailData.email, endpoint);
       const expected = emailData.type === 'legitimate' ? 'legit' : 'fraud';
+
+      // Strict interpretation: only "block" counts as catching fraud
+      // "warn" means allowed through (HTTP 200) but flagged for review
       const passed =
-        (expected === 'legit' && result.decision === 'allow') ||
-        (expected === 'fraud' && (result.decision === 'block' || result.decision === 'warn'));
+        (expected === 'legit' && (result.decision === 'allow' || result.decision === 'warn')) ||
+        (expected === 'fraud' && result.decision === 'block');
 
       return {
         email: emailData.email,

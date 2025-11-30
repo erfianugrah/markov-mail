@@ -21,7 +21,7 @@ Welcome to the Markov Mail fraud detection system documentation. This guide prov
 |----------|-------------|----------|
 | [SCORING.md](./SCORING.md) | Risk scoring engine, thresholds, actions | All users |
 | [DETECTORS.md](./DETECTORS.md) | Feature extraction and detectors reference | ML Engineers, Developers |
-| [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md) | Unified Random Forest/Decision Tree training workflow | ML Engineers |
+| [MODEL_TRAINING.md](./MODEL_TRAINING.md) | Unified Random Forest/Decision Tree training workflow | ML Engineers |
 
 ### Operations
 
@@ -68,7 +68,7 @@ npm run cli test:batch -- --input data/main.csv \
   --endpoint https://fraud.erfi.dev/validate
 ```
 
-**Next Steps**: Read [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md) for training workflow and [DETECTORS.md](./DETECTORS.md) for feature engineering details.
+**Next Steps**: Read [MODEL_TRAINING.md](./MODEL_TRAINING.md) for training workflow and [DETECTORS.md](./DETECTORS.md) for feature engineering details.
 
 ### For Operators
 
@@ -112,7 +112,7 @@ graph LR
 
 ```mermaid
 graph LR
-    A[MODEL_TRAINING_v3.md] --> B[Training Pipeline]
+    A[MODEL_TRAINING.md] --> B[Training Pipeline]
     C[DETECTORS.md] --> D[Feature Extraction]
     E[SCORING.md] --> F[Risk Scoring]
 
@@ -124,8 +124,8 @@ graph LR
     style E fill:#5e35b1
 ```
 
-- **[MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md)**: Unified Random Forest/Decision Tree training workflow, conflict zone weighting, model versioning, and performance metrics.
-- **[DETECTORS.md](./DETECTORS.md)**: Complete reference for 12 detector categories covering 39 features, including linguistic analysis, sequential patterns, MX resolution, geo signals, and identity verification.
+- **[MODEL_TRAINING.md](./MODEL_TRAINING.md)**: Unified Random Forest/Decision Tree training workflow, conflict zone weighting, model versioning, and performance metrics.
+- **[DETECTORS.md](./DETECTORS.md)**: Complete reference for 12 detector categories covering 45 features, including linguistic analysis, n-gram naturalness, sequential patterns, MX resolution, geo signals, and identity verification.
 - **[SCORING.md](./SCORING.md)**: Risk scoring engine details, threshold configuration, action determination, short-circuit rules, score interpretation, and troubleshooting.
 
 ### Configuration & Operations
@@ -163,7 +163,7 @@ graph LR
 
 ### Feature Extraction Pipeline
 
-Markov Mail uses a **39-feature vector** to represent each email:
+Markov Mail uses a **45-feature vector** to represent each email:
 
 ```
 Email → Detectors → Features → Model → Risk Score → Action
@@ -178,7 +178,8 @@ Email → Detectors → Features → Model → Risk Score → Action
 6. **Geo** (3): Language/timezone mismatches
 7. **MX** (9): Mail provider identification
 8. **Domain** (3): TLD risk, reputation
-9. **Basic** (5): Length, digit ratio, etc.
+9. **N-gram** (6): Multilingual naturalness + risk
+10. **Basic** (5): Length, digit ratio, etc.
 
 See [DETECTORS.md](./DETECTORS.md) for detailed feature descriptions.
 
@@ -189,7 +190,7 @@ See [DETECTORS.md](./DETECTORS.md) for detailed feature descriptions.
 
 Both models are stored in KV with 60-second TTL caching for hot-reload without redeployment.
 
-See [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md) for training details.
+See [MODEL_TRAINING.md](./MODEL_TRAINING.md) for training details.
 
 ### Risk Scoring
 
@@ -227,7 +228,7 @@ npm run cli model:train -- --n-trees 20 --upload
 npm run cli model:train -- --n-trees 1 --upload
 ```
 
-See [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md#training-workflow) for full workflow.
+See [MODEL_TRAINING.md](./MODEL_TRAINING.md#training-workflow) for full workflow.
 
 ### Test Production API
 
@@ -278,7 +279,7 @@ See [CONFIGURATION.md](./CONFIGURATION.md#d1-database) for more queries.
 | Recall | 92.3% | 80.5% |
 | F1 Score | 91.2% | 77.6% |
 
-See [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md#model-performance) for detailed metrics.
+See [MODEL_TRAINING.md](./MODEL_TRAINING.md#model-performance) for detailed metrics.
 
 ## 🔗 External Resources
 
@@ -308,7 +309,7 @@ See [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md#model-performance) for detaile
 | Model not loading | [SCORING.md](./SCORING.md#model-not-loading) | Troubleshooting |
 | False positives | [SCORING.md](./SCORING.md#score-too-high-false-positives) | Troubleshooting |
 | False negatives | [SCORING.md](./SCORING.md#score-too-low-false-negatives) | Troubleshooting |
-| Training errors | [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md#troubleshooting) | Troubleshooting |
+| Training errors | [MODEL_TRAINING.md](./MODEL_TRAINING.md#troubleshooting) | Troubleshooting |
 | KV/D1 issues | [CONFIGURATION.md](./CONFIGURATION.md) | Configuration |
 
 ## 📝 Contributing

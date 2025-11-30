@@ -92,6 +92,11 @@ const COMMANDS = {
 		file: 'commands/data/tld.ts',
 		usage: 'tld:cache:clear',
 	},
+	'data:synthetic': {
+		description: 'Generate synthetic training data (31 cultures, multi-language)',
+		file: 'commands/data/synthetic.ts',
+		usage: 'data:synthetic [--count <n>] [--output <path>] [--legit-ratio <0-1>] [--append] [--seed <n>]',
+	},
 
 	// Testing commands
 	'test:live': {
@@ -167,6 +172,16 @@ const COMMANDS = {
 		file: 'commands/model/train_unified.ts',
 		usage: 'model:train [--n-trees <n>] [--max-depth <n>] [--conflict-weight <n>] [--skip-mx] [--upload]',
 	},
+	'model:tune': {
+		description: 'Run RandomizedSearchCV to suggest better RF hyperparameters',
+		file: 'commands/model/tune_model.ts',
+		usage: 'model:tune [--dataset <path>] [--n-iter <n>] [--output <path>]',
+	},
+	'model:analyze': {
+		description: 'Analyze a trained model (e.g., view feature importances)',
+		file: 'commands/model/analyze_model.ts',
+		usage: 'model:analyze <path-to-model.json>',
+	},
 	'tree:train': {
 		description: '[DEPRECATED] Use model:train --n-trees 1',
 		file: 'commands/model/train.ts',
@@ -236,6 +251,8 @@ Usage: npm run cli <command> [options]
 🛠️ MODEL PIPELINE
   features:export           Mirror runtime feature vector for model training
   model:train               Train model (1 tree = decision tree, 10+ = random forest)
+  model:tune                Randomized search for optimal RF hyperparameters
+  model:analyze             Analyze a trained model (e.g., view feature importances)
   tree:train                [DEPRECATED] Use model:train --n-trees 1
   forest:train              [DEPRECATED] Use model:train --n-trees 10
 

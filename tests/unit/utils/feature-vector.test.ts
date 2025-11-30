@@ -87,4 +87,24 @@ describe('buildFeatureVector', () => {
 		expect(vector.geo_anomaly_score).toBe(0);
 		expect(vector.mx_has_records).toBe(0);
 	});
+
+	it('maps n-gram analysis signals', () => {
+		const vector = buildFeatureVector({
+			ngram: {
+				bigramScore: 0.85,
+				trigramScore: 0.65,
+				overallScore: 1.2,
+				confidence: -0.5,
+				riskScore: 1.4,
+				isNatural: true,
+			},
+		});
+
+		expect(vector.ngram_bigram_score).toBeCloseTo(0.85);
+		expect(vector.ngram_trigram_score).toBeCloseTo(0.65);
+		expect(vector.ngram_overall_score).toBe(1);
+		expect(vector.ngram_confidence).toBe(0);
+		expect(vector.ngram_risk_score).toBe(1);
+		expect(vector.ngram_is_natural).toBe(1);
+	});
 });

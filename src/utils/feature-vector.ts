@@ -48,6 +48,14 @@ export interface FeatureVectorInput {
 		maxDigitRun?: number;
 		bigramEntropy?: number;
 	};
+	ngram?: {
+		bigramScore?: number;
+		trigramScore?: number;
+		overallScore?: number;
+		confidence?: number;
+		riskScore?: number;
+		isNatural?: boolean;
+	};
 }
 
 function sanitize(value: number | undefined, fallback = 0, clamp?: { min?: number; max?: number }): number {
@@ -119,6 +127,15 @@ export function buildFeatureVector(input: FeatureVectorInput): FeatureVector {
 		features.vowel_gap_ratio = sanitize(input.statistical.vowelGapRatio, 0, { min: 0, max: 1 });
 		features.max_digit_run = sanitize(input.statistical.maxDigitRun, 0, { min: 0, max: 64 });
 		features.bigram_entropy = sanitize(input.statistical.bigramEntropy, 0, { min: 0, max: 16 });
+	}
+
+	if (input.ngram) {
+		features.ngram_bigram_score = sanitize(input.ngram.bigramScore, 0, { min: 0, max: 1 });
+		features.ngram_trigram_score = sanitize(input.ngram.trigramScore, 0, { min: 0, max: 1 });
+		features.ngram_overall_score = sanitize(input.ngram.overallScore, 0, { min: 0, max: 1 });
+		features.ngram_confidence = sanitize(input.ngram.confidence, 0, { min: 0, max: 1 });
+		features.ngram_risk_score = sanitize(input.ngram.riskScore, 0, { min: 0, max: 1 });
+		features.ngram_is_natural = input.ngram.isNatural ? 1 : 0;
 	}
 
 	return features;

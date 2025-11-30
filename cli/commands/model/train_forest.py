@@ -33,6 +33,7 @@ def parse_args() -> argparse.Namespace:
     args.add_argument("--max-depth", type=int, default=6, help="Maximum tree depth (default: 6)")
     args.add_argument("--min-samples-leaf", type=int, default=20, help="Minimum samples per leaf (default: 20)")
     args.add_argument("--conflict-weight", type=float, default=20.0, help="Weight for conflict zone samples (default: 20.0)")
+    args.add_argument("--no-split", action="store_true", help="Train on 100%% of data (no train/test split for production)")
     return args.parse_args()
 
 
@@ -125,14 +126,19 @@ def main():
     print(f"\nCalculating strategic sample weights...")
     sample_weights = calculate_sample_weights(df, X, args.conflict_weight)
 
-    # Split data
-    X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
-        X, y, sample_weights, test_size=0.2, random_state=42, stratify=y
-    )
-
-    print(f"\nTrain/Test split:")
-    print(f"  Train: {len(X_train):,} samples")
-    print(f"  Test:  {len(X_test):,} samples")
+    # Split data (or use full dataset for production)
+    if args.no_split:
+        print(f"\n🚀 Production Mode: Training on 100% of data (no train/test split)")
+        print(f"  Total samples: {len(X):,}")
+        X_train, y_train, w_train = X, y, sample_weights
+        X_test, y_test, w_test = None, None, None
+    else:
+        X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
+            X, y, sample_weights, test_size=0.2, random_state=42, stratify=y
+        )
+        print(f"\nTrain/Test split:")
+        print(f"  Train: {len(X_train):,} samples")
+        print(f"  Test:  {len(X_test):,} samples")
 
     # Train Random Forest
     print(f"\nTraining Random Forest...")
@@ -151,46 +157,53 @@ def main():
 
     clf.fit(X_train, y_train, sample_weight=w_train)
 
-    # Evaluate
-    print(f"\n{'=' * 80}")
-    print("Model Evaluation")
-    print("=" * 80)
+    # Evaluate (only if we have a test set)
+    if not args.no_split:
+        print(f"\n{'=' * 80}")
+        print("Model Evaluation")
+        print("=" * 80)
 
-    y_pred_train = clf.predict(X_train)
-    y_pred_test = clf.predict(X_test)
+        y_pred_train = clf.predict(X_train)
+        y_pred_test = clf.predict(X_test)
 
-    print(f"\nTRAIN SET:")
-    print(f"  Precision: {precision_score(y_train, y_pred_train):.3f}")
-    print(f"  Recall:    {recall_score(y_train, y_pred_train):.3f}")
+        print(f"\nTRAIN SET:")
+        print(f"  Precision: {precision_score(y_train, y_pred_train):.3f}")
+        print(f"  Recall:    {recall_score(y_train, y_pred_train):.3f}")
 
-    print(f"\nTEST SET:")
-    print(f"  Precision: {precision_score(y_test, y_pred_test):.3f}")
-    print(f"  Recall:    {recall_score(y_test, y_pred_test):.3f}")
+        print(f"\nTEST SET:")
+        print(f"  Precision: {precision_score(y_test, y_pred_test):.3f}")
+        print(f"  Recall:    {recall_score(y_test, y_pred_test):.3f}")
 
-    print(f"\nConfusion Matrix (Test):")
-    cm = confusion_matrix(y_test, y_pred_test)
-    print(f"  TN: {cm[0,0]:,}  FP: {cm[0,1]:,}")
-    print(f"  FN: {cm[1,0]:,}  TP: {cm[1,1]:,}")
+        print(f"\nConfusion Matrix (Test):")
+        cm = confusion_matrix(y_test, y_pred_test)
+        print(f"  TN: {cm[0,0]:,}  FP: {cm[0,1]:,}")
+        print(f"  FN: {cm[1,0]:,}  TP: {cm[1,1]:,}")
 
-    # Conflict zone performance
-    if 'bigram_entropy' in X_test.columns and 'domain_reputation_score' in X_test.columns:
-        conflict_test_mask = (X_test['bigram_entropy'] > 3.0) & (X_test['domain_reputation_score'] >= 0.6)
+        # Conflict zone performance
+        if 'bigram_entropy' in X_test.columns and 'domain_reputation_score' in X_test.columns:
+            conflict_test_mask = (X_test['bigram_entropy'] > 3.0) & (X_test['domain_reputation_score'] >= 0.6)
 
-        print(f"\nConflict Zone Performance (Test Set):")
-        print(f"  Samples in zone: {conflict_test_mask.sum():,}")
+            print(f"\nConflict Zone Performance (Test Set):")
+            print(f"  Samples in zone: {conflict_test_mask.sum():,}")
 
-        if conflict_test_mask.sum() > 0:
-            y_test_conflict = y_test[conflict_test_mask]
-            y_pred_conflict = y_pred_test[conflict_test_mask]
+            if conflict_test_mask.sum() > 0:
+                y_test_conflict = y_test[conflict_test_mask]
+                y_pred_conflict = y_pred_test[conflict_test_mask]
 
-            print(f"  Precision: {precision_score(y_test_conflict, y_pred_conflict, zero_division=0):.3f}")
-            print(f"  Recall:    {recall_score(y_test_conflict, y_pred_conflict, zero_division=0):.3f}")
+                print(f"  Precision: {precision_score(y_test_conflict, y_pred_conflict, zero_division=0):.3f}")
+                print(f"  Recall:    {recall_score(y_test_conflict, y_pred_conflict, zero_division=0):.3f}")
 
-            # Show breakdown
-            conflict_fraud = (y_test_conflict == 1).sum()
-            conflict_legit = (y_test_conflict == 0).sum()
-            print(f"  Fraud in zone: {conflict_fraud:,}")
-            print(f"  Legit in zone: {conflict_legit:,}")
+                # Show breakdown
+                conflict_fraud = (y_test_conflict == 1).sum()
+                conflict_legit = (y_test_conflict == 0).sum()
+                print(f"  Fraud in zone: {conflict_fraud:,}")
+                print(f"  Legit in zone: {conflict_legit:,}")
+    else:
+        print(f"\n{'=' * 80}")
+        print("Production Training Complete")
+        print("=" * 80)
+        print(f"\n⚠️  No evaluation metrics (trained on 100% of data)")
+        print(f"   Validate on production traffic for real-world performance")
 
     # Feature importance
     print(f"\n{'=' * 80}")
@@ -228,6 +241,7 @@ def main():
         "meta": {
             "version": "3.0.0-forest",
             "features": feature_columns,
+            "feature_importance": importances.set_index('feature')['importance'].to_dict(),
             "tree_count": len(forest_json),
             "config": {
                 "n_trees": args.n_trees,

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Detectors & Features
+- Implemented the multilingual n-gram detector end-to-end: feature export, runtime middleware, and model inputs now emit `ngram_*` scores and risk signals to capture gibberish local parts.
+- Added six new n-gram features to the normalized vector (bigram/trigram/overall scores, confidence, risk, naturalness flag) plus documentation/test coverage so training sets remain consistent.
+- Built a reproducible 1M-row canonical dataset (`data/main.csv`) by cleaning the Enron corpus, generating 327,194 synthetic legit emails, and 500,000 synthetic fraud samples (exactly 50/50); documented the pipeline and added `scripts/clean_enron.py` for repeatable preprocessing.
+
 ## 2025-11-30
 
 ### Model Training

@@ -17,7 +17,7 @@ Request → Feature Extraction → Model Evaluation → Risk Score → Action
 
 **Source**: `src/utils/feature-vector.ts:buildFeatureVector()`
 
-All email attributes are normalized into a **39-feature vector**:
+All email attributes are normalized into a **45-feature vector**:
 
 ```typescript
 const features = {
@@ -42,6 +42,7 @@ const features = {
 - Geo (3 features)
 - MX (9 features)
 - Domain (3 features)
+- N-Gram (6 features)
 - Basic (5 features)
 
 See [DETECTORS.md](./DETECTORS.md) for detailed feature descriptions.
@@ -87,7 +88,7 @@ if (!rfResult) {
 {
   score: 0.92,           // Risk score (0-1)
   reason: "high_seq",    // Human-readable reason
-  path: [                // Decision path (for debugging)
+  path: [
     "sequential_confidence <= 0.5 :: right",
     "domain_reputation_score <= 0.6 :: left"
   ]
@@ -325,7 +326,7 @@ wrangler kv key get decision_tree.json --binding CONFIG --remote
 
 ### v3.0.0 (2025-11-30)
 - ✅ Unified Random Forest + Decision Tree inference
-- ✅ 39-feature vector with MX, geo, identity signals
+- ✅ 45-feature vector with MX, geo, identity, and multilingual n-gram signals
 - ✅ Conflict zone weighting for high-entropy fraud
 - ✅ KV-backed models with hot-reload
 - ✅ Comprehensive logging to D1

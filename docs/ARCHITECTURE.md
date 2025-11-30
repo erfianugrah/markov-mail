@@ -123,7 +123,7 @@ sequenceDiagram
 
     Worker->>FeatureExtractor: Extract features
     FeatureExtractor->>FeatureExtractor: Parse email (local@domain)
-    FeatureExtractor->>FeatureExtractor: Run detectors (39 features)
+    FeatureExtractor->>FeatureExtractor: Run detectors (45 features)
     FeatureExtractor-->>Worker: Feature vector
 
     Worker->>ModelLoader: Load Random Forest
@@ -169,7 +169,7 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     A[Raw Dataset<br/>data/main.csv<br/>144K emails] --> B[Feature Export CLI]
-    B --> C[Feature Engineering<br/>39 features per email]
+    B --> C[Feature Engineering<br/>45 features per email]
     C --> D[Feature CSV<br/>data/features/export.csv]
 
     D --> E{Model Type?}
@@ -211,7 +211,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    A[Feature Vector<br/>39 features] --> B{Random Forest<br/>Available?}
+    A[Feature Vector<br/>45 features] --> B{Random Forest<br/>Available?}
 
     B -->|Yes| C[Evaluate RF<br/>20 trees]
     B -->|No| D{Decision Tree<br/>Available?}
@@ -270,7 +270,7 @@ graph TD
     P --> S[mx_provider_google: 1<br/>mx_record_count: 5<br/>...]
     Q --> T[domain_reputation_score: 0.4]
 
-    J --> U[Feature Vector<br/>39 features]
+    J --> U[Feature Vector<br/>45 features]
     K --> U
     L --> U
     M --> U
@@ -734,7 +734,7 @@ npm run cli test:batch -- --input data/test.csv \
 
 ## References
 
-- [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md) - Training workflow and configuration
+- [MODEL_TRAINING.md](./MODEL_TRAINING.md) - Training workflow and configuration
 - [DETECTORS.md](./DETECTORS.md) - Feature extraction details
 - [SCORING.md](./SCORING.md) - Risk scoring and thresholds
 - [CONFIGURATION.md](./CONFIGURATION.md) - KV and D1 setup
@@ -745,7 +745,7 @@ npm run cli test:batch -- --input data/test.csv \
 
 ### v3.0.0 (2025-11-30)
 - ✅ Unified Random Forest + Decision Tree architecture
-- ✅ 39-feature vector with conflict zone weighting
+- ✅ 45-feature vector with conflict zone weighting
 - ✅ KV-backed models with hot-reload
 - ✅ Edge-deployed with <10ms latency
 - ✅ Comprehensive analytics dashboard

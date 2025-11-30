@@ -147,7 +147,7 @@ npm run cli features:export --input data/main.csv --output data/features/export.
 npm run cli features:export --skip-mx
 ```
 
-**Output**: `data/features/export.csv` (39 features + label column)
+**Output**: `data/features/export.csv` (45 features + label column)
 
 ### Step 2: Train Model
 
@@ -170,7 +170,7 @@ npm run deploy
 
 Worker automatically loads new model from KV within 60 seconds.
 
-## Feature Set (39 Features)
+## Feature Set (45 Features)
 
 ### Local Part Features (13)
 - `local_part_length`, `digit_count`, `special_char_count`
@@ -196,6 +196,10 @@ Worker automatically loads new model from KV within 60 seconds.
 ### MX Features (6)
 - `mx_record_count`, `has_valid_mx`, `mx_includes_domain`
 - `mx_is_google`, `mx_is_microsoft`, `mx_is_common_provider`
+
+### N-Gram Features (6)
+- `ngram_bigram_score`, `ngram_trigram_score`, `ngram_overall_score`
+- `ngram_confidence`, `ngram_risk_score`, `ngram_is_natural`
 
 ## Model Performance
 

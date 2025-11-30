@@ -15,6 +15,7 @@ interface ModelTrainOptions {
 	features?: string;
 	labelColumn?: string;
 	skipMx?: boolean;
+	noSplit?: boolean;
 	nTrees?: number;
 	maxDepth?: number;
 	minSamplesLeaf?: number;
@@ -60,7 +61,7 @@ function parseArgs(args: string[]): ModelTrainOptions {
 					options[camelKey as keyof ModelTrainOptions] = parseInt(value, 10) as any;
 				} else if (camelKey === 'conflictWeight') {
 					options[camelKey as keyof ModelTrainOptions] = parseFloat(value) as any;
-				} else if (camelKey === 'skipMx' || camelKey === 'upload') {
+				} else if (camelKey === 'skipMx' || camelKey === 'upload' || camelKey === 'noSplit') {
 					options[camelKey as keyof ModelTrainOptions] = (value === 'true' || value === '1') as any;
 				} else {
 					options[camelKey as keyof ModelTrainOptions] = value as any;
@@ -95,6 +96,7 @@ OPTIONS
   --features <path>           Feature matrix output (default: data/features/export.csv)
   --label-column <name>       Label column name (default: label)
   --skip-mx                   Skip MX record lookups (faster, less accurate)
+  --no-split                  Train on 100% of data (production mode, no train/test split)
   --n-trees <n>               Number of trees (default: 10)
                               1 = decision tree, 10+ = random forest
   --max-depth <n>             Maximum tree depth (default: 6)
@@ -129,6 +131,9 @@ EXAMPLES
 
   # Quick development iteration (skip MX, single tree)
   npm run cli model:train -- --n-trees 1 --skip-mx
+
+  # Production training (100% data, no train/test split)
+  npm run cli model:train -- --n-trees 20 --no-split --upload
 
 PERFORMANCE COMPARISON
   Trees | Size   | Training | Inference | Accuracy
@@ -189,6 +194,7 @@ export default async function modelTrainCommand(args: string[]) {
 	const features = options.features || 'data/features/export.csv';
 	const labelColumn = options.labelColumn || 'label';
 	const skipMx = options.skipMx ?? false;
+	const noSplit = options.noSplit ?? false;
 	const nTrees = options.nTrees ?? 10;
 	const maxDepth = options.maxDepth || 6;
 	const minSamplesLeaf = options.minSamplesLeaf || 20;
@@ -219,6 +225,7 @@ Configuration:
   📊 Features:           ${features}
   🏷️  Label Column:       ${labelColumn}
   🚫 Skip MX:            ${skipMx ? 'Yes (faster)' : 'No (full features)'}
+  🚀 Training Mode:      ${noSplit ? '100% data (production)' : '80/20 split (development)'}
   🌲 Trees:              ${nTrees} ${nTrees === 1 ? '(decision tree)' : '(random forest)'}
   📏 Max Depth:          ${maxDepth}
   🌿 Min Samples/Leaf:   ${minSamplesLeaf}
@@ -273,7 +280,7 @@ Configuration:
 		// Step 2: Train model with Python
 		console.log(`\n🌲 Step 2/3: Training ${modelName} (Python)...\n`);
 
-		const trainResult = run(venvPython, [
+		const trainArgs = [
 			'cli/commands/model/train_forest.py',
 			'--dataset',
 			features,
@@ -287,7 +294,13 @@ Configuration:
 			String(minSamplesLeaf),
 			'--conflict-weight',
 			String(conflictWeight),
-		]);
+		];
+
+		if (noSplit) {
+			trainArgs.push('--no-split');
+		}
+
+		const trainResult = run(venvPython, trainArgs);
 
 		if (!trainResult.success) {
 			throw new Error('Model training failed');
@@ -328,6 +341,7 @@ Configuration:
 				binding,
 				'--file',
 				output,
+			'--remote',
 			]);
 
 			if (!uploadResult.success) {
