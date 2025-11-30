@@ -1,83 +1,70 @@
-import { Button } from '@/components/ui/button'
-import { Download } from 'lucide-react'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-
 interface ExportButtonProps {
-  data: any
-  filename: string
+  data: Record<string, unknown>[];
+  filename: string;
+  format?: 'csv' | 'json';
+  className?: string;
 }
 
-export function ExportButton({ data, filename }: ExportButtonProps) {
-  const exportAsJSON = () => {
-    const jsonStr = JSON.stringify(data, null, 2)
-    const blob = new Blob([jsonStr], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${filename}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const exportAsCSV = () => {
-    if (!data || (Array.isArray(data) && data.length === 0)) {
-      return
+export default function ExportButton({
+  data,
+  filename,
+  format = 'csv',
+  className = '',
+}: ExportButtonProps) {
+  const handleExport = () => {
+    if (!data || data.length === 0) {
+      alert('No data to export');
+      return;
     }
 
-    let csvContent = ''
+    let content: string;
+    let mimeType: string;
+    let extension: string;
 
-    // Handle array of objects
-    if (Array.isArray(data)) {
-      const keys = Object.keys(data[0])
-      csvContent = keys.join(',') + '\n'
-      csvContent += data.map(row =>
-        keys.map(key => {
-          const value = row[key]
-          // Escape values containing commas or quotes
-          if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
-            return `"${value.replace(/"/g, '""')}"`
-          }
-          return value
-        }).join(',')
-      ).join('\n')
-    }
-    // Handle single object (stats)
-    else if (typeof data === 'object') {
-      const keys = Object.keys(data)
-      csvContent = keys.join(',') + '\n'
-      csvContent += keys.map(key => data[key]).join(',')
+    if (format === 'csv') {
+      // Convert to CSV
+      const headers = Object.keys(data[0]);
+      const csvRows = [
+        headers.join(','),
+        ...data.map((row) =>
+          headers.map((header) => {
+            const value = row[header];
+            // Escape quotes and wrap in quotes if contains comma
+            const stringValue = String(value ?? '');
+            return stringValue.includes(',') || stringValue.includes('"')
+              ? `"${stringValue.replace(/"/g, '""')}"`
+              : stringValue;
+          }).join(',')
+        ),
+      ];
+      content = csvRows.join('\n');
+      mimeType = 'text/csv';
+      extension = 'csv';
+    } else {
+      // Convert to JSON
+      content = JSON.stringify(data, null, 2);
+      mimeType = 'application/json';
+      extension = 'json';
     }
 
-    const blob = new Blob([csvContent], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${filename}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+    // Create download link
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${filename}.${extension}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Download className="h-4 w-4 mr-2" />
-          Export
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent>
-        <DropdownMenuItem onClick={exportAsJSON}>
-          Export as JSON
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={exportAsCSV}>
-          Export as CSV
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
+    <button
+      onClick={handleExport}
+      className={`px-3 py-1.5 text-sm border border-border rounded-md hover:bg-accent transition-colors ${className}`}
+    >
+      Export {format.toUpperCase()}
+    </button>
+  );
 }

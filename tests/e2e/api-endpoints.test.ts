@@ -2,7 +2,6 @@
  * E2E API Endpoint Tests
  *
  * Tests API endpoints with various email scenarios and payloads
- * Migrated from scripts/test-api.js
  */
 
 import { describe, test, expect, beforeAll } from 'vitest';
@@ -141,41 +140,6 @@ describe('API Endpoints E2E', () => {
 				expect(result.signals.hasPlusAddressing).toBe(true);
 				// Plus-addressing increases risk but may not block alone
 				expect(result.riskScore).toBeGreaterThan(0.2);
-			}
-		});
-
-		test('should detect keyboard walks', async () => {
-			const keyboardWalkEmails = [
-				'qwerty@example.com',
-				'asdfgh@test.com',
-				'123456@example.com',
-				'zxcvbn@company.com',
-			];
-
-			for (const email of keyboardWalkEmails) {
-				const result = await client.validate(email);
-
-				console.log(`\n⌨️  Keyboard walk ${email}: ${result.decision}`);
-
-				expect(['warn', 'block']).toContain(result.decision);
-				expect(result.signals.hasKeyboardWalk).toBe(true);
-			}
-		});
-
-		test('should detect gibberish patterns', async () => {
-			const gibberishEmails = [
-				'xk9m2qw7r4p3@example.com',
-				'zxkj3mq9wr@test.com',
-				'qmwk9xz3r7@company.com',
-			];
-
-			for (const email of gibberishEmails) {
-				const result = await client.validate(email);
-
-				console.log(`\n🗑️  Gibberish ${email}: ${result.decision}`);
-
-				expect(result.decision).toBe('block');
-				expect(result.signals.isGibberish).toBe(true);
 			}
 		});
 

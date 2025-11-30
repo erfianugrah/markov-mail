@@ -30,30 +30,11 @@ export interface ValidationMetric {
   isDisposable?: boolean;
   isFreeProvider?: boolean;
   hasPlusAddressing?: boolean;
-  // DEPRECATED (2025-11-08): Keyboard/gibberish detectors removed
-  // Kept for backwards compatibility with existing database rows
-  hasKeyboardWalk?: boolean; // No longer written (always undefined)
-  hasKeyboardMashing?: boolean; // No longer written (always undefined) - NOTE: never in DB schema
-  isGibberish?: boolean; // No longer written (always undefined)
   tldRiskScore?: number;
   domainReputationScore?: number;
   patternConfidence?: number;
-  // Phase 7: Markov Chain data
-  markovDetected?: boolean;
-  markovConfidence?: number;
-  markovCrossEntropyLegit?: number;
-  markovCrossEntropyFraud?: number;
-  // Ensemble metadata (v2.3+)
-  ensembleReasoning?: string;       // Ensemble decision reasoning
-  model2gramPrediction?: string;    // 2-gram model prediction (fraud/legit)
-  model3gramPrediction?: string;    // 3-gram model prediction (fraud/legit)
-  // OOD Detection (v2.4+)
-  minEntropy?: number;              // min(H_legit, H_fraud) - abnormality measure
-  abnormalityScore?: number;        // How far above OOD threshold
-  abnormalityRisk?: number;         // Risk contribution from abnormality (0.0-0.6)
-  oodDetected?: boolean;            // Whether OOD was detected
-  // OOD Zone (v2.4.1+)
-  oodZone?: string;                 // Zone: 'none' (<3.8), 'warn' (3.8-5.5), 'block' (5.5+)
+  decisionTreeReason?: string;
+  decisionTreePath?: string;
   // Phase 8: Online Learning data (NEW)
   clientIp?: string;            // For fraud pattern analysis
   userAgent?: string;           // For bot detection
@@ -94,6 +75,19 @@ export interface ValidationMetric {
   // RPC Metadata (v2.5.1+)
   consumer?: string;            // Consumer service name (e.g., "FORMINATOR")
   flow?: string;                // Request flow type (e.g., "REGISTRATION", "LOGIN")
+  // Identity / Geo / MX (Decision-tree reset enhancements)
+  identitySimilarity?: number;
+  identityTokenOverlap?: number;
+  identityNameInEmail?: boolean;
+  geoLanguageMismatch?: boolean;
+  geoTimezoneMismatch?: boolean;
+  geoAnomalyScore?: number;
+  mxHasRecords?: boolean;
+  mxRecordCount?: number;
+  mxPrimaryProvider?: string | null;
+  mxProviderHits?: Record<string, number>;
+  mxLookupFailure?: string;
+  mxTTL?: number;
 }
 
 /**

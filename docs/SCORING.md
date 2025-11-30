@@ -1,498 +1,334 @@
-# Risk Scoring System
+# Scoring Engine
 
-**Feature-based classification with Markov Chain cross-entropy and linguistic signals**
-
-## Table of Contents
-
-1. [Overview](#overview)
-2. [Scoring Philosophy](#scoring-philosophy)
-3. [Algorithmic Pipeline](#algorithmic-pipeline)
-4. [Decision Thresholds](#decision-thresholds)
-5. [Examples](#examples)
-6. [Performance](#performance)
-
----
+**Version**: 3.0.0
+**Last Updated**: 2025-11-30
 
 ## Overview
 
-**Version 2.5+** uses feature-based logistic regression combining Markov Chain analysis with linguistic and structural signals. A calibration layer trained on 89K+ emails provides probability-based fraud detection.
+The scoring engine evaluates email submissions using Machine Learning models (Random Forest or Decision Tree) to produce fraud risk scores. The system follows a feature-extraction pipeline where raw email attributes are transformed into numeric features, evaluated by trained models, and translated into actionable risk levels.
 
-### Key Characteristics
+## Scoring Architecture
 
-- **Range**: 0.0 - 1.0 (normalized probability)
-- **Primary Method**: Logistic regression with 28 features
-- **Feature Categories**: Markov (8), Linguistic (6), Structure (4), Statistical (3), Other (7)
-- **Training Accuracy**: 83.5% (precision: 80.9%, recall: 84.0%, F1: 82.4%)
-- **Latency**: ~35ms average
-- **Status**: ✅ Calibration active in production (97.96% F1, 100% recall, 96% precision)
-
----
-
-## Scoring Philosophy
-
-### Design Principles (v2.0)
-
-1. **Algorithmic > Hardcoded**: Let trained models make decisions, not manual rules
-2. **Direct Confidence**: Use detector confidence directly without weight multiplication
-3. **No Double-Counting**: Each signal used once in priority order
-4. **Explainable**: Clear reason for every decision
-5. **Maintainable**: Clean pipeline pattern for easy testing
-
-### Why Algorithmic Scoring?
-
-**Old Approach (v1.x)** - Hardcoded weights:
-```typescript
-const markovRisk = markovScore * 0.25;
-const patternRisk = patternScore * 0.30;
-const entropyRisk = entropyScore * 0.05;
-
-riskScore = Math.max(markovRisk, patternRisk, entropyRisk) + domainRisk;
+```
+Request → Feature Extraction → Model Evaluation → Risk Score → Action
 ```
 
-**Problems**:
-- Weight multiplication dilutes confident detections (0.78 → 0.195)
-- Math.max() competition between detectors
-- Entropy and pattern detection overlap with Markov
-- Manual tuning required
+### 1. Feature Extraction
 
-**Current Approach (v2.4.x)** - Two-Dimensional Risk:
+**Source**: `src/utils/feature-vector.ts:buildFeatureVector()`
+
+All email attributes are normalized into a **39-feature vector**:
+
 ```typescript
-// Dimension 1: Classification Risk (differential signal)
-// Which model fits better: fraud vs legit?
-const classificationRisk = markovResult?.isLikelyFraudulent
-  ? markovResult.confidence
-  : 0;
-
-// Dimension 2: Abnormality Risk (consensus signal)
-const minEntropy = Math.min(H_legit, H_fraud);
-let abnormalityRisk = 0;
-if (minEntropy >= 3.8 && minEntropy < 5.5) {
-  abnormalityRisk = 0.35 + ((minEntropy - 3.8) / 1.7) * 0.30;
-} else if (minEntropy >= 5.5) {
-  abnormalityRisk = 0.65;
-}
-
-// Combine dimensions
-let score = Math.max(classificationRisk, abnormalityRisk);
-
-// Deterministic overrides
-if (patternFamilyResult?.patternType === 'dated') {
-  score = Math.max(score, patternFamilyResult?.confidence ?? 0.7);
-}
-
-const plusRisk = normalizedEmailResult
-  ? getPlusAddressingRiskScore(email, relatedEmails)
-  : 0;
-if (plusRisk > 0) {
-  score = Math.max(score, plusRisk);
-}
-
-// Domain signals are additive (configurable weights)
-const domainRisk =
-  domainReputationScore * riskWeights.domainReputation +
-  tldRiskScore * riskWeights.tldRisk;
-
-// v2.5.0: Feature classifier (linguistic+structural model)
-if (featureClassifier.enabled && featureClassifier.score >= featureClassifier.activationThreshold) {
-  const featureRisk = featureClassifier.score * featureClassifier.riskWeight;
-  score = Math.max(score, featureRisk);
-}
-
-riskScore = Math.min(score + domainRisk, 1.0);
+const features = {
+  sequential_confidence: 0.85,
+  plus_risk: 0.2,
+  local_length: 12,
+  digit_ratio: 0.25,
+  pronounceability: 0.7,
+  has_word_boundaries: 1,
+  mx_has_records: 1,
+  tld_risk_score: 0.3,
+  // ... 31 more features
+};
 ```
 
-**Benefits**:
-- Catches novel patterns unfamiliar to both models (OOD)
-- Classification and abnormality are independent dimensions
-- No dilution from weight multiplication
-- Clear priority order
-- Research-backed piecewise thresholds (3.8 warn, 5.5 block)
+**Feature Categories**:
+- Sequential/Pattern (2 features)
+- Linguistic (6 features)
+- Structural (4 features)
+- Statistical (4 features)
+- Identity (3 features)
+- Geo (3 features)
+- MX (9 features)
+- Domain (3 features)
+- Basic (5 features)
 
-### Feature Classifier Telemetry
+See [DETECTORS.md](./DETECTORS.md) for detailed feature descriptions.
 
-`extractLocalPartFeatureSignals()` generates the feature vector consumed by both calibration and the optional feature classifier. The vector is exposed in the API response/context as:
+### 2. Model Evaluation
 
-- `linguisticSignals` – pronounceability, vowel ratio, repeated run stats, consonant clusters, syllable estimate
-- `structureSignals` – segment counts/lengths, word-boundary presence, vowel-less segment ratio
-- `statisticalSignals` – digit/symbol ratios, entropy, max digit run, unique character ratio, vowel gaps
+**Source**: `src/middleware/fraud-detection.ts`
 
-When `featureClassifier` is configured, its probability is logged (`featureClassifierScore`) and the scaled contribution is reflected in `featureClassifierRisk`. If that risk exceeds the configured activation threshold it can drive block reasons such as `linguistic_structure_anomaly`.
-
----
-
-## Algorithmic Pipeline
-
-### Priority 1: Hard Blockers
-
-These cause immediate blocking regardless of algorithmic scoring:
-
-| Condition | Risk Score | Reason |
-|-----------|-----------|--------|
-| Invalid email format | 0.8 | Malformed address |
-| Disposable domain | 0.95 | Temp email service |
-
-### Priority 2: Two-Dimensional Algorithmic Scoring (v2.4.0)
-
-**Dimension 1: Classification Risk**
+The system attempts to load models in priority order:
 
 ```typescript
-// Differential signal: fraud vs legit
-const classificationRisk = markovResult?.isLikelyFraudulent
-  ? markovResult.confidence
-  : 0;
+// 1. Try Random Forest (primary)
+const rfLoaded = await loadRandomForestModel(c.env);
+if (rfLoaded) {
+  rfResult = evaluateRandomForest(featureVector);
+  riskScore = rfResult.score;
+}
+
+// 2. Fall back to Decision Tree
+if (!rfResult) {
+  const dtLoaded = await loadDecisionTreeModel(c.env);
+  if (dtLoaded) {
+    dtResult = evaluateDecisionTree(featureVector);
+    riskScore = dtResult.score;
+  }
+}
 ```
 
-**Dimension 2: Abnormality Risk (OOD Detection)**
+**Model Types**:
+
+| Model | KV Key | Size | Inference | Accuracy | Use Case |
+|-------|--------|------|-----------|----------|----------|
+| Random Forest (20 trees) | `random_forest.json` | ~55KB | 1-2ms | 90.1% | Production |
+| Decision Tree (1 tree) | `decision_tree.json` | ~3.3KB | <1ms | 75.0% | Fallback |
+
+**Model Format**: JSON with minified keys (`t`, `f`, `v`, `l`, `r`) for size optimization.
+
+### 3. Risk Score
+
+**Output**: Number between 0.0 (legitimate) and 1.0 (fraud)
 
 ```typescript
-// Consensus signal: both models confused?
-const minEntropy = Math.min(
-  markovResult.crossEntropyLegit,
-  markovResult.crossEntropyFraud
-);
-
-// v2.4.1: Piecewise threshold
-const abnormalityRisk = minEntropy < 3.8 ? 0 :
-  minEntropy < 5.5 ? 0.35 + ((minEntropy - 3.8) / 1.7) * 0.30 :
-  0.65;
+{
+  score: 0.92,           // Risk score (0-1)
+  reason: "high_seq",    // Human-readable reason
+  path: [                // Decision path (for debugging)
+    "sequential_confidence <= 0.5 :: right",
+    "domain_reputation_score <= 0.6 :: left"
+  ]
+}
 ```
 
-**Combined Risk Calculation**
+### 4. Action Determination
+
+**Source**: `src/middleware/fraud-detection.ts:271-283`
+
+Risk scores are mapped to actions using configurable thresholds:
 
 ```typescript
-function calculateAlgorithmicRiskScore({
+const config = {
+  blockThreshold: 0.65,  // ≥ 0.65 = BLOCK
+  warnThreshold: 0.35,   // ≥ 0.35 = WARN
+};
+
+if (riskScore >= config.blockThreshold) {
+  action = 'block';
+  allowed = false;
+} else if (riskScore >= config.warnThreshold) {
+  action = 'warn';
+  allowed = true;  // Allow but flag for review
+} else {
+  action = 'allow';
+  allowed = true;
+}
+```
+
+**Action Types**:
+
+| Action | Risk Range | Response | Use Case |
+|--------|-----------|----------|----------|
+| `block` | ≥0.65 | HTTP 403 | Clear fraud (bot accounts, sequential patterns) |
+| `warn` | 0.35-0.64 | HTTP 200 + flag | Suspicious but uncertain |
+| `allow` | <0.35 | HTTP 200 | Legitimate users |
+
+## Short-Circuit Rules
+
+Before ML evaluation, the system applies **hard blockers** that bypass the model:
+
+### 1. Invalid Format
+- Malformed email addresses
+- Empty fields
+- SQL injection attempts
+
+### 2. Disposable Domains (71,000+ patterns)
+**Source**: `src/validators/domain.ts`
+
+```typescript
+if (isDisposableDomain(domain)) {
+  return {
+    allowed: false,
+    action: 'block',
+    reason: 'disposable_domain',
+    score: 1.0,
+  };
+}
+```
+
+**Database**: `data/disposable_domains.txt` (71,388 domains)
+
+### 3. No MX Records
+If a domain has no MX records (undeliverable email), it's automatically suspicious:
+
+```typescript
+if (!mxAnalysis.hasRecords) {
+  // Still evaluate with model, but MX features signal risk
+  features.mx_has_records = 0;
+  features.mx_record_count = 0;
+}
+```
+
+## Score Interpretation
+
+### Fraud Indicators (High Score)
+
+| Score Range | Typical Causes | Examples |
+|-------------|---------------|----------|
+| 0.90-1.00 | Sequential pattern + free provider | `user123@gmail.com`, `test001@hotmail.com` |
+| 0.80-0.89 | High entropy + disposable TLD | `xkzqwrtpl@mail.ru`, `asjdhkjah@tk` |
+| 0.70-0.79 | Name mismatch + geo anomaly | Name: "John", Email: `fraud@tempmail.com` |
+| 0.65-0.69 | Multiple weak signals | Borderline cases (review queue) |
+
+### Legitimate Indicators (Low Score)
+
+| Score Range | Typical Causes | Examples |
+|-------------|---------------|----------|
+| 0.00-0.19 | Structured name + trusted provider | `john.smith@company.com` |
+| 0.20-0.34 | Real name + standard TLD | `jsmith1985@gmail.com` (birth year) |
+| 0.35-0.49 | Mixed signals | Unusual but plausible patterns |
+
+## Calibration
+
+**Status**: No runtime calibration is performed.
+
+The Random Forest and Decision Tree models encode final probabilities directly in their leaf nodes. Scores represent the **proportion of fraud samples** in the training data that reached each leaf.
+
+If you need post-training calibration (e.g., Platt scaling), apply it during the training phase before exporting the model JSON. The adjusted probabilities should be embedded in the `value` fields of leaf nodes.
+
+## Logging & Analytics
+
+All scoring decisions are logged to **D1 database** for analysis:
+
+**Table**: `ANALYTICS_DATASET`
+
+```sql
+INSERT INTO ANALYTICS_DATASET (
   email,
-  markovResult,
-  patternFamilyResult,
-  domainReputationScore,
-  tldRiskScore,
-  normalizedEmailResult,
-  config
-}) {
-  // Dimension 1: Classification risk (fraud vs legit)
-  const baseClassificationRisk = markovResult?.isLikelyFraudulent
-    ? markovResult.confidence
-    : 0;
-  const calibrationFeatures = buildCalibrationFeatureMap(/* ... */);
-  const calibratedProbability = config.calibration
-    ? applyCalibration(config.calibration, calibrationFeatures)
-    : null;
-  const classificationRisk = calibratedProbability !== null
-    ? Math.max(baseClassificationRisk, calibratedProbability)
-    : baseClassificationRisk;
-  // Dimension 2: Abnormality risk (OOD)
-  const abnormalityRisk = markovResult?.abnormalityRisk ?? 0;
-  const localPartLength = providerLocalPart?.length ?? 0;
-  const lengthClampedAbnormality = clampAbnormalityRiskForLocalLength(
-    abnormalityRisk,
-    localPartLength
-  );
-
-  let score = Math.max(classificationRisk, lengthClampedAbnormality);
-
-  // Dated patterns (deterministic override)
-  if (patternFamilyResult?.patternType === 'dated') {
-    score = Math.max(score, patternFamilyResult.confidence ?? 0.7);
-  }
-
-  // Sequential patterns (only when confidence clears the configured threshold)
-  if (patternFamilyResult?.patternType === 'sequential') {
-    const threshold = config.patternThresholds.sequential ?? 0.6;
-    const confidence = patternFamilyResult.confidence ?? 0;
-    if (confidence >= threshold) {
-      const sequentialRisk = Math.min(0.45 + confidence * 0.55, 0.95);
-      score = Math.max(score, sequentialRisk);
-    } else if (confidence >= Math.max(0.4, threshold * 0.8)) {
-      score = Math.max(score, confidence * 0.5);
-    }
-  }
-
-  // Plus-addressing abuse contributes independent risk (0.2-0.9)
-  let plusRisk = 0;
-  if (normalizedEmailResult) {
-    plusRisk = getPlusAddressingRiskScore(email);
-    if (plusRisk > 0) {
-      score = Math.max(score, plusRisk);
-    }
-  }
-
-  // Domain signals (additive weights)
-  const domainRisk =
-    domainReputationScore * config.riskWeights.domainReputation +
-    tldRiskScore * config.riskWeights.tldRisk;
-
-  return Math.min(score + domainRisk, 1.0);
-}
-
-function clampAbnormalityRiskForLocalLength(abnormalityRisk: number, localPartLength: number): number {
-  if (!abnormalityRisk || localPartLength <= 4) {
-    return 0;
-  }
-
-  if (localPartLength >= 12) {
-    return abnormalityRisk;
-  }
-
-  const ramp = (localPartLength - 4) / (12 - 4);
-  return abnormalityRisk * ramp;
-}
+  risk_score,
+  action,
+  random_forest_score,
+  decision_tree_score,
+  reason,
+  timestamp
+) VALUES (?, ?, ?, ?, ?, ?, ?);
 ```
 
-**Markov Chain Detection**:
-- Calculates character transition probabilities
-- Compares against trained legit/fraud models
-- Returns confidence 0-1
-- **Example**: "olyjaxobuna" → H_fraud: 4.31, H_legit: 7.08 → Confidence: 0.78
-
-**Step 2: Pattern Overrides (v2.4.2 - Trust Markov)**
-
-Deterministic rules layered on top of Markov signals:
-
-| Pattern | Override Score | Example |
-|---------|---------------|---------|
-| Dated | 0.2-0.9 (dynamic) | john.2024, user_oct2024 |
-| Sequential | 0.45-0.95 (confidence dependent, only when ≥ threshold) | user001@gmail.com, test_42@yahoo.com |
-| Plus-Addressing | 0.2 base + 0.3 (suspicious tag) + 0.4 (multi-alias) | user+1@gmail.com, user+spam@gmail.com |
-
-**Note**: Keyboard/gibberish detectors remain observability-only; Markov/OOD (with the short-local clamp) and the sequential override handle those scenarios.
-
-**Step 3: Domain Signals**
-
-Independent signals added to final score:
-
-| Signal | Weight (default) | Range |
-|--------|------------------|-------|
-| Domain Reputation | 0.2 | 0-1 |
-| TLD Risk | 0.3 | 0-1 |
-
----
-
-## Decision Thresholds
-
-Risk scores are converted to decisions using thresholds:
-
-| Decision | Risk Score Range | Action |
-|----------|-----------------|--------|
-| `allow` | 0.0 - 0.4 | Allow signup |
-| `warn` | 0.4 - 0.6 | Manual review recommended |
-| `block` | 0.6 - 1.0 | Block signup |
-
-### Block Reasons
-
-Priority-ordered detection logic:
-
-```typescript
-// v2.2.0 - Simplified block reason logic
-function determineBlockReason({
-  riskScore,
-  markovResult,
-  patternFamilyResult,
-  domainReputationScore,
-  tldRiskScore,
-  config
-}) {
-  // High-confidence detections (first match wins)
-  if (markovResult?.isLikelyFraudulent &&
-      markovResult.confidence > config.confidenceThresholds.markovFraud) {
-    return 'markov_chain_fraud';
-  }
-
-  if (patternFamilyResult?.patternType === 'sequential') {
-    return 'sequential_pattern';
-  }
-
-  // Risk-based messaging
-  if (riskScore >= config.riskThresholds.block) {
-    if (tldRiskScore > 0.5) return 'high_risk_tld';
-    if (domainReputationScore > 0.5) return 'domain_reputation';
-    if (patternFamilyResult?.patternType === 'dated') return 'dated_pattern';
-    return 'high_risk_multiple_signals';
-  }
-
-  return 'low_risk';
-}
-```
-
----
-
-## Examples
-
-### Example 1: Markov Fraud Detection
-
-**Email**: `randomuser@provider.com`
-
-```json
-{
-  "signals": {
-    "markovDetected": true,
-    "markovConfidence": 0.78,
-    "markovCrossEntropyLegit": 7.08,
-    "markovCrossEntropyFraud": 4.31,
-    "patternType": "random",
-    "domainReputationScore": 0,
-    "tldRiskScore": 0.29
-  }
-}
-```
-
-**Calculation**:
-1. Markov: 0.78 (fraud detected via trained model)
-3. Sequential: No
-4. Dated: No
-5. Domain risk: 0 * 0.2 + 0.29 * 0.1 = 0.029
-6. **Final: 0.78 + 0.029 = 0.81**
-
-**Decision**: `block` (reason: `markov_chain_fraud`)
-
----
-
-### Example 2: Legitimate Name
-
-**Email**: `person1.person2@gmail.com`
-
-```json
-{
-  "signals": {
-    "markovDetected": false,
-    "markovConfidence": 1.0,
-    "markovCrossEntropyLegit": 4.56,
-    "markovCrossEntropyFraud": 6.89,
-    "patternType": "random",
-    "domainReputationScore": 0,
-    "tldRiskScore": 0.29
-  }
-}
-```
-
-**Calculation**:
-1. Markov: 0 (legit detected, Markov confident it's legitimate)
-2. Sequential: No
-3. Dated: No
-4. Domain risk: 0 * 0.2 + 0.29 * 0.3 = 0.087
-5. **Final: 0 + 0.087 = 0.09**
-
-**Decision**: `allow`
-
----
-
-### Example 3: Keyboard Walk (Detected by Markov)
-
-**Email**: `qwerty123@mail.com`
-
-> **Note (v2.2.0)**: Keyboard walks are now detected automatically by Markov Chain (trained on keyboard patterns).
-
-```json
-{
-  "signals": {
-    "markovDetected": true,
-    "markovConfidence": 0.82,
-    "markovCrossEntropyLegit": 6.15,
-    "markovCrossEntropyFraud": 3.21,
-    "patternType": "random",
-    "domainReputationScore": 0,
-    "tldRiskScore": 0.29
-  }
-}
-```
-
-**Calculation**:
-1. Markov: 0.82 (high confidence fraud - trained model recognizes "qwerty")
-2. Sequential: No
-3. Dated: No
-4. Domain risk: 0 * 0.2 + 0.29 * 0.3 = 0.087
-5. **Final: 0.82 + 0.087 = 0.91**
-
-**Decision**: `block` (reason: `markov_chain_fraud`)
-
----
-
-### Example 4: Sequential Pattern
-
-**Email**: `user123@example.com`
-
-```json
-{
-  "signals": {
-    "markovDetected": true,
-    "markovConfidence": 0.25,
-    "patternType": "sequential",
-    "domainReputationScore": 0,
-    "tldRiskScore": 0.29
-  }
-}
-```
-
-**Calculation**:
-1. Markov: 0.25 (low confidence)
-2. Sequential: **YES → override to 0.8**
-3. Dated: No
-4. Domain risk: 0 * 0.2 + 0.29 * 0.3 = 0.087
-5. **Final: max(0.25, 0.8) + 0.087 = 0.89**
-
-**Decision**: `block` (reason: `sequential_pattern`)
-
----
+**Dashboard**: Access analytics at `https://fraud.erfi.dev/dashboard`
+- Time series visualization
+- Precision/recall metrics
+- Model version tracking
+- Score distribution histograms
 
 ## Performance
 
-### Measured Accuracy (v2.0+)
+### Latency Breakdown
 
-| Metric | Value |
-|--------|-------|
-| Overall Accuracy | 93% (25/27 test cases) |
-| Fraud Detection | 100% (16/16 blocked) |
-| False Negative Rate | **0%** |
-| Legitimate Detection | 82% (9/11 allowed) |
-| Worker Startup | 3ms |
-| Detection Latency | <50ms |
+| Stage | Latency | Optimization |
+|-------|---------|--------------|
+| Feature extraction | 1-3ms | In-memory computation |
+| Model loading (cache hit) | <0.1ms | 60s TTL in-memory cache |
+| Model loading (cache miss) | 10-50ms | KV fetch with edge caching |
+| Random Forest evaluation | 1-2ms | Optimized tree traversal |
+| Decision Tree evaluation | <1ms | Single tree, fast fallback |
+| Total (typical) | **5-10ms** | Including logging |
 
-### Training Data
+### Caching Strategy
 
-- **Legitimate**: 5,000 real name patterns
-- **Fraud**: 5,000 gibberish patterns
-- **Model Size**: 8.7 KB each (tiny!)
-- **Format**: N-gram Markov Chain (2-gram)
+1. **Model cache**: 60-second TTL in Worker memory
+2. **KV edge cache**: Cloudflare's global cache
+3. **Hot reload**: Models update within 60s without redeployment
 
-### Known Limitations
+## Configuration
 
-1. **Synthetic Training Data**
-   - Short generic words ("info", "support") may score high
-   - **Solution**: Retrain with 50k+ real production data exported from D1 (see `docs/DATASETS.md`)
+### Thresholds
 
-2. **Single-Character Addresses**
-   - Very short emails (1-2 chars) flagged as suspicious
-   - **Acceptable**: Legitimately suspicious pattern
+**File**: `config/production/config.json` (stored in KV)
 
----
+```json
+{
+  "blockThreshold": 0.65,
+  "warnThreshold": 0.35,
+  "modelVersion": "3.0.0-forest"
+}
+```
 
-## Migration from v1.x
+**Update via CLI**:
+```bash
+wrangler kv key put config.json \
+  --binding CONFIG \
+  --path config/production/config.json \
+  --remote
+```
 
-### Breaking Changes
+### Model Selection
 
-**Removed**:
-- Legacy entropy/pattern `riskWeights` (domain/TLD weights remain)
-- Entropy pre-check (lines 259-261)
-- Math.max() detector competition
-- Nested if-else scoring chains
+The system automatically selects the best available model:
 
-**Added**:
-- `calculateAlgorithmicRiskScore()` helper
-- `determineBlockReason()` helper
-- Data-driven pattern overrides
+1. **Random Forest** (if available) → Primary scoring
+2. **Decision Tree** (if RF unavailable) → Fallback
+3. **Hard rules** (if no models) → Safe default (block disposable only)
 
-### No Action Required
+## Troubleshooting
 
-API contract remains the same. Changes are transparent to API consumers.
+### Score Too High (False Positives)
 
----
+**Symptom**: Legitimate users blocked
 
-## Summary
+**Diagnosis**:
+```bash
+npm run cli test:api user@example.com --debug
+```
 
-**v2.0+ Scoring Philosophy**:
-1. Markov Chain is primary detector (confidence used directly)
-2. Pattern-specific overrides for deterministic rules
-3. Domain signals added independently
-4. No hardcoded weight multiplication
-5. Clean, testable, maintainable code
+**Common Causes**:
+- Sequential numbering in email (e.g., "john1985@gmail.com")
+- Uncommon TLD (.xyz, .info)
+- Name mismatch (submission name ≠ email name)
 
-**Result**: 100% fraud detection with 0% false negatives!
+**Solutions**:
+1. Adjust `blockThreshold` upward (0.65 → 0.70)
+2. Retrain model with more diverse legitimate samples
+3. Add feature weights to downweight less reliable signals
+
+### Score Too Low (False Negatives)
+
+**Symptom**: Fraud getting through
+
+**Diagnosis**: Check analytics dashboard for missed fraud patterns
+
+**Common Causes**:
+- Novel fraud patterns not in training data
+- Sophisticated bots mimicking real users
+- Model drift (training data outdated)
+
+**Solutions**:
+1. Adjust `blockThreshold` downward (0.65 → 0.60)
+2. Add new fraud samples to training dataset
+3. Retrain model with conflict zone weighting
+
+### Model Not Loading
+
+**Symptom**: `decision_tree_version: "unavailable"` in logs
+
+**Diagnosis**:
+```bash
+wrangler kv key list --binding CONFIG --remote
+wrangler kv key get decision_tree.json --binding CONFIG --remote
+```
+
+**Solutions**:
+1. Verify KV binding in `wrangler.jsonc`
+2. Upload model: `npm run cli model:train -- --n-trees 1 --upload`
+3. Check KV size limits (25MB max)
+
+## References
+
+- [DETECTORS.md](./DETECTORS.md) - Feature extraction details
+- [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md) - Training workflow
+- [CONFIGURATION.md](./CONFIGURATION.md) - KV and D1 setup
+- [ARCHITECTURE.md](./ARCHITECTURE.md) - System overview
+
+## Changelog
+
+### v3.0.0 (2025-11-30)
+- ✅ Unified Random Forest + Decision Tree inference
+- ✅ 39-feature vector with MX, geo, identity signals
+- ✅ Conflict zone weighting for high-entropy fraud
+- ✅ KV-backed models with hot-reload
+- ✅ Comprehensive logging to D1
+
+### v2.x
+- Legacy rule-based scoring (deprecated)

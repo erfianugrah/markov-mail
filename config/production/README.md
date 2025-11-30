@@ -1,138 +1,52 @@
-# Production Configuration
+# Production Artifacts
 
-This directory contains the production-ready configuration and trained calibration model used by Markov Mail.
+Everything in this directory is safe to upload directly to Cloudflare KV. It represents the exact configuration and model bundle the Worker expects.
+
+---
 
 ## Files
 
-### `calibration.json`
-**Trained logistic regression model with 28 features**
-
-- **Version**: `calibration_20251127122354673`
-- **Training Dataset**: 89,352 emails (legitimate + fraudulent)
-- **Accuracy**: 83.5%
-- **Precision**: 80.9%
-- **Recall**: 84.0%
-- **F1 Score**: 82.4%
-
-**Production Performance** (99-email validation):
-- **Recall**: 100% (caught all fraud)
-- **Precision**: 96% (only 2 false positives)
-- **F1 Score**: 97.96%
-
-**Features** (28 total):
-- **Markov Chain** (8): Cross-entropy scores from 2-gram and 3-gram models
-- **Linguistic** (6): pronounceability, vowel_ratio, max_consonant_cluster, impossible_cluster_count, syllable_estimate, repeated_char_ratio
-- **Structure** (4): has_word_boundaries, segment_count, avg_segment_length, segments_without_vowels_ratio
-- **Statistical** (3): unique_char_ratio, vowel_gap_ratio, max_digit_run
-- **Other** (7): sequential_confidence, plus_risk, local_length, digit_ratio, provider flags, tld_risk, abnormality_risk
+| File | Description |
+|------|-------------|
+| `config.json` | Runtime configuration (risk thresholds, feature toggles, logging) |
+| `decision-tree.example.json` | Sample JSON model illustrating the required schema |
 
 ### `config.json`
-**Production KV configuration**
 
-Complete runtime configuration including:
-- Risk thresholds (block: 0.6, warn: 0.3)
-- Base risk scores for hard blockers
-- Confidence thresholds for detectors
-- Feature flags (all detectors enabled)
-- Pattern thresholds (sequential, dated, plus-addressing)
-- **Calibration coefficients** (embedded from `calibration.json`)
+Key sections:
 
-### Markov Chain Models
-**Pre-trained n-gram models (92K emails)**
+* `riskThresholds`: `warn` / `block` cutoffs (defaults: warn ≥ 0.35, block ≥ 0.65).
+* `baseRiskScores`: deterministic blockers (invalid format, disposable domains, high entropy).
+* `features`: toggles for disposable domain checks, pattern detection, and TLD risk profiling.
+* `logging`: log level + block logging flags.
+* `headers`: whether the worker adds fraud headers to downstream responses.
+* `actionOverride`: set to `allow`, `warn`, or `block` when you need a kill switch/monitoring mode.
 
-Four model files trained on production data:
-- `markov_fraud_2gram.json` (1.0M) - 2-gram fraud patterns
-- `markov_fraud_3gram.json` (2.9M) - 3-gram fraud patterns
-- `markov_legit_2gram.json` (1.2M) - 2-gram legitimate patterns
-- `markov_legit_3gram.json` (2.6M) - 3-gram legitimate patterns
-
-These models power the core Markov Chain detection system that generates the cross-entropy features used by the calibration layer.
-
-## Usage
-
-### Option 1: Upload to Cloudflare KV (Recommended)
+Upload with:
 
 ```bash
-# 1. Upload config to your CONFIG KV namespace
-npx wrangler kv key put config.json \
-  --path=config/production/config.json \
-  --binding=CONFIG \
-  --remote
-
-# 2. Upload Markov Chain models to your MARKOV_MODEL KV namespace
-npx wrangler kv key put markov_fraud_2gram \
-  --path=config/production/markov_fraud_2gram.json \
-  --binding=MARKOV_MODEL \
-  --remote
-
-npx wrangler kv key put markov_fraud_3gram \
-  --path=config/production/markov_fraud_3gram.json \
-  --binding=MARKOV_MODEL \
-  --remote
-
-npx wrangler kv key put markov_legit_2gram \
-  --path=config/production/markov_legit_2gram.json \
-  --binding=MARKOV_MODEL \
-  --remote
-
-npx wrangler kv key put markov_legit_3gram \
-  --path=config/production/markov_legit_3gram.json \
-  --binding=MARKOV_MODEL \
-  --remote
+npm run cli config:upload -- config/production/config.json
 ```
 
-The worker will automatically load the configuration (including calibration) and models from KV on startup.
+### `decision-tree.example.json`
 
-### Option 2: Use in Training/Testing
+A tiny tree that demonstrates the JSON format used by `src/models/decision-tree.ts`. Real models should be generated via the offline pipeline (see [`docs/DECISION_TREE.md`](../../docs/DECISION_TREE.md)) and uploaded as `decision_tree.json` in the `CONFIG` KV namespace:
 
 ```bash
-# Use the calibration model for local testing
-npm run cli -- test:batch \
-  --input your-test-data.csv \
-  --calibration config/production/calibration.json
+npm run cli kv:put -- \
+  --binding CONFIG \
+  decision_tree.json \
+  --file config/production/decision-tree.example.json
 ```
 
-### Option 3: Train Your Own
+Each leaf should include a human-readable `reason`. The worker logs the reason + traversal path to D1 so you can inspect why a request was blocked.
 
-If you have your own dataset, you can retrain:
+---
 
-```bash
-npm run cli -- train:calibrate \
-  --dataset your-training-data.csv \
-  --models models \
-  --output new-calibration.json
-```
+## Promotion checklist
 
-## Notes
-
-- **No PII**: These files contain only model coefficients, transition probabilities, and thresholds - no personal data
-- **Pre-trained**: This is the exact calibration model and Markov models tested in production with 97.96% F1 score
-- **Ready to Use**: Upload to KV and the worker will use them immediately (after 60s cache expiration)
-- **Customizable**: Adjust thresholds in `config.json` to tune false positive vs false negative tradeoff
-- **Total Size**: ~8MB (4 model files + config + calibration)
-
-## Performance Tuning
-
-If you're getting too many false positives, increase the block threshold:
-```json
-{
-  "riskThresholds": {
-    "block": 0.7,  // Was 0.6, increase to reduce false positives
-    "warn": 0.4     // Was 0.3
-  }
-}
-```
-
-If you're missing fraud (false negatives), decrease the threshold:
-```json
-{
-  "riskThresholds": {
-    "block": 0.5,  // Was 0.6, decrease to catch more fraud
-    "warn": 0.25    // Was 0.3
-  }
-}
-```
-
-## Support
-
-For questions or issues, see the main documentation in `docs/`.
+1. Train/export a new tree (`ml/export_tree.py`).
+2. Upload it to `CONFIG` KV as `decision_tree.json`.
+3. Update `config.json` if thresholds or feature flags changed.
+4. Record the change in `CHANGELOG.md` and `INVENTORY.md`.
+5. (Optional) run an A/B test using the `ab:*` CLI commands before rolling out globally.

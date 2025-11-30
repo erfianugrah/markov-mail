@@ -202,7 +202,7 @@ console.log({
 - [ ] Test legitimate emails (should allow)
 - [ ] Test sequential patterns (should block/warn)
 - [ ] Test disposable domains (should block)
-- [ ] Test gibberish emails (should block/warn)
+- [ ] Test high-entropy/random emails (should block/warn)
 - [ ] Test service failures (should fail open)
 - [ ] Load test (ensure no bottleneck)
 
@@ -340,10 +340,10 @@ async function validateEmailCached(email) {
 
 ## Related Documentation
 
-- [API Reference](../../docs/API.md) - Complete API documentation
-- [Integration Guide](../../docs/INTEGRATION_GUIDE.md) - Detailed integration patterns
-- [Analytics Dashboard](../../docs/ANALYTICS.md) - Monitor fraud detection
-- [Configuration](../../docs/CONFIGURATION.md) - Configure risk thresholds
+- [API Quickstart](../../docs/API_DECISION_TREE.md) – Request/response schema for the reset Worker.
+- [Configuration Guide](../../docs/CONFIGURATION.md) – How to manage `config.json` + `decision_tree.json` in KV.
+- [Architecture Overview](../../docs/ARCHITECTURE.md) – High-level picture of the new runtime.
+Legacy resources from the previous stack were removed in this reset. Use git history if you need to dig them up.
 
 ---
 

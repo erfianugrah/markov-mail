@@ -42,7 +42,8 @@
 			"./worker-configuration.d.ts",
 			"./cloudflare-test.d.ts",
 			"@types/bun",
-			"@cloudflare/workers-types"
+			"@cloudflare/workers-types",
+			"vitest/globals"
 		]
 	},
 	"exclude": [

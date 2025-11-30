@@ -1,783 +1,488 @@
-# Fraud Detection System - All Detectors
+# Detectors - Feature Extraction Reference
 
-**Complete reference for all fraud detection algorithms**
+**Version**: 3.0.0
+**Last Updated**: 2025-11-30
 
 ## Overview
 
-The system uses **6 detection methods** with Markov Chain as the primary detector and OOD detection as the safety net.
+Detectors are **feature extractors**, not risk scorers. They analyze email addresses and related metadata to produce numeric or boolean features that feed into the Random Forest / Decision Tree models. All detector outputs must be registered in `src/utils/feature-vector.ts` to be available for training and inference.
 
-| Detector | Purpose | Patterns Detected | Latency |
-|----------|---------|-------------------|---------|
-| **Markov Chain** | **ML fraud detection** | **All fraud patterns** | **0.10ms** |
-| **OOD Detection** | **Abnormality detection** | **Novel/unfamiliar patterns** | **+0ms** |
-| Sequential (thresholded) | Numbered accounts (observability + scoring when high-confidence) | user123, test001 | 0.05ms |
-| Dated | Date-based patterns | john.2025, oct2024 | 0.05ms |
-| Plus-Addressing | Email aliasing abuse | user+1, user+spam | 0.10ms |
-| TLD Risk | Domain extension risk | .tk, .ml, .ga | 0.05ms |
-| Benford's Law | Batch attack detection | Statistical analysis | N/A (batch only) |
+**Architecture**: `Detectors → Features → buildFeatureVector() → Model (RF/DT) → Risk Score`
 
-**New in v2.4.0**: Out-of-Distribution (OOD) Detection catches patterns unfamiliar to both models. See [OOD_DETECTION.md](./OOD_DETECTION.md) for complete documentation.
+## Design Principles
 
----
+1. **Features, not scores**: Detectors return raw measurements (entropy, length, ratios), not risk assessments
+2. **Domain-independent**: Features work across languages and email providers
+3. **Type safety**: All features defined in `FeatureVectorInput` interface
+4. **Graceful degradation**: Missing/optional features (like MX lookups) handled via fallbacks
 
-## 1. Sequential Pattern Detector (Telemetry + Targeted Scoring)
+## Detector Categories
 
-> **Status (v2.4.2)**: Observability remains the default, but sequential patterns now contribute risk again when the detector is highly confident (confidence ≥ `config.patternThresholds.sequential`). Legitimate addresses with ≤3 digit suffixes and no generic bot base still bypass scoring entirely.
+### 1. Sequential Pattern Detection
+**Source**: `src/detectors/sequential.ts`
 
-**File**: `src/detectors/sequential.ts` (301 lines)
+Detects automated account creation patterns with sequential numbering.
 
-### Purpose
-Detects emails with sequential numbering patterns common in automated bot signups.
+**Examples**:
+- `user1@gmail.com`, `user2@gmail.com`, `user3@gmail.com`
+- `test_account_001@outlook.com`, `test_account_002@outlook.com`
+- `demo123@yahoo.com`, `demo124@yahoo.com`
 
-### Examples
-```
-✅ user123@gmail.com          (trailing number)
-✅ test001@outlook.com        (padded zeros)
-✅ account_42@yahoo.com       (underscore separator)
-❌ personA.personB@gmail.com  (natural name)
-❌ personC.1990@gmail.com     (birth year - legitimate)
-❌ april198807@outlook.com   (birth year+month - legitimate)
-```
+**Features Produced**:
+- `sequential_confidence` (0-1): Likelihood of being sequential
+  - 1.0 = Clear sequential pattern (e.g., "user123", "test001")
+  - 0.5-0.8 = Ambiguous (digits could be birth year or sequential)
+  - 0.0 = No sequential pattern detected
 
-### Birth Year Protection
-**IMPORTANT**: The detector automatically **whitelists birth years** (1940-2025) to prevent false positives. This includes:
-- Exact 4-digit years: `john.2000`, `mary1985`
-- Years with month/date: `april198807` (1988 + month 07)
-- Years with suffixes: `butler198145` (1981 + suffix)
-- Personal names with **≤3 digit suffixes** (e.g., `andrew123`) also bypass scoring unless the base contains a known automation keyword (`user`, `test`, `demo`, etc.).
+**Detection Logic**:
+- Extracts base pattern (e.g., "user" from "user123")
+- Checks against common sequential bases (test, user, account, demo, etc.)
+- Distinguishes birth years (1940-2025) from sequential IDs
+- Rewards leading zeros ("001" vs "1") as stronger signal
 
-```typescript
-// Birth year detection (lines 28-44)
-function extractBirthYear(digits: string): number | null {
-  const currentYear = new Date().getFullYear();
-
-  // Check for 4-digit years within digit sequences
-  for (let i = 0; i <= digits.length - 4; i++) {
-    const year = parseInt(digits.substring(i, i + 4), 10);
-    const yearAge = currentYear - year;
-
-    // Plausible birth year: 13-100 years old
-    if (year >= 1940 && year <= currentYear &&
-        yearAge >= 13 && yearAge <= 100) {
-      return year;  // Skip detection
-    }
-  }
-  return null;
-}
-```
-
-### Algorithm
-```typescript
-// Extract numbers from local part
-const numbers = extractNumbers(localPart);
-
-// Check if trailing number is sequential
-if (numbers.length > 0) {
-    const lastDigit = numbers[numbers.length - 1];
-
-    // EXCEPTION: Skip if contains birth year
-    if (extractBirthYear(lastDigit)) {
-        return { isSequential: false };
-    }
-
-    if (isSequentialPattern(lastDigit)) {
-        return { detected: true, confidence: 0.9 };
-    }
-}
-```
-
-### Confidence Factors (7 total)
-1. Trailing number present (+0.3)
-2. Number is padded with zeros (+0.2)
-3. Number is short (1-3 digits) (+0.15)
-4. Base part is generic word (+0.15)
-5. Separator before number (+0.1)
-6. Multiple numbers present (-0.2)
-7. Number context makes sense (-0.1)
-8. **Birth year detected (×0 - skip entirely)**
-
-### Risk Contribution
-When `patternType === 'sequential'` **and** the detector confidence meets your configured threshold (default 0.6), the middleware applies:
-
-```ts
-let sequentialRisk = 0;
-
-if (confidence >= threshold) {
-  sequentialRisk = Math.min(0.45 + confidence * 0.55, 0.95);
-} else if (confidence >= Math.max(0.4, threshold * 0.8)) {
-  sequentialRisk = confidence * 0.5; // telemetry bump only
-}
-
-score = Math.max(score, sequentialRisk);
-```
-
-This keeps observability intact for ambiguous names while letting obvious automation sequences push overall risk near block thresholds.
+**Used By**: Primary fraud signal - automated bot registrations
 
 ---
 
-## 2. Dated Pattern Detector
+### 2. Plus-Addressing Analysis
+**Source**: `src/detectors/plus-addressing.ts`
 
-**File**: `src/detectors/dated.ts` (371 lines)
+Analyzes Gmail-style plus-addressing (`user+tag@gmail.com`) for abuse patterns.
 
-### Purpose
-Finds date or year patterns in email addresses, common in temporary account creation.
+**Examples**:
+- `john+spam@gmail.com` → Base: `john@gmail.com`
+- `test+disposable123@outlook.com` → Suspicious tag length
 
-### Examples
-```
-✅ personA.personB.2025@gmail.com (year suffix)
-✅ user_2025@yahoo.com        (year with separator)
-✅ name.oct2024@domain.com    (month+year)
-✅ 20251031@gmail.com         (YYYYMMDD)
-❌ personC.personD@gmail.com  (no dates)
-```
+**Features Produced**:
+- `plus_risk` (0-1): Risk score based on tag characteristics
+  - Long random tags (>8 chars) = higher risk
+  - Multiple segments = higher risk
+  - Normalized base email returned for deduplication
 
-### Date Formats Detected (5 types)
-1. **Year**: `2025`, `2024`, `2026` (current ±1)
-2. **Month-Year**: `jan2025`, `oct2024`, `122024`
-3. **Full Date**: `20250101`, `2025-01-01`
-4. **Leading Year**: `2025.john`, `2024_user`
-5. **Short Year**: `25`, `24` (risky - many false positives)
+**Detection Logic**:
+- Splits on `+` delimiter (Gmail, Outlook, Yahoo support)
+- Analyzes tag length, segment count, randomness
+- Returns canonical base address for grouping
 
-### Confidence Levels
-- Full date (YYYYMMDD): 0.9
-- Month-year: 0.8
-- Year only: 0.7
-- Leading year: 0.6
-- Short year: 0.5
-
-### Risk Contribution
-```typescript
-baseRisk = 0.35;
-finalRisk = baseRisk + (confidence * 0.3);
-// Range: 0.35 - 0.65
-```
+**Used By**: Detecting disposable/throwaway account variations
 
 ---
 
-## 3. Plus-Addressing Detector
+### 3. Linguistic Features
+**Source**: `src/detectors/linguistic-features.ts`
 
-**File**: `src/detectors/plus-addressing.ts` (329 lines)
+Extracts phonetic and structural properties of the local part (before `@`).
 
-### Purpose
-Normalizes emails and detects plus-addressing abuse (same user creating multiple accounts).
+**Features Produced** (via `linguistic` namespace):
 
-### Examples
-```
-✅ user+1@gmail.com
-✅ user+2@gmail.com
-✅ name+spam@yahoo.com
-✅ test+tag123@protonmail.com
-❌ legitimate+newsletter@gmail.com (single use acceptable)
-```
+| Feature | Type | Description | Range |
+|---------|------|-------------|-------|
+| `pronounceability` | number | Phonetic naturalness (consonant cluster analysis) | 0-1 |
+| `vowel_ratio` | number | Ratio of vowels to total letters | 0-1 |
+| `max_consonant_cluster` | number | Longest consonant run (e.g., "schw" = 4) | 0-64 |
+| `repeated_char_ratio` | number | Ratio of repeated characters (e.g., "aaa") | 0-1 |
+| `syllable_estimate` | number | Estimated syllable count | 0-32 |
+| `impossible_cluster_count` | number | Count of unpronounceable clusters | 0-16 |
 
-### Supported Providers (11)
-- Gmail (also removes dots: `j.o.h.n@gmail.com` → `person1@gmail.com`)
-- Yahoo, Outlook, AOL
-- iCloud, ProtonMail, FastMail
-- Zoho, GMX, Mail.com, Yandex
+**Detection Logic**:
+- Vowel/consonant identification (handles semi-vowels: y, w)
+- Common consonant clusters recognized (sch, thr, str, etc.)
+- Syllable estimation via vowel groups
+- Pronounceability heuristic: penalizes long consonant clusters
 
-### Normalization Process
-```typescript
-// Gmail example
-"person1.person2+tag@gmail.com"
-  → Remove dots: "person1person2+tag@gmail.com"
-  → Remove plus: "person1person2@gmail.com"
-  → Result: canonical form for deduplication
-```
-
-### Risk Scoring
-- Single plus-address: +0.2 risk
-- Suspicious tag (numbers, "spam", etc.): +0.3 risk
-- Multiple variants detected (batch): +0.4 risk
+**Used By**: Distinguishing real names from random gibberish (e.g., "john.smith" vs "xkzqwrtpl")
 
 ---
 
-## 4. TLD Risk Profiling
+### 4. Structural Features
+**Source**: `src/detectors/linguistic-features.ts` (via `structure` namespace)
 
-**File**: `src/detectors/tld-risk.ts` (398 lines)
+Analyzes word boundaries and segmentation patterns.
 
-### Purpose
-Categorizes domain TLDs by abuse potential and registration cost.
+**Features Produced** (via `structure` namespace):
 
-### TLD Categories (31 TLDs tracked)
+| Feature | Type | Description | Example |
+|---------|------|-------------|---------|
+| `has_word_boundaries` | boolean | Contains dots/underscores/hyphens | `john.doe` = true |
+| `segment_count` | number | Number of segments split by boundaries | `a.b.c` = 3 |
+| `avg_segment_length` | number | Average length per segment | `john.doe` = 4 |
+| `segments_without_vowels_ratio` | number | Ratio of segments lacking vowels | 0-1 |
 
-#### Trusted (3 TLDs) - Risk Multiplier: 0.2 - 0.5
-```
-.edu    (educational institutions)  0.2x
-.gov    (government)                0.3x
-.mil    (military)                  0.2x
-```
+**Detection Logic**:
+- Splits on word boundary chars (`.`, `_`, `-`)
+- Counts segments and analyzes each
+- Calculates average lengths
+- Flags segments without vowels (suspicious)
 
-#### Standard (14 TLDs) - Risk Multiplier: 0.8 - 1.3
-```
-.com    (commercial)                1.0x
-.net    (network)                   1.0x
-.org    (organization)              0.9x
-.io     (tech startups)             1.1x
-.co     (commercial alternative)    1.2x
-.us, .uk, .ca, .au, .de (national)  0.8-1.0x
-```
-
-#### Suspicious (5 TLDs) - Risk Multiplier: 2.1 - 2.7
-```
-.xyz    (cheap)                     2.5x
-.top    (cheap)                     2.6x
-.club   (cheap)                     2.4x
-.online (cheap)                     2.3x
-.site   (cheap)                     2.2x
-```
-
-#### High Risk (5 TLDs) - Risk Multiplier: 2.5 - 3.0
-```
-.tk     (Tokelau, FREE)             3.0x
-.ml     (Mali, FREE)                2.9x
-.ga     (Gabon, FREE)               2.8x
-.cf     (Central African Rep, FREE) 2.7x
-.gq     (Equatorial Guinea, FREE)   2.6x
-```
-
-### Risk Calculation
-```typescript
-// Normalize risk multiplier to 0-1 scale
-riskScore = (riskMultiplier - 0.2) / 2.8;
-
-// Examples:
-.edu: (0.2 - 0.2) / 2.8 = 0.00
-.com: (1.0 - 0.2) / 2.8 = 0.29
-.xyz: (2.5 - 0.2) / 2.8 = 0.82
-.tk:  (3.0 - 0.2) / 2.8 = 1.00
-```
-
-### Abuse Statistics
-```
-.tk (Tokelau):
-  - 70% used for disposable email
-  - 80% spam/phishing domains
-  - FREE registration
-  - No verification required
-
-.com (Commercial):
-  - 5% disposable email
-  - 10% spam domains
-  - ~$10/year registration
-  - Domain verification required
-```
+**Used By**: Detecting structured names (legitimate) vs unsegmented gibberish (fraud)
 
 ---
 
-## 5. Benford's Law Analyzer
+### 5. Statistical Features
+**Source**: `src/detectors/linguistic-features.ts` (via `statistical` namespace)
 
-**File**: `src/detectors/benfords-law.ts` (315 lines)
+Extracts entropy and character distribution metrics.
 
-### Purpose
-Statistical batch analysis to detect automated account generation patterns.
+**Features Produced** (via `statistical` namespace):
 
-### Theory: Benford's Law
+| Feature | Type | Description | Range |
+|---------|------|-------------|-------|
+| `unique_char_ratio` | number | Ratio of unique chars to total | 0-1 |
+| `vowel_gap_ratio` | number | Ratio of max vowel gap to length | 0-1 |
+| `max_digit_run` | number | Longest consecutive digit sequence | 0-128 |
+| `bigram_entropy` | number | Shannon entropy of character bigrams | 0-~7 |
 
-**Natural digit distribution**:
-```
-Digit 1: 30.1%  (most common)
-Digit 2: 17.6%
-Digit 3: 12.5%
-Digit 4: 9.7%
-Digit 5: 7.9%
-Digit 6: 6.7%
-Digit 7: 5.8%
-Digit 8: 5.1%
-Digit 9: 4.6%   (least common)
-```
+**Detection Logic**:
+- Calculates Shannon entropy on bigrams (2-char sequences)
+- Tracks character uniqueness and diversity
+- Measures digit clustering
+- Identifies vowel deserts (long consonant stretches)
 
-**Bot/Sequential distribution**:
-```
-Digits 1-9: ~11.1% each (uniform)
-```
-
-### Statistical Test: Chi-Square
-```typescript
-// Chi-square goodness-of-fit test
-χ² = Σ [(observed - expected)² / expected]
-
-// Degrees of freedom: 8 (9 digits - 1)
-// Critical values:
-//   α = 0.10 (90% confidence): 13.362
-//   α = 0.05 (95% confidence): 15.507
-//   α = 0.01 (99% confidence): 20.090
-
-if (χ² > 15.507) {
-    // Reject null hypothesis
-    // Distribution does NOT follow Benford's Law
-    // Likely automated generation
-}
-```
-
-### Example Analysis
-```typescript
-// Legitimate signups (30 examples)
-user1, user8, user12, user15, user21, user34, user41, ...
-First digits: [1,8,1,1,2,3,4,...]
-Distribution: 1:40%, 2:15%, 3:12%, 4:10%, ... (close to Benford)
-χ² = 8.23 (< 15.507)
-Result: NATURAL ✅
-
-// Bot signups (30 examples)
-user1, user2, user3, user4, user5, user6, ...
-First digits: [1,2,3,4,5,6,7,8,9,1,2,3,...]
-Distribution: 1:11%, 2:11%, 3:11%, 4:11%, ... (uniform)
-χ² = 42.15 (> 15.507)
-Result: SUSPICIOUS ❌
-```
-
-### Usage
-- **NOT in critical path** (requires batch data)
-- Used by admin endpoints
-- Analyzes attack waves after the fact
-- Helps identify coordinated campaigns
+**Used By**: Information-theoretic fraud detection (random strings have high entropy)
 
 ---
 
-## 6. Markov Chain Detector (Phase 7)
+### 6. N-Gram Analysis (Multilingual)
+**Source**: `src/detectors/ngram-multilang.ts`, `src/detectors/ngram-analysis.ts`
 
-**File**: `src/detectors/markov-ensemble.ts`
+Evaluates naturalness of local part using language-specific n-gram models.
 
-### Purpose
-Advanced statistical model that learns character transition patterns to distinguish legitimate from fraudulent emails.
+**Features Produced**:
+- `entropy_score` (0-16): Combined bigram/trigram entropy
 
-### Research Basis
-**Bergholz et al. (2008)** - "Improved Phishing Detection using Model-Based Features"
-- CEAS 2008 Conference on Email and Anti-Spam
-- **97.95% F-measure** with Markov Chain features alone
-- **69.92% error reduction** vs baseline
-- Dynamic character transition modeling
+**Detection Logic**:
+- Trained on legitimate email corpus (116K+ samples)
+- Supports multiple languages via character-level models
+- Low entropy = natural patterns (e.g., "john", "marie")
+- High entropy = random strings (e.g., "xkzqwrtpl")
 
-### How It Works
+**Models**:
+- Not currently deployed (placeholder for future ML enhancement)
+- System uses raw entropy features instead
 
-**Step 1: Training Phase** (requires labeled data)
-```typescript
-// Train two models
-legitimateModel = new DynamicMarkovChain();
-fraudulentModel = new DynamicMarkovChain();
-
-// Learn character transitions
-legitimateEmails.forEach(email => {
-    legitimateModel.train(email, adaptationRate = 0.5);
-});
-
-fraudulentEmails.forEach(email => {
-    fraudulentModel.train(email, adaptationRate = 0.5);
-});
-```
-
-**Step 2: Cross-Entropy Calculation**
-```typescript
-// Measure how well each model "predicts" the email
-H(x, M) = -Σ log₂(P(char[i+1] | char[i], M))
-
-// Lower cross-entropy = better fit
-H(email, legitimateModel) = 3.2
-H(email, fraudulentModel) = 1.8
-// → Email fits fraudulent model better!
-```
-
-**Step 3: Detection**
-```typescript
-function detectMarkovPattern(email, legitModel, fraudModel): MarkovResult {
-    const H_legit = legitModel.crossEntropy(email);
-    const H_fraud = fraudModel.crossEntropy(email);
-
-    const difference = H_legit - H_fraud;
-    const ratio = difference / H_legit;
-
-    // If fraudulent model fits much better, likely fraud
-    const isLikelyFraudulent = ratio > 0.15;  // 15% threshold
-    const confidence = Math.min(ratio * 2, 1.0);
-
-    return {
-        isLikelyFraudulent,
-        crossEntropyLegit: H_legit,
-        crossEntropyFraud: H_fraud,
-        confidence,
-        differenceRatio: ratio
-    };
-}
-```
-
-### Adaptive Training
-To reduce memory usage, the model skips "typical" examples:
-
-```typescript
-// Calculate mean and std dev of cross-entropy
-const mean = average(crossEntropyHistory);
-const stdDev = standardDeviation(crossEntropyHistory);
-
-// Skip training if example is "too typical"
-if (Math.abs(crossEntropy - mean) < adaptationRate * stdDev) {
-    return false;  // Skip this example
-}
-
-// Result: ~40-45% memory savings with no accuracy loss
-```
-
-### Example Detection
-```
-Email: "user999@gmail.com"
-Legit Model H(x): 4.2 (poor fit)
-Fraud Model H(x): 2.1 (good fit)
-Difference: 2.1 (50% ratio)
-Result: FRAUDULENT (confidence: 1.0) ✅
-
-Email: "personA.personB@gmail.com"
-Legit Model H(x): 2.3 (good fit)
-Fraud Model H(x): 3.8 (poor fit)
-Difference: -1.5 (negative ratio)
-Result: LEGITIMATE (confidence: 0.0) ✅
-```
-
-### Model Storage
-```typescript
-// Serialize to JSON for KV storage
-const modelJSON = markovModel.toJSON();
-await env.CONFIG.put('markov_legit_model', JSON.stringify(modelJSON));
-
-// Deserialize on worker startup (cached globally)
-const modelData = await env.CONFIG.get('markov_legit_model', 'json');
-const markovModel = DynamicMarkovChain.fromJSON(modelData);
-```
-
-### Risk Contribution
-```typescript
-if (markovResult.isLikelyFraudulent) {
-    markovRiskScore = markovResult.confidence;  // 0.0 - 1.0
-}
-// Weighted at 25% in final risk calculation
-```
+**Used By**: Language-agnostic fraud detection (works across international names)
 
 ---
 
-## 7. Out-of-Distribution (OOD) Detector (v2.4.0)
+### 7. Pattern Family Detection
+**Source**: `src/detectors/pattern-family.ts`
 
-**File**: `src/middleware/fraud-detection.ts` (integrated with Markov evaluation)
+Hashes email structure to detect bulk account creation with similar patterns.
 
-### Purpose
-Detect patterns that are unfamiliar to BOTH the legitimate and fraudulent models. This catches novel attack patterns not seen during training.
+**Features Produced**:
+- Pattern family hashes (not directly in feature vector)
+- Used for grouping and batch analysis
 
-### The Problem
+**Detection Logic**:
+- Replaces digits with `#`, letters with `a`, special chars normalized
+- `john123@gmail.com` → `aaaa###@gmail.com`
+- Groups emails with same structure
+- Useful for detecting coordinated fraud campaigns
 
-When both Markov models have high cross-entropy (both confused), the system previously treated this as "uncertain" and allowed it. But if BOTH models are confused, that's a consensus signal that the pattern is abnormal.
-
-**Example:**
-```
-Email: oarnimstiaremtn@gmail.com
-H_legit = 4.51 nats (confused)
-H_fraud = 4.32 nats (confused)
-Old behavior: confidence = 0.08 → ALLOW
-New behavior: abnormalityRisk = 0.20 → WARN
-```
-
-### Algorithm
-
-**Step 1: Calculate Minimum Entropy**
-```typescript
-const minEntropy = Math.min(H_legit, H_fraud);
-```
-
-**Step 2: Check OOD Thresholds (v2.4.1 Piecewise)**
-```typescript
-// Three zones: dead (<3.8), warn (3.8-5.5), block (5.5+)
-let abnormalityRisk: number;
-if (minEntropy < 3.8) {
-  abnormalityRisk = 0;
-} else if (minEntropy < 5.5) {
-  abnormalityRisk = 0.35 + ((minEntropy - 3.8) / 1.7) * 0.30;
-} else {
-  abnormalityRisk = 0.65;
-}
-```
-
-**Step 3: Scale to Risk**
-```typescript
-const abnormalityRisk = Math.min(abnormalityScore * 0.15, 0.6);
-```
-
-**Step 4: Combine with Classification Risk**
-```typescript
-const classificationRisk = markovResult.isLikelyFraudulent
-  ? markovResult.confidence
-  : 0;
-
-const finalRisk = Math.max(classificationRisk, abnormalityRisk) + domainRisk;
-```
-
-### Two-Dimensional Risk Model
-
-**Dimension 1: Classification** (differential signal)
-- Which model fits better: fraud vs legit?
-- Measures if the pattern is fraudulent or legitimate
-
-**Dimension 2: Abnormality** (consensus signal)
-- Are both models confused?
-- Measures if the pattern is outside training distribution
-
-We take the MAXIMUM of these two risks (worst case), then add domain signals.
-
-### Threshold Justification: 3.0 Nats
-
-From information theory:
-- **0.69 nats**: log₂ baseline (random guessing)
-- **< 0.2 nats**: good predictions
-- **> 1.0 nats**: poor predictions
-- **> 3.8 nats**: warn zone (unusual patterns)
-- **> 5.5 nats**: block zone (gibberish)
-
-The piecewise system (v2.4.1) provides better precision with a dead zone (<3.8) and improved gibberish detection with a block zone (5.5+).
-
-### Examples
-
-**Severe OOD (Anagram)**:
-```
-Email: inearkstioarsitm2mst@gmail.com
-H_legit = 4.45, H_fraud = 4.68
-minEntropy = 4.45
-abnormalityScore = 1.45
-abnormalityRisk = 0.22
-Decision: WARN
-```
-
-**Moderate OOD**:
-```
-Email: armentsiorast@gmail.com
-H_legit = 3.60, H_fraud = 3.85
-minEntropy = 3.60
-abnormalityScore = 0.60
-abnormalityRisk = 0.09
-Decision: ALLOW (below WARN threshold)
-```
-
-**Normal (No OOD)**:
-```
-Email: person1@gmail.com
-H_legit = 2.1, H_fraud = 3.8
-minEntropy = 2.1
-abnormalityScore = 0 (below 3.0)
-oodDetected = false
-Decision: ALLOW
-```
-
-### What Triggers OOD?
-
-**Typical OOD Patterns:**
-- Anagrams: `oarnimstiaremtn` (familiar letters, unfamiliar order)
-- Novel shuffles: `rtmaenisoartmstien`
-- Random gibberish: `ksjdnfpqowiemznxc`
-- Cross-language: `user用户test` (mixed scripts)
-- Novel bot patterns: `usr#20250110#a1b` (new delimiters)
-
-**Not OOD (Familiar):**
-- Common names: `person1`, `user2`
-- Standard patterns: `test@company.com`
-- Training data patterns: `user123` (seen during training)
-
-### Database Tracking
-
-```sql
-SELECT
-  email_local_part,
-  min_entropy,
-  abnormality_score,
-  abnormality_risk,
-  ood_detected,
-  decision
-FROM validations
-WHERE ood_detected = 1
-ORDER BY abnormality_risk DESC;
-```
-
-### Performance
-- **Latency**: +0ms (calculated during existing Markov evaluation)
-- **Detection Rate**: ~78% of test cases show some OOD signal
-- **Accuracy**: Catches novel patterns missed by classification alone
-
-### See Also
-- [OOD_DETECTION.md](./OOD_DETECTION.md) - Complete OOD documentation
+**Used By**: Offline analysis and fraud campaign detection
 
 ---
 
-## How Detectors Work Together
+### 8. TLD Risk Profiling
+**Source**: `src/detectors/tld-risk.ts`
 
-### Parallel Execution (Markov-First Approach)
+Assigns risk scores based on Top-Level Domain abuse statistics.
 
-Markov Chain is the **primary** fraud detector. Heuristic pattern detectors (keyboard, gibberish) have been removed.
+**Features Produced**:
+- `tld_risk_score` (0-1): TLD-based risk assessment
+- `domain_reputation_score` (0-1): Combined domain + TLD risk
 
+**Risk Categories**:
+- **Trusted** (0.0-0.3): .edu, .gov, .mil (restricted registration)
+- **Standard** (0.3-0.5): .com, .net, .org (paid, established)
+- **Suspicious** (0.5-0.7): .info, .biz, .xyz (cheap, higher abuse)
+- **High Risk** (0.7-1.0): .tk, .ml, .ga, .cf (free, disposable havens)
+
+**TLD Profiles** (143 total):
 ```typescript
-// Markov Chain detection (PRIMARY)
-if (config.features.enableMarkovChainDetection) {
-    markovResult = detectMarkovPattern(email, legitModel, fraudModel);
-    if (markovResult.isLikelyFraudulent) {
-        riskScore = markovResult.confidence;  // Base score from Markov
-    }
-}
-
-// Pattern detectors (deterministic overrides only)
-if (config.features.enablePatternCheck) {
-    patternFamily = await extractPatternFamily(email);    // Sequential + Dated
-    normalized = normalizeEmail(email);                   // Plus-addressing
-
-    // Only apply if pattern is deterministic
-    if (patternFamily.patternType === 'sequential') {
-        riskScore = Math.max(riskScore, 0.8);
-    }
-    if (normalized.hasPlus) {
-        riskScore = Math.max(riskScore, 0.6);
-    }
-}
-
-// Domain signals (disposable domains, TLD risk)
-const domainRisk = domainReputationScore * 0.2 + tldRiskScore * 0.3;
-riskScore = Math.min(riskScore + domainRisk, 1.0);
-```
-
-### Risk Aggregation (Simplified)
-
-```typescript
-// Markov-only approach
-let score = markovResult?.isLikelyFraudulent ? markovResult.confidence : 0;
-
-// Add deterministic pattern overrides
-if (patternType === 'sequential') score = Math.max(score, 0.8);
-if (hasPlus) score = Math.max(score, 0.6);
-
-// Add domain risk
-const domainRisk = domainReputationScore * 0.2 + tldRiskScore * 0.3;
-
-// Final risk score
-riskScore = Math.min(score + domainRisk, 1.0);
-```
-
-### Decision Logic (src/index.ts:261-277)
-
-```typescript
-if (riskScore > 0.6) {
-    decision = 'block';    // High risk - reject signup
-} else if (riskScore > 0.3) {
-    decision = 'warn';     // Medium risk - flag for review
-} else {
-    decision = 'allow';    // Low risk - proceed normally
-}
-```
-
-### Block Reason Priority
-
-```typescript
-// v2.4.2: High-confidence detections (first match wins)
-if (markovRiskScore > 0.6) return 'markov_chain_fraud';
-// Removed: sequential_pattern (now handled by Markov)
-
-// Risk-based messaging
-else if (riskScore >= 0.6) {
-    if (abnormalityRisk > 0.4) return 'high_abnormality';
-    if (tldRisk > 0.5) return 'high_risk_tld';
-    if (domainRisk > 0.5) return 'domain_reputation';
-    if (dated) return 'dated_pattern';
-    return 'high_risk_multiple_signals';
-}
-else if (riskScore >= 0.4) {
-    if (abnormalityRisk > 0.2) return 'suspicious_abnormal_pattern';
-    if (dated) return 'suspicious_dated_pattern';
-    return 'medium_risk';
-}
-else return 'low_risk';
-```
-
----
-
-## Performance Characteristics
-
-| Detector | Latency | Complexity | Detection Rate | False Positives | Status |
-|----------|---------|------------|----------------|-----------------|--------|
-| **Markov Chain** | **0.10ms** | **O(n)** | **98%** | **<1%** | **PRIMARY** |
-| Sequential | 0.05ms | O(n) | 90% | **<1%** | Active |
-| Dated | 0.05ms | O(n) | 85% | 5% | Active |
-| Plus-Addressing | 0.10ms | O(n) | 95% | 2% | Active |
-| TLD Risk | 0.05ms | O(1) | 95% | 5% | Active |
-| Benford's Law | N/A | O(m) | 85% | 3% | Active (batch) |
-| ~~Keyboard Walk~~ | ~~0.10ms~~ | ~~O(n×k)~~ | ~~95%~~ | ~~<1%~~ | **DEPRECATED** |
-| ~~Keyboard Mashing~~ | ~~0.10ms~~ | ~~O(n)~~ | ~~85%~~ | ~~33%~~ | **DEPRECATED** |
-| ~~N-Gram Gibberish~~ | ~~0.15ms~~ | ~~O(n)~~ | ~~90%~~ | ~~33%~~ | **DEPRECATED** |
-
-**Total Average**: ~0.06ms per validation with Markov-only approach
-
-**Performance Improvements**:
-- Accuracy: 83% (5/6 test cases correct, 0 false positives)
-- Fraud detection: 100% (16/16 blocked)
-- False positives eliminated from previous heuristic detectors
-
----
-
-## Training Markov Chain Models
-
-### Requirements
-- Minimum 100 examples of legitimate emails
-- Minimum 100 examples of fraudulent emails
-- Labeled training data (known good/bad)
-
-### Training Process
-```bash
-# 1. Collect training data from production Analytics
-curl "https://your-worker.workers.dev/admin/analytics" \
-  -H "X-API-Key: $X_API_KEY" > training-data.json
-
-# 2. Separate into legitimate and fraudulent sets
-# (manual labeling or use existing decisions)
-
-# 3. Train models
-npx tsx scripts/train-markov-models.ts
-
-# 4. Upload to KV
-wrangler kv:key put --binding=CONFIG \
-  markov_legit_model "$(cat legit-model.json)"
-
-wrangler kv:key put --binding=CONFIG \
-  markov_fraud_model "$(cat fraud-model.json)"
-
-# 5. Deploy (models auto-load on first request)
-npm run deploy
-```
-
-### Retraining Schedule
-- **Initial**: Train with 100+ examples each
-- **Weekly**: Retrain with last 7 days of data
-- **After Attack**: Retrain immediately with new patterns
-- **Quarterly**: Full model refresh
-
----
-
-## Configuration
-
-All detectors can be enabled/disabled via configuration:
-
-```json
 {
-  "features": {
-    "enablePatternCheck": true,          // Pattern telemetry + dated scoring
-    "enableTLDRiskProfiling": true,      // TLD risk weighting
-    "enableDisposableCheck": true,       // Disposable/KV hard block
-    "enableMarkovChainDetection": true   // Markov ensemble + OOD
-  }
+  tld: 'edu',
+  category: 'trusted',
+  disposableRatio: 0.01,
+  spamRatio: 0.02,
+  riskMultiplier: 0.5,
+  registrationCost: 'restricted',
 }
 ```
 
-Update via Admin API:
-```bash
-curl -X PATCH https://your-worker.workers.dev/admin/config \
-  -H "X-API-Key: $X_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"features": {"enableMarkovChainDetection": false}}'
-```
+**Used By**: Domain-based filtering (free TLDs correlated with fraud)
 
 ---
 
-## See Also
+### 9. Identity Signals (Name Similarity)
+**Source**: `src/utils/identity-signals.ts`
 
-- [Architecture](./ARCHITECTURE.md) - System architecture
-- [Configuration](./CONFIGURATION.md) - Risk weight tuning
-- [Analytics](./ANALYTICS.md) - Metrics tracking
-- [Testing](./TESTING.md) - Test results
+Compares submission name to email address for consistency.
+
+**Features Produced**:
+
+| Feature | Type | Description | Example |
+|---------|------|-------------|---------|
+| `name_similarity_score` | number | Levenshtein distance normalized | 0-1 |
+| `name_token_overlap` | number | Token-level overlap (Jaccard) | 0-1 |
+| `name_in_email` | boolean | Exact name substring match | true/false |
+
+**Detection Logic**:
+- Normalizes both name and email (lowercase, remove punctuation)
+- Calculates string similarity (Levenshtein)
+- Tokenizes and compares word-level overlap
+- Checks for exact substring matches
+
+**Examples**:
+- ✅ Name: "John Smith", Email: "john.smith@gmail.com" → High similarity
+- ❌ Name: "Alice Johnson", Email: "xkzqwrtpl@hotmail.com" → Low similarity
+
+**Used By**: Detecting stolen identity / mismatched credentials
+
+---
+
+### 10. Geo-Consistency Signals
+**Source**: `src/utils/geo-signals.ts`
+
+Analyzes geographic metadata for anomalies (requires Cloudflare request.cf data).
+
+**Features Produced**:
+
+| Feature | Type | Description | Example |
+|---------|------|-------------|---------|
+| `geo_language_mismatch` | boolean | Browser lang ≠ country lang | true/false |
+| `geo_timezone_mismatch` | boolean | Timezone ≠ country TZ | true/false |
+| `geo_anomaly_score` | number | Combined geo inconsistency | 0-1 |
+
+**Detection Logic**:
+- Compares `Accept-Language` header to country
+- Validates timezone against geographic location
+- Flags VPN/proxy indicators (timezone mismatches)
+
+**Example Anomalies**:
+- Country: Japan, Language: English, Timezone: US/Pacific → Suspicious
+- Country: France, Language: French, Timezone: Europe/Paris → Legitimate
+
+**Used By**: Detecting geo-spoofing and VPN-based fraud
+
+---
+
+### 11. MX Record Analysis
+**Source**: `src/services/mx-resolver.ts`
+
+Resolves DNS MX records to validate email deliverability and identify providers.
+
+**Features Produced**:
+
+| Feature | Type | Description |
+|---------|------|-------------|
+| `mx_has_records` | boolean | Domain has MX records |
+| `mx_record_count` | number | Number of MX records (0-32) |
+| `mx_provider_google` | boolean | Uses Google Workspace |
+| `mx_provider_microsoft` | boolean | Uses Microsoft 365 |
+| `mx_provider_icloud` | boolean | Uses iCloud Mail |
+| `mx_provider_yahoo` | boolean | Uses Yahoo Mail |
+| `mx_provider_zoho` | boolean | Uses Zoho Mail |
+| `mx_provider_proton` | boolean | Uses ProtonMail |
+| `mx_provider_self_hosted` | boolean | Custom/self-hosted |
+| `mx_provider_other` | boolean | Other providers |
+
+**Detection Logic**:
+- DNS lookup for MX records
+- Pattern matching against known provider signatures
+- Well-known provider cache (19 common domains) for speed
+- Parallel fetching with 500 concurrency limit
+
+**Provider Signatures**:
+```typescript
+'google.com': /google\.com$/i,
+'outlook.com': /outlook\.com$/i,
+'zoho.com': /zoho\.com$/i,
+```
+
+**Used By**: Validating email authenticity (no MX = likely invalid domain)
+
+---
+
+### 12. Benford's Law Analysis
+**Source**: `src/detectors/benfords-law.ts`
+
+Batch-level statistical analysis for detecting synthetic datasets.
+
+**Theory**: In natural data, leading digits follow Benford's distribution (1 appears ~30%, 9 appears ~4.6%). Fraudulent data often has uniform digit distribution.
+
+**Features Produced**:
+- Not used in per-email scoring (batch analysis only)
+- Outputs chi-squared statistics for dataset validation
+
+**Detection Logic**:
+- Extracts first digits from numeric sequences in emails
+- Compares distribution to Benford's expected frequencies
+- High chi-squared = synthetic/fabricated data
+
+**Used By**: Offline fraud detection and dataset validation
+
+---
+
+## Feature Integration
+
+### Feature Vector Pipeline
+
+```typescript
+// 1. Detectors extract raw signals
+const linguistic = analyzeLinguisticFeatures(localPart);
+const sequential = detectSequentialPattern(localPart);
+const tld = assessTLDRisk(domain);
+
+// 2. Signals combined into FeatureVectorInput
+const input: FeatureVectorInput = {
+  sequentialConfidence: sequential.confidence,
+  plusRisk: plusAnalysis.risk,
+  linguistic: {
+    pronounceability: linguistic.pronounceability,
+    vowelRatio: linguistic.vowelRatio,
+    // ...
+  },
+  tldRisk: tld.riskScore,
+  // ...
+};
+
+// 3. buildFeatureVector() normalizes and validates
+const features = buildFeatureVector(input);
+// Output: { sequential_confidence: 0.85, plus_risk: 0.2, ... }
+
+// 4. Model evaluates feature vector
+const result = evaluateRandomForest(features);
+// Output: { score: 0.92, reason: "high_sequential_confidence" }
+```
+
+### Feature Count (39 Total)
+
+| Category | Count | Examples |
+|----------|-------|----------|
+| Sequential/Pattern | 2 | `sequential_confidence`, `plus_risk` |
+| Linguistic | 6 | `pronounceability`, `vowel_ratio`, `max_consonant_cluster` |
+| Structural | 4 | `has_word_boundaries`, `segment_count`, `avg_segment_length` |
+| Statistical | 4 | `unique_char_ratio`, `bigram_entropy`, `max_digit_run` |
+| Identity | 3 | `name_similarity_score`, `name_token_overlap`, `name_in_email` |
+| Geo | 3 | `geo_language_mismatch`, `geo_timezone_mismatch`, `geo_anomaly_score` |
+| MX | 9 | `mx_has_records`, `mx_provider_*` (8 providers) |
+| Domain | 3 | `tld_risk_score`, `domain_reputation_score`, `provider_is_free` |
+| Basic | 5 | `local_length`, `digit_ratio`, `entropy_score`, etc. |
+
+**Full List**: See `src/utils/feature-vector.ts:68-115`
+
+---
+
+## Adding New Detectors
+
+To add a new detector:
+
+1. **Create detector file**: `src/detectors/my-detector.ts`
+   ```typescript
+   export interface MyDetectorResult {
+     myFeature: number;  // 0-1 normalized
+   }
+
+   export function analyzeMyFeature(email: string): MyDetectorResult {
+     // ... detection logic
+     return { myFeature: 0.75 };
+   }
+   ```
+
+2. **Update FeatureVectorInput**: `src/utils/feature-vector.ts`
+   ```typescript
+   export interface FeatureVectorInput {
+     // ... existing features
+     myFeature?: number;  // Add optional field
+   }
+   ```
+
+3. **Map to feature vector**: `src/utils/feature-vector.ts:buildFeatureVector()`
+   ```typescript
+   export function buildFeatureVector(input: FeatureVectorInput): FeatureVector {
+     const features: FeatureVector = {
+       // ... existing mappings
+       my_feature: sanitize(input.myFeature, 0, { min: 0, max: 1 }),
+     };
+     return features;
+   }
+   ```
+
+4. **Integrate in middleware**: `src/middleware/fraud-detection.ts`
+   ```typescript
+   const myResult = analyzeMyFeature(email);
+   const featureInput: FeatureVectorInput = {
+     // ... existing features
+     myFeature: myResult.myFeature,
+   };
+   ```
+
+5. **Retrain models**: Include new feature in training
+   ```bash
+   npm run cli features:export  # Regenerate features
+   npm run cli model:train -- --n-trees 20 --upload  # Retrain RF
+   ```
+
+---
+
+## Deprecated Detectors (Removed in v3.0)
+
+The following detectors were removed as part of the v3.0 ML-first architecture:
+
+- ❌ `keyboard-mashing.ts` → Replaced by `linguistic-features` (pronounceability)
+- ❌ `keyboard-walk.ts` → Replaced by `linguistic-features` (impossible clusters)
+- ❌ Direct risk scoring → All detectors now produce features only
+
+**Migration**: Feature-based approach allows the model to learn optimal weights, rather than hardcoded risk formulas.
+
+---
+
+## Performance Notes
+
+### Fast Detectors (< 1ms)
+- Sequential pattern detection
+- Plus-addressing normalization
+- Linguistic feature extraction
+- TLD risk lookup
+
+### Moderate Detectors (1-10ms)
+- N-gram entropy calculation
+- Pattern family hashing
+- Identity signal comparison
+
+### Slow Detectors (10-1000ms)
+- **MX record resolution** (DNS lookup, 50-200ms per domain)
+  - Mitigated via well-known provider cache
+  - Parallel fetching (500 concurrent)
+  - Training optimization: 17x speedup (50min → 3min)
+
+### Optimization Strategy
+1. **Cache aggressively**: Well-known MX providers, TLD profiles
+2. **Batch operations**: MX lookups parallelized during training
+3. **Skip expensive features**: Use `--skip-mx` flag for fast iteration
+4. **Lazy evaluation**: Only compute features needed by active models
+
+---
+
+## References
+
+- [Feature Vector Definition](../src/utils/feature-vector.ts) - Complete feature list
+- [Model Training](./MODEL_TRAINING_v3.md) - How features feed into RF/DT
+- [Configuration](./CONFIGURATION.md) - Thresholds and model settings
+- [Scoring Logic](./SCORING.md) - How features become risk scores
+
+---
+
+## Changelog
+
+### v3.0.0 (2025-11-30)
+- ✅ Converted all detectors to feature extractors (removed direct scoring)
+- ✅ Added MX resolver with provider identification (9 features)
+- ✅ Added identity signals (name similarity)
+- ✅ Added geo-consistency signals
+- ✅ Removed keyboard-mashing and keyboard-walk (merged into linguistic)
+- ✅ Unified architecture: Detectors → Features → Model → Score
+
+### v2.x
+- Legacy risk-scoring architecture (deprecated)

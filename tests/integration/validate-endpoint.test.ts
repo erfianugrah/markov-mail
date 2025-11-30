@@ -89,7 +89,7 @@ describe('POST /validate endpoint', () => {
     const result = await response.json() as any;
 
     expect(result.signals.entropyScore).toBeGreaterThan(0.5);
-    // Phase 6A: Gibberish detector now blocks high-entropy gibberish
+    // High entropy locals should elevate risk even without explicit detectors
     expect(['warn', 'block']).toContain(result.decision);
   });
 

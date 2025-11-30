@@ -1,18 +1,12 @@
 /**
  * Test Email Generator
  * Generate fraudulent email patterns for testing
- *
- * DEPRECATED (v2.2.0): 'gibberish' and 'keyboard_walk' pattern types are deprecated.
- * These patterns are now detected by Markov Chain analysis.
- * Pattern types kept for backwards compatibility with existing tests.
  */
 
 export type PatternType =
 	| 'sequential'
 	| 'sequential_padded'
 	| 'dated'
-	| 'gibberish'          // DEPRECATED: Use Markov detection
-	| 'keyboard_walk'      // DEPRECATED: Use Markov detection
 	| 'plus_addressing'
 	| 'name_sequential'
 	| 'random_suffix'
@@ -108,24 +102,6 @@ export class EmailGenerator {
 					notes: 'Email with year suffix',
 				};
 
-			case 'gibberish':
-				return {
-					email: `${this.randomGibberish(8 + (index % 4))}@${domain}`,
-					pattern,
-					expectedRisk: 'high',
-					notes: 'Random gibberish string',
-				};
-
-			case 'keyboard_walk':
-				const walks = ['qwerty', 'asdfgh', '123456', 'zxcvbn', 'qazwsx', 'wsxedc'];
-				const walk = walks[index % walks.length];
-				return {
-					email: `${walk}${index}@${domain}`,
-					pattern,
-					expectedRisk: 'high',
-					notes: 'Keyboard walk pattern',
-				};
-
 			case 'plus_addressing':
 				const base = this.randomFrom(FIRST_NAMES);
 				const suffix = ['spam', 'test', 'temp', 'promo'][index % 4];
@@ -193,25 +169,6 @@ export class EmailGenerator {
 	}
 
 	/**
-	 * Generate random gibberish string
-	 */
-	private randomGibberish(length: number): string {
-		const consonants = 'bcdfghjklmnpqrstvwxz';
-		const vowels = 'aeiou';
-		let result = '';
-
-		for (let i = 0; i < length; i++) {
-			if (i % 2 === 0) {
-				result += consonants.charAt(Math.floor(Math.random() * consonants.length));
-			} else {
-				result += vowels.charAt(Math.floor(Math.random() * vowels.length));
-			}
-		}
-
-		return result;
-	}
-
-	/**
 	 * Get all available patterns
 	 */
 	private getAllPatterns(): PatternType[] {
@@ -219,8 +176,6 @@ export class EmailGenerator {
 			'sequential',
 			'sequential_padded',
 			'dated',
-			'gibberish',
-			'keyboard_walk',
 			'plus_addressing',
 			'name_sequential',
 			'random_suffix',

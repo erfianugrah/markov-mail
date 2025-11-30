@@ -28,111 +28,76 @@ export async function writeValidationMetricToD1(
         INSERT INTO validations (
           decision, risk_score, block_reason,
           email_local_part, domain, tld, fingerprint_hash,
-          pattern_type, pattern_family,
+          pattern_type, pattern_family, pattern_confidence,
           is_disposable, is_free_provider, has_plus_addressing,
-          has_keyboard_walk, is_gibberish,
-          entropy_score, bot_score, tld_risk_score,
-          domain_reputation_score, pattern_confidence,
-          markov_detected, markov_confidence,
-          markov_cross_entropy_legit, markov_cross_entropy_fraud,
-          ensemble_reasoning, model_2gram_prediction, model_3gram_prediction,
-          min_entropy, abnormality_score, abnormality_risk, ood_detected,
-          ood_zone,
-          client_ip, user_agent, model_version,
-          exclude_from_training, ip_reputation_score,
+          entropy_score, bot_score, tld_risk_score, domain_reputation_score,
+          decision_tree_reason, decision_tree_path,
+          client_ip, user_agent, model_version, ip_reputation_score,
+          consumer, flow,
           experiment_id, variant, bucket,
-          country, asn, latency,
-          pattern_classification_version,
+          country, asn,
           region, city, postal_code, timezone, latitude, longitude, continent, is_eu_country,
           as_organization, colo, http_protocol, tls_version, tls_cipher,
           client_trust_score, verified_bot, js_detection_passed, detection_ids,
           ja3_hash, ja4, ja4_signals,
-          consumer, flow
+          pattern_classification_version,
+          latency,
+          identity_similarity, identity_token_overlap, identity_name_in_email,
+          geo_language_mismatch, geo_timezone_mismatch, geo_anomaly_score,
+          mx_has_records, mx_record_count, mx_primary_provider, mx_provider_hits, mx_lookup_failure, mx_ttl
         ) VALUES (
           ?1, ?2, ?3,
           ?4, ?5, ?6, ?7,
-          ?8, ?9,
-          ?10, ?11, ?12,
-          ?13, ?14,
-          ?15, ?16, ?17,
+          ?8, ?9, ?10,
+          ?11, ?12, ?13,
+          ?14, ?15, ?16, ?17,
           ?18, ?19,
-          ?20, ?21,
-          ?22, ?23,
-          ?24, ?25, ?26,
-          ?27, ?28, ?29, ?30,
-          ?31,
-          ?32, ?33, ?34,
-          ?35, ?36, ?37,
-          ?38, ?39,
-          ?40, ?41, ?42,
-          ?43,
-          ?44, ?45, ?46, ?47, ?48, ?49, ?50, ?51,
-          ?52, ?53, ?54, ?55, ?56,
-          ?57, ?58, ?59, ?60,
-          ?61, ?62, ?63,
-          ?64, ?65
+          ?20, ?21, ?22, ?23,
+          ?24, ?25,
+          ?26, ?27, ?28,
+          ?29, ?30,
+          ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38,
+          ?39, ?40, ?41, ?42, ?43,
+          ?44, ?45, ?46, ?47,
+          ?48, ?49, ?50,
+          ?51,
+          ?52,
+          ?53, ?54, ?55,
+          ?56, ?57, ?58,
+          ?59, ?60, ?61, ?62, ?63, ?64
         )
       `)
       .bind(
-        // Decision & Risk
         metric.decision,
         metric.riskScore,
         metric.blockReason || null,
-        // Email Analysis
         metric.emailLocalPart || null,
         metric.domain || null,
         metric.tld || null,
         metric.fingerprintHash,
-        // Pattern Detection
         metric.patternType || null,
         metric.patternFamily || null,
+        metric.patternConfidence ?? null,
         metric.isDisposable ? 1 : 0,
         metric.isFreeProvider ? 1 : 0,
         metric.hasPlusAddressing ? 1 : 0,
-        // DEPRECATED (2025-11-08): Always write 0 for deprecated detectors
-        0, // hasKeyboardWalk - deprecated
-        0, // isGibberish - deprecated
-        // Scores
         metric.entropyScore ?? null,
         metric.botScore ?? null,
         metric.tldRiskScore ?? null,
         metric.domainReputationScore ?? null,
-        metric.patternConfidence ?? null,
-        // Markov Chain
-        metric.markovDetected ? 1 : 0,
-        metric.markovConfidence ?? null,
-        metric.markovCrossEntropyLegit ?? null,
-        metric.markovCrossEntropyFraud ?? null,
-        // Ensemble metadata (v2.3+)
-        metric.ensembleReasoning || null,
-        metric.model2gramPrediction || null,
-        metric.model3gramPrediction || null,
-        // OOD Detection (v2.4+)
-        metric.minEntropy ?? null,
-        metric.abnormalityScore ?? null,
-        metric.abnormalityRisk ?? null,
-        metric.oodDetected ? 1 : 0,
-        // OOD Zone (v2.4.1+)
-        metric.oodZone || null,
-        // Online Learning
+        metric.decisionTreeReason || null,
+        metric.decisionTreePath || null,
         metric.clientIp || null,
         metric.userAgent || null,
         metric.modelVersion || null,
-        metric.excludeFromTraining ? 1 : 0,
         metric.ipReputationScore ?? null,
-        // A/B Testing
+        metric.consumer || null,
+        metric.flow || null,
         metric.experimentId || null,
         metric.variant || null,
         metric.bucket ?? null,
-        // Geographic & Network
         metric.country || null,
         metric.asn ?? null,
-        // Performance
-        metric.latency,
-        // Algorithm versioning (v2.1+)
-        metric.patternClassificationVersion || null,
-        // Enhanced request.cf metadata (v2.5+)
-        // Geographic
         metric.region || null,
         metric.city || null,
         metric.postalCode || null,
@@ -141,28 +106,35 @@ export async function writeValidationMetricToD1(
         metric.longitude || null,
         metric.continent || null,
         metric.isEuCountry || null,
-        // Network
         metric.asOrganization || null,
         metric.colo || null,
         metric.httpProtocol || null,
         metric.tlsVersion || null,
         metric.tlsCipher || null,
-        // Bot Detection
         metric.clientTrustScore ?? null,
         metric.verifiedBot ? 1 : 0,
         metric.jsDetectionPassed ? 1 : 0,
         metric.detectionIds ? JSON.stringify(metric.detectionIds) : null,
-        // Fingerprints
         metric.ja3Hash || null,
         metric.ja4 || null,
         metric.ja4Signals ? JSON.stringify(metric.ja4Signals) : null,
-        // RPC Metadata
-        metric.consumer || null,
-        metric.flow || null
+        metric.patternClassificationVersion || null,
+        metric.latency,
+        metric.identitySimilarity ?? null,
+        metric.identityTokenOverlap ?? null,
+        metric.identityNameInEmail === undefined ? null : metric.identityNameInEmail ? 1 : 0,
+        metric.geoLanguageMismatch === undefined ? null : metric.geoLanguageMismatch ? 1 : 0,
+        metric.geoTimezoneMismatch === undefined ? null : metric.geoTimezoneMismatch ? 1 : 0,
+        metric.geoAnomalyScore ?? null,
+        metric.mxHasRecords === undefined ? null : metric.mxHasRecords ? 1 : 0,
+        metric.mxRecordCount ?? null,
+        metric.mxPrimaryProvider || null,
+        metric.mxProviderHits ? JSON.stringify(metric.mxProviderHits) : null,
+        metric.mxLookupFailure || null,
+        metric.mxTTL ?? null
       )
       .run();
   } catch (error) {
-    // Silently fail - don't break validation on metrics errors
     logger.error(
       {
         event: 'd1_validation_write_failed',

@@ -1,33 +1,11 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { WorkerEntrypoint } from 'cloudflare:workers';
-import { validateEmail } from './validators/email';
-import { validateDomain, getDomainReputationScore } from './validators/domain';
 import { generateFingerprint, extractAllSignals } from './fingerprint';
-import { logger, logValidation, logBlock, logError } from './logger';
-import { writeValidationMetric } from './utils/metrics';
+import { logger } from './logger';
 import type { ValidationResult, FraudDetectionResult } from './types';
-import { loadDisposableDomains, updateDisposableDomains } from './services/disposable-domain-updater';
-import { loadTLDRiskProfiles } from './services/tld-risk-updater';
-import {
-	extractPatternFamily,
-	normalizeEmail,
-	analyzeTLDRisk,
-	isHighRiskTLD
-} from './detectors/index';
-// DEPRECATED (v2.2.0): detectKeyboardWalk, detectGibberish removed
-import { NGramMarkovChain } from './detectors/ngram-markov';
-import { getConfig } from './config';
+import { updateDisposableDomains } from './services/disposable-domain-updater';
 import adminRoutes from './routes/admin';
-import { scheduled as trainingWorkerScheduled } from './workers/training-worker';
-import { retrainMarkovModels as retrainLegacyModels } from './training/online-learning';
-import {
-	loadABTestConfig,
-	getAssignment,
-	getVariantConfig,
-	type ABTestConfig,
-	type ABTestAssignment
-} from './ab-testing';
 import { fraudDetectionMiddleware } from './middleware/fraud-detection';
 import pkg from '../package.json';
 
@@ -46,74 +24,15 @@ type ContextVariables = {
  * - Entropy analysis (random string detection)
  * - Disposable domain detection (170+ known services)
  * - Advanced fingerprinting (IP + JA4 + Bot Score)
- * - Pattern detection (sequential, dated, plus-addressing, keyboard walks)
- * - Domain reputation scoring
- * - N-Gram analysis (gibberish detection) - Phase 6A
- * - TLD risk profiling (40+ TLD categories) - Phase 6A
- * - Markov Chain detection (Phase 7) - Dynamic character transition models
+ * - Pattern detection (sequential, dated, plus-addressing)
+ * - Domain reputation & TLD risk scoring
+ * - Lightweight linguistic heuristics (n-gram analysis for telemetry)
+ * - KV-backed decision tree scoring (JSON model loaded at runtime)
  * - Structured logging with Pino
  * - Metrics collection with D1 database
  */
 
-// Global Markov Chain model cache (loaded once per worker instance)
-let markovLegitModel: NGramMarkovChain | null = null;
-let markovFraudModel: NGramMarkovChain | null = null;
-let markovModelsLoaded = false;
-
-/**
- * Load Markov Chain models from KV storage
- * Models are cached globally for the lifetime of the worker instance
- * Loads from MARKOV_MODEL namespace with 2-gram trained models (MM_legit_2gram, MM_fraud_2gram)
- */
-async function loadMarkovModels(env: Env): Promise<boolean> {
-	if (markovModelsLoaded) return true;
-
-	try {
-		// Check if MARKOV_MODEL namespace is configured
-		if (!env.MARKOV_MODEL) {
-			logger.warn({
-				event: 'markov_namespace_missing',
-				namespace: 'MARKOV_MODEL',
-			}, 'MARKOV_MODEL namespace not configured');
-			return false;
-		}
-
-		// Load from MARKOV_MODEL namespace (using 2-gram trained models)
-		const legitData = await env.MARKOV_MODEL.get('MM_legit_2gram', 'json');
-		const fraudData = await env.MARKOV_MODEL.get('MM_fraud_2gram', 'json');
-
-		if (legitData && fraudData) {
-			markovLegitModel = NGramMarkovChain.fromJSON(legitData);
-			markovFraudModel = NGramMarkovChain.fromJSON(fraudData);
-			markovModelsLoaded = true;
-			logger.info({
-				event: 'markov_models_loaded',
-				model_type: '2gram',
-				namespace: 'MARKOV_MODEL',
-				keys: ['MM_legit_2gram', 'MM_fraud_2gram'],
-			}, 'Markov Chain models loaded successfully');
-			return true;
-		} else {
-			logger.warn({
-				event: 'markov_models_not_found',
-				expected_keys: ['MM_legit_2gram', 'MM_fraud_2gram'],
-			}, 'No 2-gram Markov models found');
-		}
-	} catch (error) {
-		logger.error({
-			event: 'markov_load_failed',
-			error: error instanceof Error ? {
-				message: error.message,
-				stack: error.stack,
-			} : String(error),
-		}, 'Failed to load Markov models');
-	}
-
-	return false;
-}
-
-// Ensemble Markov detector removed - was never fully implemented and not used in production
-// The N-gram Markov model (ngram-markov.ts) is sufficient for fraud detection
+type AppContext = Context<{ Bindings: Env; Variables: ContextVariables }>;
 
 const app = new Hono<{ Bindings: Env; Variables: ContextVariables }>();
 
@@ -124,8 +43,22 @@ app.use('/*', cors());
 // Routes can opt-out by setting: c.set('skipFraudDetection', true)
 app.use('/*', fraudDetectionMiddleware);
 
+async function serveAsset(c: AppContext, path: string) {
+	if (!c.env.ASSETS) {
+		return c.notFound();
+	}
+
+	const url = new URL(c.req.url);
+	url.pathname = path;
+	return c.env.ASSETS.fetch(new Request(url, c.req.raw));
+}
+
 // Mount admin routes (protected by API key)
 app.route('/admin', adminRoutes);
+
+app.get('/dashboard', (c) => serveAsset(c, '/dashboard/index.html'));
+app.get('/dashboard/*', (c) => serveAsset(c, c.req.path));
+app.get('/analytics', (c) => serveAsset(c, '/analytics.html'));
 
 // Root endpoint - Welcome message
 app.get('/', (c) => {
@@ -177,73 +110,9 @@ app.post('/validate', async (c) => {
 		return c.json({ error: 'Email is required' }, 400);
 	}
 
-	// Get model version metadata
-	let modelVersion = 'unknown';
-	let modelTrainingCount = 0;
-	try {
-		if (c.env.MARKOV_MODEL) {
-			const modelData = await c.env.MARKOV_MODEL.get('MM_legit_2gram', 'json') as any;
-			if (modelData?.trainingCount) {
-				modelTrainingCount = modelData.trainingCount;
-			}
-			// Try to get versioned model info
-			const versionKey = await c.env.MARKOV_MODEL.get('production_model_version', 'text');
-			modelVersion = versionKey || `trained_${modelTrainingCount}`;
-		}
-	} catch (e) {
-		// Fail silently - version metadata is non-critical
-	}
-
-	// Get calibration metadata
-	let calibrationMetadata: Record<string, any> | undefined;
-	try {
-		if (!c.env.CONFIG) {
-			throw new Error('CONFIG binding not available');
-		}
-
-		const config = await getConfig(c.env.CONFIG, {
-			'X-API-KEY': c.env['X-API-KEY'],
-			ORIGIN_URL: c.env.ORIGIN_URL,
-		});
-
-		if (config.calibration) {
-			calibrationMetadata = {
-				version: config.calibration.version,
-				createdAt: config.calibration.createdAt,
-			};
-
-			// Add boost information if calibration was used
-			if (fraud?.signals?.calibratedFraudProbability !== undefined) {
-				const markovConfidence = fraud.signals.markovConfidence || 0;
-				const calibratedProb = fraud.signals.calibratedFraudProbability;
-				calibrationMetadata.calibrationUsed = true;
-				calibrationMetadata.calibrationBoosted = calibratedProb > markovConfidence;
-				calibrationMetadata.boostAmount = calibratedProb > markovConfidence
-					? Math.round((calibratedProb - markovConfidence) * 1000) / 1000
-					: 0;
-			} else {
-				calibrationMetadata.calibrationUsed = false;
-			}
-
-			// Add training metrics if available
-			if (config.calibration.metrics) {
-				calibrationMetadata.metrics = {
-					accuracy: Math.round(config.calibration.metrics.accuracy * 1000) / 1000,
-					precision: Math.round(config.calibration.metrics.precision * 1000) / 1000,
-					recall: Math.round(config.calibration.metrics.recall * 1000) / 1000,
-					f1: Math.round(config.calibration.metrics.f1 * 1000) / 1000,
-				};
-			}
-		}
-	} catch (e) {
-		// Fail silently - calibration metadata is non-critical
-	}
-
 	const metadata: Record<string, any> = {
 		version: pkg.version,
-		modelVersion,
-		modelTrainingCount,
-		...(calibrationMetadata && { calibration: calibrationMetadata }),
+		modelVersion: fraud?.signals?.decisionTreeVersion || 'unavailable',
 	};
 
 	if (fraud?.signals?.experimentId) {
@@ -259,6 +128,8 @@ app.post('/validate', async (c) => {
 		signals: fraud.signals,
 		decision: fraud.decision,
 		message: fraud.blockReason || 'Email validation completed',
+		latency_ms: fraud.latencyMs,
+		latency: fraud.latencyMs,
 		fingerprint: {
 			hash: fingerprint.hash,
 			country: fingerprint.country,
@@ -270,8 +141,7 @@ app.post('/validate', async (c) => {
 
 	// Add version headers
 	response.headers.set('X-Worker-Version', pkg.version);
-	response.headers.set('X-Model-Version', modelVersion);
-	response.headers.set('X-Model-Training-Count', modelTrainingCount.toString());
+	response.headers.set('X-Model-Version', metadata.modelVersion);
 	if (fraud?.signals?.experimentId) {
 		response.headers.set('X-Experiment-Id', fraud.signals.experimentId);
 		if (fraud.signals.experimentVariant) {
@@ -491,26 +361,7 @@ export default {
 			logger.warn('DISPOSABLE_DOMAINS_LIST KV namespace not configured, skipping update');
 		}
 
-		// Task 2: Train N-gram ensemble models
-		// DISABLED: Online training uses circular reasoning (model predictions as labels)
-		// This can degrade model quality by reinforcing false positives.
-		// Use manual training with labeled CSV data instead: npm run cli train:markov
-		// See: /tmp/training-analysis.md for full analysis
-
-		// logger.info({
-		// 	event: 'training_started',
-		// 	trigger_type: 'scheduled',
-		// }, 'Starting automated N-gram model training');
-
-		// Use direct D1 database training (no KV extraction step needed)
-		// ctx.waitUntil(retrainLegacyModels(env));
-
-		// Optional: Use KV-based training worker (requires manual extraction step)
-		// if (env.MARKOV_MODEL) {
-		// 	ctx.waitUntil(trainingWorkerScheduled(event, env as any, ctx));
-		// } else {
-		// 	logger.warn('MARKOV_MODEL KV namespace not configured, skipping training');
-		// }
+		// Future work: trigger decision-tree dataset exports or analytics snapshots here.
 	}
 };
 

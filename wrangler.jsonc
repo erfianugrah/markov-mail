@@ -6,7 +6,7 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "markov-mail",
 	"main": "src/index.ts",
-	"compatibility_date": "2025-10-11", // RPC enabled (requires 2024-04-03+)
+	"compatibility_date": "2024-10-11", // RPC enabled (requires 2024-04-03+)
 	"observability": {
 		"enabled": true
 	},
@@ -28,11 +28,6 @@
 			"remote": true
 		},
 		{
-			"binding": "MARKOV_MODEL",
-			"id": "fcfe1c2f322a43a7b242eff4c8fb91ce",
-			"remote": true
-		},
-		{
 			"binding": "DISPOSABLE_DOMAINS_LIST",
 			"id": "6bb73f48f9804c888f5ce9406d3bf3d6",
 			"remote": true
@@ -47,11 +42,7 @@
 	 * Cron Triggers
 	 * Every 6 hours:
 	 * 1. Update disposable domain list from external sources (GitHub)
-	 * 2. Model training (DISABLED - see src/index.ts:448-467)
-	 *
-	 * Note: Scheduled training is disabled to prevent circular reasoning.
-	 * Use manual training instead: npm run cli train:markov
-	 * Or trigger via API: POST /admin/markov/train
+	 * 2. Model training (removed – training now happens offline via the Python exporter)
 	 * https://developers.cloudflare.com/workers/configuration/cron-triggers/
 	 */
 	"triggers": {
@@ -61,6 +52,7 @@
 	},
 	/**
 	 * Static Assets
+	 * New Astro dashboard at /dashboard/, favicon, and JS libraries
 	 * https://developers.cloudflare.com/workers/static-assets/binding/
 	 */
 	"assets": {

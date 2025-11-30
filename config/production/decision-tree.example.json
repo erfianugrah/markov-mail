@@ -1,0 +1,38 @@
+{
+  "type": "node",
+  "feature": "plus_risk",
+  "threshold": 0.55,
+  "operator": ">=",
+  "left": {
+    "type": "leaf",
+    "value": 0.85,
+    "reason": "plus_addressing_abuse"
+  },
+  "right": {
+    "type": "node",
+    "feature": "tld_risk_score",
+    "threshold": 0.4,
+    "operator": ">=",
+    "left": {
+      "type": "leaf",
+      "value": 0.7,
+      "reason": "high_risk_tld"
+    },
+    "right": {
+      "type": "node",
+      "feature": "sequential_confidence",
+      "threshold": 0.6,
+      "operator": ">=",
+      "left": {
+        "type": "leaf",
+        "value": 0.65,
+        "reason": "sequential_pattern"
+      },
+      "right": {
+        "type": "leaf",
+        "value": 0.12,
+        "reason": "low_risk"
+      }
+    }
+  }
+}

@@ -1,565 +1,184 @@
 /**
- * API Client for D1 Database queries
- * MIGRATION NOTE: Updated from Analytics Engine to D1
+ * API client for fraud detection analytics
  */
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:8787' : '';
+const API_BASE = import.meta.env.PUBLIC_API_URL || 'https://fraud.erfi.dev';
 
-// Get API key from localStorage or fallback to env var
-export function getApiKey(): string {
-  return localStorage.getItem('apiKey') || import.meta.env.VITE_API_KEY || '';
+export interface AnalyticsQuery {
+  query: string;
+  hours?: number;
 }
 
-export function setApiKey(key: string): void {
-  localStorage.setItem('apiKey', key);
-}
-
-export function clearApiKey(): void {
-  localStorage.removeItem('apiKey');
-}
-
-export interface QueryResult {
-  success: boolean;
-  data: Array<Record<string, string | number>>;
-  rows?: number;
-}
-
-export interface ExperimentStatus {
-  hasExperiment: boolean;
-  isActive: boolean;
-  config?: {
-    experimentId: string;
-    description?: string;
-    startDate: string;
-    endDate: string;
-    variants: {
-      control: { weight: number };
-      treatment: { weight: number; config?: Record<string, unknown> };
-    };
+export interface AnalyticsResponse {
+  results: any[];
+  meta: {
+    columns: string[];
+    rowCount: number;
+    duration: number;
   };
 }
 
-// Helper to build time filter WHERE clause (D1/SQLite syntax)
-function buildTimeFilter(hours: number): string {
-  // For "all time", query last 6 months
-  return hours === 0
-    ? `WHERE timestamp >= datetime('now', '-180 days')`
-    : `WHERE timestamp >= datetime('now', '-${hours} hours')`;
-}
-
-// Helper to build time filter for queries with additional AND conditions
-function buildTimeFilterWith(hours: number, condition: string): string {
-  if (hours === 0) {
-    // For "all time", query last 6 months
-    return `WHERE timestamp >= datetime('now', '-180 days') AND ${condition}`;
-  }
-  return `WHERE timestamp >= datetime('now', '-${hours} hours') AND ${condition}`;
-}
-
-export async function query(sql: string, hours: number = 24): Promise<QueryResult> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error('API key not set. Please enter your API key.');
-  }
-
-  // Use POST to avoid Cloudflare WAF blocking SQL in URL params
-  const response = await fetch(`${API_BASE}/admin/analytics`, {
-    method: 'POST',
-    headers: {
-      'X-API-Key': apiKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ query: sql, hours }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
-  }
-
-  return response.json();
-}
-
-export interface Stats {
+export interface MetricsSummary {
   totalValidations: number;
-  totalBlocks: number;
-  totalWarns: number;
-  totalAllows: number;
-  blockRate: number;
-  warnRate: number;
-  avgRiskScore: number;
+  blockCount: number;
+  warnCount: number;
+  legitCount: number;
   avgLatency: number;
+  errorRate: number;
 }
 
-export async function loadStats(hours: number = 24): Promise<Stats> {
-  // Get counts by decision type (D1 syntax)
-  const decisionsResult = await query(`
-    SELECT
-      decision,
-      COUNT(*) as count
-    FROM validations
-    ${buildTimeFilter(hours)}
-    GROUP BY decision
-  `, hours);
+export interface BlockReason {
+  reason: string;
+  count: number;
+  percentage: number;
+}
 
-  // Get averages separately
-  const avgsResult = await query(`
-    SELECT
-      AVG(risk_score) as avg_risk,
-      AVG(latency) as avg_latency
-    FROM validations
-    ${buildTimeFilter(hours)}
-  `, hours);
-
-  // Calculate totals by decision
-  let blocks = 0;
-  let warns = 0;
-  let allows = 0;
-
-  if (decisionsResult.data) {
-    decisionsResult.data.forEach((row) => {
-      const decision = String(row.decision);
-      const count = Number(row.count);
-
-      if (decision === 'block') blocks = count;
-      else if (decision === 'warn') warns = count;
-      else if (decision === 'allow') allows = count;
+/**
+ * Execute a SQL query against the analytics database
+ */
+export async function queryAnalytics(
+  query: AnalyticsQuery,
+  apiKey: string
+): Promise<AnalyticsResponse> {
+  try {
+    const response = await fetch(`${API_BASE}/admin/analytics`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': apiKey,
+      },
+      body: JSON.stringify(query),
     });
-  }
 
-  const total = blocks + warns + allows;
-  const avgRow = avgsResult.data?.[0] || {};
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
 
-  return {
-    totalValidations: total,
-    totalBlocks: blocks,
-    totalWarns: warns,
-    totalAllows: allows,
-    blockRate: total > 0 ? (blocks / total) * 100 : 0,
-    warnRate: total > 0 ? (warns / total) * 100 : 0,
-    avgRiskScore: Number(avgRow.avg_risk) || 0,
-    avgLatency: Number(avgRow.avg_latency) || 0,
-  };
-}
-
-export async function loadDecisions(hours: number = 24) {
-  const result = await query(`
-    SELECT
-      decision,
-      COUNT(*) as count
-    FROM validations
-    ${buildTimeFilter(hours)}
-    GROUP BY decision
-    ORDER BY count DESC
-  `, hours);
-
-  return (result.data || []).map((row) => ({
-    decision: String(row.decision),
-    count: Number(row.count),
-  }));
-}
-
-export async function loadRiskDistribution(hours: number = 24) {
-  const result = await query(`
-    SELECT
-      CASE
-        WHEN risk_score < 0.2 THEN 'very_low'
-        WHEN risk_score < 0.4 THEN 'low'
-        WHEN risk_score < 0.6 THEN 'medium'
-        WHEN risk_score < 0.8 THEN 'high'
-        ELSE 'very_high'
-      END as risk_bucket,
-      COUNT(*) as count
-    FROM validations
-    ${buildTimeFilter(hours)}
-    GROUP BY risk_bucket
-    ORDER BY risk_bucket
-  `, hours);
-
-  return (result.data || []).map((row) => ({
-    riskBucket: String(row.risk_bucket),
-    count: Number(row.count),
-  }));
-}
-
-export async function loadTimeline(hours: number = 24) {
-  const result = await query(`
-    SELECT
-      strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
-      decision,
-      COUNT(*) as count
-    FROM validations
-    ${buildTimeFilter(hours)}
-    GROUP BY hour, decision
-    ORDER BY hour ASC
-  `, hours);
-
-  // Transform data for Recharts
-  const grouped = new Map<string, Record<string, number | string>>();
-
-  if (result.data) {
-    result.data.forEach((row) => {
-      const hour = String(row.hour);
-      const decision = String(row.decision);
-      const count = Number(row.count);
-
-      if (!grouped.has(hour)) {
-        grouped.set(hour, { hour });
+      // Provide user-friendly error messages based on status code
+      let errorMessage = '';
+      switch (response.status) {
+        case 401:
+        case 403:
+          errorMessage = 'Invalid API key. Please check your credentials.';
+          break;
+        case 404:
+          errorMessage = 'Analytics endpoint not found. Please check the API URL.';
+          break;
+        case 429:
+          errorMessage = 'Too many requests. Please try again in a moment.';
+          break;
+        case 500:
+        case 502:
+        case 503:
+          errorMessage = 'Server error. Please try again later.';
+          break;
+        default:
+          errorMessage = `API error (${response.status}): ${errorText}`;
       }
 
-      const entry = grouped.get(hour)!;
-      entry[decision] = count;
-    });
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    // Handle network errors
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Network error. Please check your connection and try again.');
+    }
+    throw error;
   }
-
-  return Array.from(grouped.values());
-}
-
-// Additional chart data loaders
-export async function loadCountries(hours: number = 24) {
-  const result = await query(`
-    SELECT country, COUNT(*) as count
-    FROM validations
-    ${buildTimeFilter(hours)}
-    GROUP BY country
-    ORDER BY count DESC
-    LIMIT 10
-  `, hours);
-  return (result.data || []).map((row) => ({ country: String(row.country), count: Number(row.count) }));
-}
-
-export async function loadPatternTypes(hours: number = 24) {
-  const result = await query(`
-    SELECT
-      pattern_type,
-      pattern_classification_version,
-      COUNT(*) as count
-    FROM validations
-    ${buildTimeFilterWith(hours, "pattern_type IS NOT NULL AND pattern_type != 'none'")}
-    GROUP BY pattern_type, pattern_classification_version
-    ORDER BY count DESC
-    LIMIT 20
-  `, hours);
-  return (result.data || []).map((row) => ({
-    patternType: String(row.pattern_type),
-    version: String(row.pattern_classification_version || 'unknown'),
-    count: Number(row.count)
-  }));
-}
-
-export async function loadBlockReasons(hours: number = 24) {
-  const result = await query(`
-    SELECT
-      block_reason,
-      pattern_classification_version,
-      COUNT(*) as count
-    FROM validations
-    ${buildTimeFilterWith(hours, "decision = 'block' AND block_reason IS NOT NULL")}
-    GROUP BY block_reason, pattern_classification_version
-    ORDER BY count DESC
-    LIMIT 20
-  `, hours);
-  return (result.data || []).map((row) => ({
-    reason: String(row.block_reason),
-    version: String(row.pattern_classification_version || 'unknown'),
-    count: Number(row.count)
-  }));
-}
-
-export async function loadDomains(hours: number = 24) {
-  const result = await query(`
-    SELECT domain, COUNT(*) as count
-    FROM validations
-    ${buildTimeFilter(hours)}
-    GROUP BY domain
-    ORDER BY count DESC
-    LIMIT 10
-  `, hours);
-  return (result.data || []).map((row) => ({ domain: String(row.domain), count: Number(row.count) }));
-}
-
-export async function loadTLDs(hours: number = 24) {
-  const result = await query(`
-    SELECT tld, COUNT(*) as count
-    FROM validations
-    ${buildTimeFilter(hours)}
-    GROUP BY tld
-    ORDER BY count DESC
-    LIMIT 10
-  `, hours);
-  return (result.data || []).map((row) => ({ tld: String(row.tld), count: Number(row.count) }));
-}
-
-export async function loadPatternFamilies(hours: number = 24) {
-  const result = await query(`
-    SELECT pattern_family, COUNT(*) as count
-    FROM validations
-    ${buildTimeFilterWith(hours, "pattern_family IS NOT NULL AND pattern_family != 'none'")}
-    GROUP BY pattern_family
-    ORDER BY count DESC
-    LIMIT 10
-  `, hours);
-  return (result.data || []).map((row) => ({ family: String(row.pattern_family), count: Number(row.count) }));
-}
-
-export async function loadDisposableDomains(hours: number = 24) {
-  const result = await query(`
-    SELECT domain, COUNT(*) as count
-    FROM validations
-    ${buildTimeFilterWith(hours, "is_disposable = 1")}
-    GROUP BY domain
-    ORDER BY count DESC
-    LIMIT 10
-  `, hours);
-  return (result.data || []).map((row) => ({ domain: String(row.domain), count: Number(row.count) }));
-}
-
-export async function loadFreeProviders(hours: number = 24) {
-  const result = await query(`
-    SELECT domain, COUNT(*) as count
-    FROM validations
-    ${buildTimeFilterWith(hours, "is_free_provider = 1")}
-    GROUP BY domain
-    ORDER BY count DESC
-    LIMIT 10
-  `, hours);
-  return (result.data || []).map((row) => ({ domain: String(row.domain), count: Number(row.count) }));
-}
-
-export async function loadPlusAddressing(hours: number = 24) {
-  const result = await query(`
-    SELECT domain, COUNT(*) as count
-    FROM validations
-    ${buildTimeFilterWith(hours, "has_plus_addressing = 1")}
-    GROUP BY domain
-    ORDER BY count DESC
-    LIMIT 10
-  `, hours);
-  return (result.data || []).map((row) => ({ domain: String(row.domain), count: Number(row.count) }));
 }
 
 /**
- * DEPRECATED (v2.2.0): Keyboard walk detector removed
- * Returns empty data - column always 0 in database
+ * Get metrics summary for the last N hours
  */
-export async function loadKeyboardWalks(_hours: number = 24) {
-  return [{ type: 'DEPRECATED (v2.2.0)', count: 0 }];
+export async function getMetricsSummary(
+  hours: number = 24,
+  apiKey: string
+): Promise<MetricsSummary> {
+  const sql = `
+    SELECT
+      COUNT(*) as totalValidations,
+      SUM(CASE WHEN decision = 'block' THEN 1 ELSE 0 END) as blockCount,
+      SUM(CASE WHEN decision = 'warn' THEN 1 ELSE 0 END) as warnCount,
+      SUM(CASE WHEN decision = 'allow' THEN 1 ELSE 0 END) as legitCount,
+      AVG(latency) as avgLatency,
+      0.0 as errorRate
+    FROM validations
+    WHERE timestamp >= datetime('now', '-${hours} hours')
+  `;
+
+  const response = await queryAnalytics({ query: sql, hours }, apiKey);
+  const row = response.results[0];
+
+  return {
+    totalValidations: row.totalValidations || 0,
+    blockCount: row.blockCount || 0,
+    warnCount: row.warnCount || 0,
+    legitCount: row.legitCount || 0,
+    avgLatency: Math.round(row.avgLatency || 0),
+    errorRate: parseFloat((row.errorRate || 0).toFixed(2)),
+  };
 }
 
 /**
- * DEPRECATED (v2.2.0): Gibberish detector removed
- * Returns empty data - column always 0 in database
+ * Get block reasons distribution
  */
-export async function loadGibberish(_hours: number = 24) {
-  return [{ isGibberish: 'DEPRECATED (v2.2.0)', count: 0 }];
-}
-
-export async function loadEntropyScores(hours: number = 24) {
-  const result = await query(`
-    SELECT entropy_score, COUNT(*) as count
+export async function getBlockReasons(
+  hours: number = 24,
+  apiKey: string
+): Promise<BlockReason[]> {
+  const sql = `
+    SELECT
+      block_reason as reason,
+      COUNT(*) as count,
+      (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM validations WHERE decision = 'block' AND timestamp >= datetime('now', '-${hours} hours'))) as percentage
     FROM validations
-    ${buildTimeFilter(hours)}
-    GROUP BY entropy_score
-    ORDER BY entropy_score
-  `, hours);
-
-  // Bucket the scores client-side (0.0-1.0 range, buckets of 0.1)
-  const buckets = new Map<string, number>([
-    ['0.0-0.1', 0],
-    ['0.1-0.2', 0],
-    ['0.2-0.3', 0],
-    ['0.3-0.4', 0],
-    ['0.4-0.5', 0],
-    ['0.5-0.6', 0],
-    ['0.6-0.7', 0],
-    ['0.7-0.8', 0],
-    ['0.8-0.9', 0],
-    ['0.9-1.0', 0],
-  ]);
-
-  if (result.data) {
-    result.data.forEach((row) => {
-      const score = Number(row.entropy_score);
-      const count = Number(row.count);
-
-      if (score < 0.1) buckets.set('0.0-0.1', buckets.get('0.0-0.1')! + count);
-      else if (score < 0.2) buckets.set('0.1-0.2', buckets.get('0.1-0.2')! + count);
-      else if (score < 0.3) buckets.set('0.2-0.3', buckets.get('0.2-0.3')! + count);
-      else if (score < 0.4) buckets.set('0.3-0.4', buckets.get('0.3-0.4')! + count);
-      else if (score < 0.5) buckets.set('0.4-0.5', buckets.get('0.4-0.5')! + count);
-      else if (score < 0.6) buckets.set('0.5-0.6', buckets.get('0.5-0.6')! + count);
-      else if (score < 0.7) buckets.set('0.6-0.7', buckets.get('0.6-0.7')! + count);
-      else if (score < 0.8) buckets.set('0.7-0.8', buckets.get('0.7-0.8')! + count);
-      else if (score < 0.9) buckets.set('0.8-0.9', buckets.get('0.8-0.9')! + count);
-      else buckets.set('0.9-1.0', buckets.get('0.9-1.0')! + count);
-    });
-  }
-
-  return Array.from(buckets.entries()).map(([bucket, count]) => ({ bucket, count }));
-}
-
-export async function loadBotScores(hours: number = 24) {
-  const result = await query(`
-    SELECT bot_score, COUNT(*) as count
-    FROM validations
-    ${buildTimeFilter(hours)}
-    GROUP BY bot_score
-    ORDER BY bot_score
-  `, hours);
-
-  // Bucket the scores client-side
-  const buckets = new Map<string, number>([
-    ['0-30', 0],
-    ['30-50', 0],
-    ['50-70', 0],
-    ['70-90', 0],
-    ['90-100', 0],
-  ]);
-
-  if (result.data) {
-    result.data.forEach((row) => {
-      const score = Number(row.bot_score);
-      const count = Number(row.count);
-
-      if (score < 30) buckets.set('0-30', buckets.get('0-30')! + count);
-      else if (score < 50) buckets.set('30-50', buckets.get('30-50')! + count);
-      else if (score < 70) buckets.set('50-70', buckets.get('50-70')! + count);
-      else if (score < 90) buckets.set('70-90', buckets.get('70-90')! + count);
-      else buckets.set('90-100', buckets.get('90-100')! + count);
-    });
-  }
-
-  return Array.from(buckets.entries()).map(([range, count]) => ({ range, count }));
-}
-
-export async function loadLatencyDistribution(hours: number = 24) {
-  const result = await query(`
-    SELECT latency, COUNT(*) as count
-    FROM validations
-    ${buildTimeFilter(hours)}
-    GROUP BY latency
-    ORDER BY latency
-  `, hours);
-
-  // Bucket the latencies client-side
-  const buckets = new Map<string, number>([
-    ['0-10ms', 0],
-    ['10-50ms', 0],
-    ['50-100ms', 0],
-    ['100-200ms', 0],
-    ['200ms+', 0],
-  ]);
-
-  if (result.data) {
-    result.data.forEach((row) => {
-      const latency = Number(row.latency);
-      const count = Number(row.count);
-
-      if (latency < 10) buckets.set('0-10ms', buckets.get('0-10ms')! + count);
-      else if (latency < 50) buckets.set('10-50ms', buckets.get('10-50ms')! + count);
-      else if (latency < 100) buckets.set('50-100ms', buckets.get('50-100ms')! + count);
-      else if (latency < 200) buckets.set('100-200ms', buckets.get('100-200ms')! + count);
-      else buckets.set('200ms+', buckets.get('200ms+')! + count);
-    });
-  }
-
-  return Array.from(buckets.entries()).map(([range, count]) => ({ range, count }));
-}
-
-export async function loadASNs(hours: number = 24) {
-  const result = await query(`
-    SELECT asn, COUNT(*) as count
-    FROM validations
-    ${buildTimeFilter(hours)}
-    GROUP BY asn
+    WHERE decision = 'block'
+      AND timestamp >= datetime('now', '-${hours} hours')
+      AND block_reason IS NOT NULL
+    GROUP BY block_reason
     ORDER BY count DESC
     LIMIT 10
-  `, hours);
-  return (result.data || []).map((row) => ({ asn: Number(row.asn), count: Number(row.count) }));
+  `;
+
+  const response = await queryAnalytics({ query: sql, hours }, apiKey);
+
+  return response.results.map((row) => ({
+    reason: row.reason || 'Unknown',
+    count: row.count,
+    percentage: parseFloat(row.percentage.toFixed(2)),
+  }));
 }
 
-export async function loadTLDRiskScores(hours: number = 24) {
-  const result = await query(`
+/**
+ * Get time series data for validations
+ */
+export async function getTimeSeriesData(
+  hours: number = 24,
+  apiKey: string
+): Promise<Array<{ timestamp: string; count: number; blocks: number; warns: number }>> {
+  const sql = `
     SELECT
-      tld,
-      AVG(tld_risk_score) as avg_risk,
-      COUNT(*) as count
+      strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
+      COUNT(*) as count,
+      SUM(CASE WHEN decision = 'block' THEN 1 ELSE 0 END) as blocks,
+      SUM(CASE WHEN decision = 'warn' THEN 1 ELSE 0 END) as warns
     FROM validations
-    ${buildTimeFilter(hours)}
-    GROUP BY tld
-    ORDER BY avg_risk DESC
-    LIMIT 10
-  `, hours);
-  return (result.data || []).map((row) => ({ tld: String(row.tld), avgRisk: Number(row.avg_risk), count: Number(row.count) }));
-}
+    WHERE timestamp >= datetime('now', '-${hours} hours')
+    GROUP BY hour
+    ORDER BY hour ASC
+  `;
 
-export async function loadDomainReputation(hours: number = 24) {
-  const result = await query(`
-    SELECT
-      domain,
-      AVG(domain_reputation_score) as avg_reputation,
-      COUNT(*) as count
-    FROM validations
-    ${buildTimeFilter(hours)}
-    GROUP BY domain
-    ORDER BY avg_reputation DESC
-    LIMIT 10
-  `, hours);
-  return (result.data || []).map((row) => ({ domain: String(row.domain), avgReputation: Number(row.avg_reputation), count: Number(row.count) }));
-}
+  const response = await queryAnalytics({ query: sql, hours }, apiKey);
 
-export async function loadPatternConfidence(hours: number = 24) {
-  const result = await query(`
-    SELECT pattern_confidence, COUNT(*) as count
-    FROM validations
-    ${buildTimeFilter(hours)}
-    GROUP BY pattern_confidence
-    ORDER BY pattern_confidence
-  `, hours);
-
-  // Bucket the confidence scores client-side
-  const buckets = new Map<string, number>([
-    ['0-20%', 0],
-    ['20-40%', 0],
-    ['40-60%', 0],
-    ['60-80%', 0],
-    ['80-100%', 0],
-  ]);
-
-  if (result.data) {
-    result.data.forEach((row) => {
-      const confidence = Number(row.pattern_confidence);
-      const count = Number(row.count);
-
-      if (confidence < 0.2) buckets.set('0-20%', buckets.get('0-20%')! + count);
-      else if (confidence < 0.4) buckets.set('20-40%', buckets.get('20-40%')! + count);
-      else if (confidence < 0.6) buckets.set('40-60%', buckets.get('40-60%')! + count);
-      else if (confidence < 0.8) buckets.set('60-80%', buckets.get('60-80%')! + count);
-      else buckets.set('80-100%', buckets.get('80-100%')! + count);
-    });
+  if (!response.results || !Array.isArray(response.results)) {
+    return [];
   }
 
-  return Array.from(buckets.entries()).map(([range, count]) => ({ range, count }));
-}
-
-export async function loadExperimentStatus(): Promise<ExperimentStatus> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error('API key not set. Please enter your API key.');
-  }
-
-  const response = await fetch(`${API_BASE}/admin/ab-test/status`, {
-    headers: {
-      'X-API-Key': apiKey,
-    },
-  });
-
-  if (response.status === 404 || response.status === 503) {
-    return { hasExperiment: false, isActive: false };
-  }
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
-  }
-
-  return response.json();
+  return response.results.map((row) => ({
+    timestamp: row.hour,
+    count: row.count,
+    blocks: row.blocks,
+    warns: row.warns,
+  }));
 }

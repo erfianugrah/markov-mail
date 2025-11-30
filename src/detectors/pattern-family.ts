@@ -17,16 +17,11 @@ import { detectSequentialPattern, getSequentialPatternFamily } from './sequentia
 import { detectDatedPattern, getDatedPatternFamily } from './dated';
 import { normalizeEmail, type NormalizedEmailResult } from './plus-addressing';
 import { analyzeNGramNaturalness } from './ngram-analysis';
-// DEPRECATED (v2.2.0): keyboard-walk and keyboard-mashing detectors removed
-// import { detectKeyboardWalk } from './keyboard-walk';
-// import { detectKeyboardMashing } from './keyboard-mashing';
 
 export type PatternType =
   | 'sequential'        // user1, user2, user3
   | 'dated'            // firstname.lastname.2024
   | 'plus-addressing'  // user+1, user+2
-  | 'keyboard-walk'    // qwerty, asdfgh (consecutive keys)
-  | 'keyboard-mashing' // ioanerst, asdfasdf (region clustering)
   | 'formatted'        // firstname.lastname, first.last
   | 'random'           // xk9m2qw7r4p3
   | 'simple'           // john, test, admin
@@ -62,17 +57,12 @@ export async function extractPatternFamily(
   // Run all detectors
   const sequentialResult = detectSequentialPattern(providerNormalizedEmail);
   const datedResult = detectDatedPattern(providerNormalizedEmail);
-  // DEPRECATED (v2.2.0): keyboard detectors removed - Markov detects these patterns
-  // const keyboardWalkResult = detectKeyboardWalk(email);
-  // const keyboardMashingResult = detectKeyboardMashing(email);
 
   // Determine primary pattern type
   let patternType: PatternType = 'unknown';
   let familyString = '';
   let confidence = 0.0;
 
-  // DEPRECATED (v2.2.0): Keyboard walk and mashing detectors removed
-  // These are now detected by Markov Chain analysis
   // Priority 1 (was 3): Dated patterns (high confidence when detected)
   if (datedResult.hasDatedPattern && datedResult.confidence >= 0.6) {
     patternType = 'dated';

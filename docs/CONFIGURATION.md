@@ -6,12 +6,13 @@ The fraud detection system is configured via JSON stored in Cloudflare KV. This 
 
 ## Quick Start
 
-**New to Markov Mail?** Use the production-ready configuration:
-- **Pre-configured**: [`config/production/config.json`](../config/production/config.json) includes calibration and optimal thresholds
-- **Tested**: 97.96% F1 score with 100% recall and 96% precision
-- **Upload Instructions**: See [`config/production/README.md`](../config/production/README.md)
+**Fresh deployment?** Start with the bundled artifacts:
+- [`config/production/config.json`](../config/production/config.json) – sane defaults for risk thresholds, feature flags, and logging.
+- [`config/production/decision-tree.example.json`](../config/production/decision-tree.example.json) – tiny reference tree that shows the runtime schema. Replace it with a real export before going live.
 
-The rest of this document covers individual configuration options for customization.
+Upload both files to the `CONFIG` KV namespace (see [`config/production/README.md`](../config/production/README.md) for the exact commands). Once the tree is in KV the Worker automatically picks it up on the next cold start—no redeploy needed.
+
+The rest of this document covers the fields inside `config.json`. The configuration is intentionally minimal, focusing on essential risk thresholds and feature flags.
 
 ## Action Overrides
 
@@ -70,6 +71,38 @@ Override the normal decision logic for specific use cases.
 
 **Recommended**: block=0.6, warn=0.3 (91.8% accuracy)
 
+## Feature Flags
+
+Toggle runtime detectors/inputs without redeploying:
+
+```json
+{
+  "features": {
+    "enableDisposableCheck": true,
+    "enablePatternCheck": true,
+    "enableTLDRiskProfiling": true,
+    "enableMXCheck": true
+  }
+}
+```
+
+- `enableMXCheck` controls both runtime MX lookups (via Cloudflare DNS over HTTPS) and the feature exporter’s defaults. Leave it `true` for production—the decision tree now expects `mx_*` inputs. When running fully offline you can disable it or pass `--skip-mx` to the exporter so those columns zero out cleanly.
+
+## Alert Webhook
+
+Set the `ALERT_WEBHOOK_URL` secret (Slack/Teams/webhook) if you want proactive notifications when high-risk geo/identity anomalies appear. The Worker sends a JSON payload whenever:
+
+- `riskScore >= warnThreshold`, and
+- name/email similarity is < 0.2, or
+- Geo headers conflict (language/timezone), or
+- MX lookups fail for a non-disposable domain.
+
+```bash
+wrangler secret put ALERT_WEBHOOK_URL
+```
+
+If the secret is unset no alerts are sent (fully opt-in).
+
 ## See Also
 
 - [Training Guide](./TRAINING.md)
@@ -87,4 +120,4 @@ Once an experiment is active:
 
 - The worker hashes each fingerprint, assigns a control/treatment variant, and deep merges the treatment overrides into the base config
 - Each validation row in D1 records `experiment_id`, `variant`, and `bucket` so you can query lift directly
-- The dashboard overview card shows the active experiment along with traffic split and dates
+- Use `npm run cli ab:status` (or `GET /admin/ab-test/status`) to see the active experiment along with traffic split and dates

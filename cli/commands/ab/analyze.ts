@@ -74,7 +74,7 @@ Examples:
   npm run cli ab:analyze --experiment-id "bot_mgmt_test" --hours 24
 
   # Get JSON output for further processing
-  npm run cli ab:analyze --experiment-id "ensemble_markov" --format json
+  npm run cli ab:analyze --experiment-id "decision_tree_candidate" --format json
 		`);
 		return;
 	}

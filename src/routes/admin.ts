@@ -8,7 +8,6 @@ import { Hono } from 'hono';
 import { requireApiKey } from '../middleware/auth';
 import { getConfig, saveConfig, clearConfigCache, DEFAULT_CONFIG, validateConfig } from '../config';
 import type { FraudDetectionConfig } from '../config';
-import { retrainMarkovModels } from '../training/online-learning';
 import { logger } from '../logger';
 import { updateDisposableDomains, getDisposableDomainMetadata, clearDomainCache } from '../services/disposable-domain-updater';
 import { updateTLDRiskProfiles, getTLDRiskMetadata, clearTLDCache, getTLDRiskProfile, updateSingleTLDProfile } from '../services/tld-risk-updater';
@@ -421,7 +420,9 @@ admin.get('/analytics', async (c) => {
 				fingerprints: D1Queries.topFingerprints,
 				disposableDomains: D1Queries.disposableDomains,
 				patternFamilies: D1Queries.patternFamilies,
-				markovStats: D1Queries.markovStats,
+				identitySignals: D1Queries.identitySignals,
+				geoSignals: D1Queries.geoSignals,
+				mxProviders: D1Queries.mxProviders,
 			};
 
 			if (!allowedQueries[queryType]) {
@@ -718,10 +719,20 @@ admin.get('/analytics/queries', (c) => {
 			description: 'Analysis of detected pattern families',
 			sql: D1Queries.patternFamilies(hours).trim(),
 		},
-		markovStats: {
-			name: 'Markov Detection Stats',
-			description: 'Markov chain fraud detection statistics',
-			sql: D1Queries.markovStats(hours).trim(),
+		identitySignals: {
+			name: 'Identity Similarity Buckets',
+			description: 'Distribution of name/email similarity buckets',
+			sql: D1Queries.identitySignals(hours).trim(),
+		},
+		geoSignals: {
+			name: 'Geo Consistency Summary',
+			description: 'Language/timezone mismatch counts',
+			sql: D1Queries.geoSignals(hours).trim(),
+		},
+		mxProviders: {
+			name: 'MX Provider Distribution',
+			description: 'Primary MX providers observed with average risk',
+			sql: D1Queries.mxProviders(hours).trim(),
 		},
 	};
 
@@ -730,189 +741,6 @@ admin.get('/analytics/queries', (c) => {
 		usage: 'Use the SQL from any query with GET /admin/analytics?query=<url_encoded_sql>',
 		note: 'Migrated to D1 - SQLite syntax with proper column names',
 	});
-});
-
-/**
- * POST /admin/markov/train
- * Manually trigger Markov Chain model retraining
- *
- * This endpoint initiates the online learning training pipeline:
- * 1. Fetches high-confidence data from D1 database (last 7 days)
- * 2. Runs anomaly detection to check for data poisoning attacks
- * 3. Trains new models on fraud vs legitimate samples
- * 4. Validates new models against production
- * 5. Saves candidate model to KV with SHA-256 checksum
- *
- * Migration Note: Now uses D1 instead of Analytics Engine
- * Returns the training result including success status, metrics, and any errors.
- */
-admin.post('/markov/train', async (c) => {
-	try {
-		logger.info({
-			event: 'manual_training_triggered',
-			source: 'admin_api',
-		}, 'Manual training triggered via admin API');
-
-		// Check for D1 binding
-		if (!c.env.DB) {
-			return c.json(
-				{
-					error: 'D1 database not configured',
-					message: 'DB binding is missing. Check wrangler.jsonc configuration.',
-				},
-				503
-			);
-		}
-
-		// Trigger training pipeline
-		const result = await retrainMarkovModels(c.env);
-
-		if (result.success) {
-			return c.json({
-				success: true,
-				message: 'Training completed successfully',
-				result,
-			});
-		} else {
-			return c.json(
-				{
-					success: false,
-					message: 'Training failed',
-					error: result.error,
-					result,
-				},
-				500
-			);
-		}
-	} catch (error) {
-		logger.error({
-			event: 'training_error',
-			error: error instanceof Error ? {
-				message: error.message,
-				stack: error.stack,
-				name: error.name,
-			} : String(error),
-		}, 'Training failed');
-		return c.json(
-			{
-				error: 'Training failed',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			500
-		);
-	}
-});
-
-/**
- * GET /admin/markov/status
- * Get current status of Markov Chain models and recent training runs
- *
- * Returns:
- * - Production model metadata (version, accuracy, traffic %, checksum)
- * - Candidate model metadata (version, accuracy, status)
- * - Last 5 training runs (timestamps, success/failure, metrics)
- */
-admin.get('/markov/status', async (c) => {
-	if (!c.env.CONFIG) {
-		return c.json({ error: 'CONFIG KV namespace not configured' }, 503);
-	}
-
-	const configKV = c.env.CONFIG;
-	try {
-		// Get training history from CONFIG KV
-		const history = await configKV.get('markov_training_history', 'json') as Array<unknown> | null;
-
-		// Get candidate model metadata from MARKOV_MODEL KV
-		const candidateData = c.env.MARKOV_MODEL ? await c.env.MARKOV_MODEL.getWithMetadata('markov_model_candidate') : null;
-
-		// Get production model metadata
-		// Note: Currently loading from CONFIG, but will migrate to MARKOV_MODEL in Phase 2
-		const productionData = await configKV.getWithMetadata('markov_legit_model');
-
-		// Get training lock status
-		const lockStatus = await configKV.get('markov_training_lock');
-
-		return c.json({
-			production: {
-				modelVersion: productionData?.metadata || null,
-				status: 'active',
-				traffic_percent: 100,
-				note: 'Production models currently stored in CONFIG KV (will migrate to MARKOV_MODEL in Phase 2)',
-			},
-			candidate: candidateData?.metadata ? {
-				...candidateData.metadata,
-				status: 'candidate',
-				traffic_percent: 0,
-			} : null,
-			trainingStatus: {
-				locked: !!lockStatus,
-				lockInfo: lockStatus ? 'Training in progress' : 'No training running',
-			},
-			recentTraining: history ? history.slice(0, 5) : [],
-			kvNamespaces: {
-				CONFIG: 'Stores config, production models (legacy), training history',
-				MARKOV_MODEL: 'Stores candidate models with metadata',
-			},
-		});
-	} catch (error) {
-		return c.json(
-			{
-				error: 'Failed to get training status',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			500
-		);
-	}
-});
-
-/**
- * GET /admin/markov/history
- * Get detailed training history (last 20 runs)
- *
- * Each entry includes:
- * - Timestamp
- * - Success/failure status
- * - Training duration
- * - Sample counts (fraud/legit)
- * - Model version ID
- * - Validation metrics (accuracy, precision, recall)
- * - Anomaly detection results
- * - Error messages (if failed)
- */
-admin.get('/markov/history', async (c) => {
-	if (!c.env.CONFIG) {
-		return c.json({ error: 'CONFIG KV namespace not configured' }, 503);
-	}
-
-	const configKV = c.env.CONFIG;
-	try {
-		// Get full training history from CONFIG KV
-		const history = await configKV.get('markov_training_history', 'json') as Array<unknown> | null;
-
-		if (!history || history.length === 0) {
-			return c.json({
-				success: true,
-				message: 'No training history found',
-				history: [],
-				note: 'Trigger training via POST /admin/markov/train or wait for cron (every 6 hours)',
-			});
-		}
-
-		return c.json({
-			success: true,
-			count: history.length,
-			history: history.slice(0, 20), // Last 20 runs
-			cronSchedule: '0 */6 * * * (every 6 hours at :00)',
-		});
-	} catch (error) {
-		return c.json(
-			{
-				error: 'Failed to get training history',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			500
-		);
-	}
 });
 
 /**

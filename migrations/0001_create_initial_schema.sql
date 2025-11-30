@@ -1,77 +1,91 @@
--- Migration number: 0001 	 2025-11-06T07:09:09.417Z
--- Initial schema for fraud analytics using D1
--- This replaces Analytics Engine with a proper relational database
-
--- ============================================================================
--- Validation Metrics Table
--- Stores all email validation events with detailed fraud detection data
--- ============================================================================
+-- Decision-tree reset schema (2025-01-??)
+-- Single table captures all runtime telemetry we still care about.
 CREATE TABLE IF NOT EXISTS validations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
 
-    -- Decision & Risk
     decision TEXT NOT NULL CHECK(decision IN ('allow', 'warn', 'block')),
     risk_score REAL NOT NULL CHECK(risk_score >= 0 AND risk_score <= 1),
     block_reason TEXT,
 
-    -- Email Analysis
     email_local_part TEXT,
     domain TEXT,
     tld TEXT,
     fingerprint_hash TEXT NOT NULL,
 
-    -- Pattern Detection
     pattern_type TEXT,
     pattern_family TEXT,
-    is_disposable INTEGER DEFAULT 0, -- 0=false, 1=true (SQLite boolean)
+    pattern_confidence REAL,
+    is_disposable INTEGER DEFAULT 0,
     is_free_provider INTEGER DEFAULT 0,
     has_plus_addressing INTEGER DEFAULT 0,
-    has_keyboard_walk INTEGER DEFAULT 0,
-    is_gibberish INTEGER DEFAULT 0,
 
-    -- Scores
     entropy_score REAL,
     bot_score REAL,
     tld_risk_score REAL,
     domain_reputation_score REAL,
-    pattern_confidence REAL,
 
-    -- Markov Chain Analysis (Phase 7)
-    markov_detected INTEGER DEFAULT 0,
-    markov_confidence REAL,
-    markov_cross_entropy_legit REAL,
-    markov_cross_entropy_fraud REAL,
+    decision_tree_reason TEXT,
+    decision_tree_path TEXT,
 
-    -- Online Learning & A/B Testing (Phase 8)
     client_ip TEXT,
     user_agent TEXT,
     model_version TEXT,
-    exclude_from_training INTEGER DEFAULT 0,
     ip_reputation_score REAL,
+    consumer TEXT,
+    flow TEXT,
 
-    -- A/B Testing
     experiment_id TEXT,
     variant TEXT CHECK(variant IN ('control', 'treatment', NULL)),
-    bucket INTEGER CHECK(bucket >= 0 AND bucket <= 99 OR bucket IS NULL),
+    bucket INTEGER,
 
-    -- Geographic & Network
     country TEXT,
     asn INTEGER,
+    region TEXT,
+    city TEXT,
+    postal_code TEXT,
+    timezone TEXT,
+    latitude TEXT,
+    longitude TEXT,
+    continent TEXT,
+    is_eu_country TEXT,
+    as_organization TEXT,
+    colo TEXT,
+    http_protocol TEXT,
+    tls_version TEXT,
+    tls_cipher TEXT,
 
-    -- Performance
-    latency REAL NOT NULL
+    client_trust_score INTEGER,
+    verified_bot INTEGER DEFAULT 0,
+    js_detection_passed INTEGER DEFAULT 0,
+    detection_ids TEXT,
+    ja3_hash TEXT,
+    ja4 TEXT,
+    ja4_signals TEXT,
+
+    pattern_classification_version TEXT,
+    latency REAL NOT NULL,
+
+    identity_similarity REAL,
+    identity_token_overlap REAL,
+    identity_name_in_email INTEGER,
+    geo_language_mismatch INTEGER,
+    geo_timezone_mismatch INTEGER,
+    geo_anomaly_score REAL,
+    mx_has_records INTEGER,
+    mx_record_count INTEGER,
+    mx_primary_provider TEXT,
+    mx_provider_hits TEXT,
+    mx_lookup_failure TEXT,
+    mx_ttl INTEGER
 );
 
--- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_validations_timestamp ON validations(timestamp);
 CREATE INDEX IF NOT EXISTS idx_validations_decision ON validations(decision);
 CREATE INDEX IF NOT EXISTS idx_validations_fingerprint ON validations(fingerprint_hash);
-CREATE INDEX IF NOT EXISTS idx_validations_risk_score ON validations(risk_score);
-CREATE INDEX IF NOT EXISTS idx_validations_country ON validations(country);
 CREATE INDEX IF NOT EXISTS idx_validations_domain ON validations(domain);
-CREATE INDEX IF NOT EXISTS idx_validations_experiment ON validations(experiment_id, variant) WHERE experiment_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_validations_block_reason ON validations(block_reason) WHERE decision = 'block';
+CREATE INDEX IF NOT EXISTS idx_validations_experiment ON validations(experiment_id, variant) WHERE experiment_id IS NOT NULL;
 
 -- ============================================================================
 -- Training Metrics Table

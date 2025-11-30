@@ -193,35 +193,70 @@ export function isDomainSuspicious(domain: string): {
 /**
  * Get domain reputation score (0.0 = trusted, 1.0 = suspicious)
  *
+ * This uses a tiered approach to handle diverse fraud patterns:
+ * - Disposable domains (1.0) - Block immediately
+ * - Sketchy free providers (0.6) - Higher scrutiny (mail.com, gmx.com, email.com)
+ * - Trusted providers (0.1) - Lower scrutiny (gmail.com, outlook.com, icloud.com)
+ * - Unknown/Corporate (0.3) - Neutral default
+ *
  * @param domain - Domain to score
  * @param disposableDomains - Optional Set of disposable domains from KV (falls back to hardcoded if not provided)
  */
 export function getDomainReputationScore(domain: string, disposableDomains?: Set<string>): number {
-  const validation = validateDomain(domain, disposableDomains);
-  const suspicious = isDomainSuspicious(domain);
+  const normalizedDomain = domain.toLowerCase().trim();
+  const validation = validateDomain(normalizedDomain, disposableDomains);
 
-  let score = 0.0;
-
-  // Disposable domains get highest score
+  // 1. Known Disposable (Block immediately via other checks, scored 1.0)
   if (validation.isDisposable) {
-    score += 0.9;
+    return 1.0;
   }
 
-  // Pattern matches add to score
-  if (validation.matchesDisposablePattern) {
-    score += 0.3;
+  // 2. "Sketchy" Free Providers - Currently suffering high bot abuse
+  const sketchyProviders = [
+    'mail.com',
+    'email.com',
+    'gmx.com',
+    'gmx.de',
+    'gmx.net',
+    'proton.me',
+    'protonmail.com',
+    'yandex.com',
+    'yandex.ru'
+  ];
+  if (sketchyProviders.includes(normalizedDomain)) {
+    return 0.6; // High scrutiny
   }
 
-  // Suspicious characteristics
+  // 3. Trusted Free Providers - High friction signup, better abuse prevention
+  const trustedProviders = [
+    'gmail.com',
+    'googlemail.com',
+    'outlook.com',
+    'hotmail.com',
+    'live.com',
+    'icloud.com',
+    'yahoo.com',
+    'yahoo.co.uk',
+    'yahoo.co.jp',
+    'aol.com'
+  ];
+  if (trustedProviders.includes(normalizedDomain)) {
+    return 0.1; // Low scrutiny
+  }
+
+  // 4. Suspicious characteristics add to base score
+  const suspicious = isDomainSuspicious(normalizedDomain);
+  let suspicionScore = 0.0;
+
   if (suspicious.suspicious) {
-    score += 0.1 * suspicious.reasons.length;
+    suspicionScore += 0.1 * suspicious.reasons.length;
   }
 
   // Subdomain depth (more subdomains = more suspicious)
   if (validation.signals.subdomainDepth > 2) {
-    score += 0.1 * validation.signals.subdomainDepth;
+    suspicionScore += 0.1 * validation.signals.subdomainDepth;
   }
 
-  // Cap at 1.0
-  return Math.min(score, 1.0);
+  // 5. Default neutral for corporate/ISP domains + suspicion adjustments
+  return Math.min(0.3 + suspicionScore, 1.0);
 }

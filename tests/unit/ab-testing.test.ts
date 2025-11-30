@@ -122,22 +122,12 @@ describe('A/B Testing Framework', () => {
 				baseRiskScores: {
 					invalidFormat: 0.8,
 					disposableDomain: 0.95,
-					highEntropy: 0.7,
-				},
-				confidenceThresholds: {
-					markovFraud: 0.7,
-					markovRisk: 0.6,
-					patternRisk: 0.5,
-				},
-				riskWeights: {
-					domainReputation: 0.2,
-					tldRisk: 0.3,
 				},
 				features: {
 					enableDisposableCheck: true,
 					enablePatternCheck: true,
 					enableTLDRiskProfiling: true,
-					enableMarkovChainDetection: true,
+					enableMXCheck: true,
 				},
 				logging: {
 					logAllValidations: true,
@@ -150,12 +140,14 @@ describe('A/B Testing Framework', () => {
 					originUrl: '',
 				},
 				actionOverride: 'allow',
+				riskWeights: {
+					domainReputation: 0.2,
+					tldRisk: 0.3,
+				},
 				patternThresholds: {
 					sequential: 0.8,
 					dated: 0.7,
 					plusAddressing: 0.6,
-					keyboardWalk: 0.8,
-					gibberish: 0.9,
 				},
 				rateLimiting: {
 					enabled: false,
@@ -165,20 +157,10 @@ describe('A/B Testing Framework', () => {
 				admin: {
 					enabled: false,
 				},
-				markov: {
-					adaptationRate: 0.5,
-					minTrainingExamples: 100,
-					retrainIntervalDays: 7,
-				},
 				adjustments: {
 					professionalEmailFactor: 0.5,
 					professionalDomainFactor: 0.5,
 					professionalAbnormalityFactor: 0.6,
-				},
-				ensemble: {
-					boostMultiplier: 0.3,
-					maxBoost: 0.3,
-					tldAgreementThreshold: 0.5,
 				},
 				ood: {
 					maxRisk: 0.65,
@@ -225,22 +207,12 @@ describe('A/B Testing Framework', () => {
 				baseRiskScores: {
 					invalidFormat: 0.8,
 					disposableDomain: 0.95,
-					highEntropy: 0.7,
-				},
-				confidenceThresholds: {
-					markovFraud: 0.7,
-					markovRisk: 0.6,
-					patternRisk: 0.5,
-				},
-				riskWeights: {
-					domainReputation: 0.2,
-					tldRisk: 0.3,
 				},
 				features: {
 					enableDisposableCheck: true,
 					enablePatternCheck: true,
 					enableTLDRiskProfiling: true,
-					enableMarkovChainDetection: true,
+					enableMXCheck: true,
 				},
 				logging: {
 					logAllValidations: true,
@@ -253,12 +225,14 @@ describe('A/B Testing Framework', () => {
 					originUrl: '',
 				},
 				actionOverride: 'allow',
+				riskWeights: {
+					domainReputation: 0.2,
+					tldRisk: 0.3,
+				},
 				patternThresholds: {
 					sequential: 0.8,
 					dated: 0.7,
 					plusAddressing: 0.6,
-					keyboardWalk: 0.8,
-					gibberish: 0.9,
 				},
 				rateLimiting: {
 					enabled: false,
@@ -268,20 +242,10 @@ describe('A/B Testing Framework', () => {
 				admin: {
 					enabled: false,
 				},
-				markov: {
-					adaptationRate: 0.5,
-					minTrainingExamples: 100,
-					retrainIntervalDays: 7,
-				},
 				adjustments: {
 					professionalEmailFactor: 0.5,
 					professionalDomainFactor: 0.5,
 					professionalAbnormalityFactor: 0.6,
-				},
-				ensemble: {
-					boostMultiplier: 0.3,
-					maxBoost: 0.3,
-					tldAgreementThreshold: 0.5,
 				},
 				ood: {
 					maxRisk: 0.65,

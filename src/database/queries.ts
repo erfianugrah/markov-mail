@@ -211,20 +211,92 @@ export const D1Queries = {
   `,
 
   /**
-   * Markov detection statistics
+   * Identity matching signals
    */
-  markovStats: (hours: number) => `
+  identitySignals: (hours: number) => `
+    WITH latest AS (
+      SELECT
+        CASE
+          WHEN identity_similarity IS NULL THEN 'unknown'
+          WHEN identity_similarity >= 0.8 THEN 'strong_match'
+          WHEN identity_similarity >= 0.4 THEN 'partial_match'
+          ELSE 'mismatch'
+        END AS bucket,
+        identity_similarity,
+        risk_score
+      FROM validations
+      WHERE timestamp >= datetime('now', '-${hours} hours')
+    )
     SELECT
-      markov_detected,
-      decision,
-      COUNT(*) as count,
-      AVG(markov_confidence) as avg_confidence,
-      AVG(risk_score) as avg_risk_score
+      bucket,
+      COUNT(*) AS count,
+      AVG(identity_similarity) AS avg_similarity,
+      AVG(risk_score) AS avg_risk_score
+    FROM latest
+    GROUP BY bucket
+    ORDER BY count DESC
+  `,
+
+  /**
+   * Geo consistency summary
+   */
+  geoSignals: (hours: number) => `
+    WITH base AS (
+      SELECT
+        geo_language_mismatch,
+        geo_timezone_mismatch,
+        risk_score
+      FROM validations
+      WHERE timestamp >= datetime('now', '-${hours} hours')
+    )
+    SELECT
+      label,
+      count,
+      avg_risk_score
+    FROM (
+      SELECT
+        'Language mismatch' AS label,
+        SUM(CASE WHEN geo_language_mismatch = 1 THEN 1 ELSE 0 END) AS count,
+        AVG(CASE WHEN geo_language_mismatch = 1 THEN risk_score END) AS avg_risk_score
+      FROM base
+      UNION ALL
+      SELECT
+        'Timezone mismatch',
+        SUM(CASE WHEN geo_timezone_mismatch = 1 THEN 1 ELSE 0 END),
+        AVG(CASE WHEN geo_timezone_mismatch = 1 THEN risk_score END)
+      FROM base
+      UNION ALL
+      SELECT
+        'Both mismatched',
+        SUM(CASE WHEN geo_language_mismatch = 1 AND geo_timezone_mismatch = 1 THEN 1 ELSE 0 END),
+        AVG(CASE WHEN geo_language_mismatch = 1 AND geo_timezone_mismatch = 1 THEN risk_score END)
+      FROM base
+      UNION ALL
+      SELECT
+        'Aligned',
+        SUM(CASE WHEN (geo_language_mismatch IS NULL OR geo_language_mismatch = 0)
+               AND (geo_timezone_mismatch IS NULL OR geo_timezone_mismatch = 0) THEN 1 ELSE 0 END),
+        AVG(CASE WHEN (geo_language_mismatch IS NULL OR geo_language_mismatch = 0)
+               AND (geo_timezone_mismatch IS NULL OR geo_timezone_mismatch = 0) THEN risk_score END)
+      FROM base
+    )
+    WHERE count > 0
+  `,
+
+  /**
+   * MX provider distribution
+   */
+  mxProviders: (hours: number) => `
+    SELECT
+      COALESCE(mx_primary_provider, 'unknown') AS provider,
+      COUNT(*) AS count,
+      AVG(risk_score) AS avg_risk_score,
+      AVG(CASE WHEN mx_has_records = 1 THEN mx_record_count ELSE NULL END) AS avg_record_count
     FROM validations
     WHERE timestamp >= datetime('now', '-${hours} hours')
-      AND markov_confidence IS NOT NULL
-    GROUP BY markov_detected, decision
+    GROUP BY provider
     ORDER BY count DESC
+    LIMIT 12
   `,
 
   /**

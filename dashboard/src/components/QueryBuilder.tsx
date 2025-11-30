@@ -1,151 +1,175 @@
-import { useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { query } from '@/lib/api'
-import { Play, FileText, Download } from 'lucide-react'
+import { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { queryAnalytics } from '../lib/api';
+import ExportButton from './ExportButton';
 
-const DEFAULT_QUERY = `SELECT
-  decision,
-  pattern_type,
-  domain,
-  risk_score,
-  entropy_score,
-  bot_score,
-  timestamp
+interface QueryBuilderProps {
+  apiKey: string;
+}
+
+interface QueryResult {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  rowCount: number;
+  executionTime: number;
+}
+
+const EXAMPLE_QUERIES = [
+  {
+    name: 'Last 100 Validations',
+    sql: 'SELECT * FROM validations ORDER BY timestamp DESC LIMIT 100',
+  },
+  {
+    name: 'Block Rate by Hour',
+    sql: `SELECT
+  strftime('%Y-%m-%d %H:00', timestamp) as hour,
+  COUNT(*) as total,
+  SUM(CASE WHEN decision = 'block' THEN 1 ELSE 0 END) as blocks,
+  ROUND(SUM(CASE WHEN decision = 'block' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as block_rate
 FROM validations
 WHERE timestamp >= datetime('now', '-24 hours')
-  AND risk_score > 0.5
-ORDER BY timestamp DESC
-LIMIT 100`
+GROUP BY hour
+ORDER BY hour DESC`,
+  },
+  {
+    name: 'Top Blocked Emails',
+    sql: `SELECT
+  email_local_part || '@' || domain as email,
+  COUNT(*) as block_count,
+  GROUP_CONCAT(DISTINCT block_reason) as reasons
+FROM validations
+WHERE decision = 'block'
+  AND timestamp >= datetime('now', '-7 days')
+GROUP BY email
+ORDER BY block_count DESC
+LIMIT 20`,
+  },
+  {
+    name: 'Decision Tree Performance',
+    sql: `SELECT
+  decision,
+  COUNT(*) as count,
+  ROUND(AVG(latency), 2) as avg_latency,
+  ROUND(AVG(risk_score), 3) as avg_risk_score
+FROM validations
+WHERE decision_tree_reason IS NOT NULL
+  AND timestamp >= datetime('now', '-24 hours')
+GROUP BY decision`,
+  },
+];
 
-export function QueryBuilder() {
-  const [sql, setSql] = useState(DEFAULT_QUERY)
-  const [result, setResult] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export default function QueryBuilder({ apiKey }: QueryBuilderProps) {
+  const [query, setQuery] = useState(EXAMPLE_QUERIES[0].sql);
+  const [result, setResult] = useState<QueryResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const runQuery = async () => {
+  const executeQuery = async () => {
+    if (!apiKey || !query.trim()) return;
+
+    setLoading(true);
+    setError(null);
+
     try {
-      setLoading(true)
-      setError(null)
-      // Use 24 hours as default for query context
-      const response = await query(sql, 24)
-      setResult(response.data || [])
+      const startTime = performance.now();
+      const response = await queryAnalytics({ query }, apiKey);
+      const executionTime = Math.round(performance.now() - startTime);
+
+      setResult({
+        columns: response.meta.columns,
+        rows: response.results,
+        rowCount: response.meta.rowCount,
+        executionTime,
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to run query')
+      setError(err instanceof Error ? err.message : 'Query execution failed');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
-
-  const exportToCSV = () => {
-    if (!result.length) return
-
-    const headers = Object.keys(result[0])
-    const csv = [
-      headers.join(','),
-      ...result.map(row =>
-        headers.map(h => {
-          const val = row[h]
-          return typeof val === 'string' && val.includes(',') ? `"${val}"` : val
-        }).join(',')
-      )
-    ].join('\n')
-
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `query-result-${new Date().toISOString()}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const exportToJSON = () => {
-    if (!result.length) return
-
-    const json = JSON.stringify(result, null, 2)
-    const blob = new Blob([json], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `query-result-${new Date().toISOString()}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Custom SQL Query</CardTitle>
-        <CardDescription>
-          Run parameterized SQL against your D1 database. Need help? See{' '}
-          <a
-            href="https://developers.cloudflare.com/d1/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary underline"
-          >
-            Cloudflare D1 documentation
-          </a>
-        </CardDescription>
+        <CardTitle>SQL Query Builder</CardTitle>
+        <CardDescription>Execute custom queries against the analytics database</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <textarea
-          value={sql}
-          onChange={(e) => setSql(e.target.value)}
-          className="w-full h-64 p-3 font-mono text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-          spellCheck={false}
-        />
-
-        <div className="flex gap-2 flex-wrap">
-          <Button onClick={runQuery} disabled={loading}>
-            <Play className="h-4 w-4 mr-2" />
-            {loading ? 'Running...' : 'Run Query'}
-          </Button>
-          <Button variant="outline" onClick={() => setSql(DEFAULT_QUERY)}>
-            <FileText className="h-4 w-4 mr-2" />
-            Reset to Example
-          </Button>
-          {result.length > 0 && (
-            <>
-              <Button variant="outline" onClick={exportToCSV}>
-                <Download className="h-4 w-4 mr-2" />
-                Export CSV
-              </Button>
-              <Button variant="outline" onClick={exportToJSON}>
-                <Download className="h-4 w-4 mr-2" />
-                Export JSON
-              </Button>
-            </>
-          )}
+        {/* Example Queries */}
+        <div>
+          <label className="text-sm font-medium mb-2 block">Quick Examples</label>
+          <div className="flex flex-wrap gap-2">
+            {EXAMPLE_QUERIES.map((example) => (
+              <button
+                key={example.name}
+                onClick={() => setQuery(example.sql)}
+                className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-accent transition-colors"
+              >
+                {example.name}
+              </button>
+            ))}
+          </div>
         </div>
 
+        {/* SQL Editor */}
+        <div>
+          <label className="text-sm font-medium mb-2 block">SQL Query</label>
+          <textarea
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="w-full h-32 p-3 text-sm font-mono rounded-md border border-border bg-background resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+            placeholder="SELECT * FROM validations LIMIT 10"
+          />
+        </div>
+
+        {/* Execute Button */}
+        <button
+          onClick={executeQuery}
+          disabled={loading || !query.trim()}
+          className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {loading ? 'Executing...' : 'Execute Query'}
+        </button>
+
+        {/* Error Display */}
         {error && (
-          <div className="p-4 border border-destructive rounded-md bg-destructive/10">
-            <p className="text-sm text-destructive">{error}</p>
+          <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+            {error}
           </div>
         )}
 
-        {result.length > 0 && (
-          <div className="border rounded-md overflow-hidden">
-            <div className="overflow-x-auto">
+        {/* Results Display */}
+        {result && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <div className="text-muted-foreground">
+                <span>{result.rowCount} rows returned</span>
+                <span className="mx-2">•</span>
+                <span>Executed in {result.executionTime}ms</span>
+              </div>
+              <div className="flex gap-2">
+                <ExportButton data={result.rows} filename="query-results" format="csv" />
+                <ExportButton data={result.rows} filename="query-results" format="json" />
+              </div>
+            </div>
+
+            <div className="border rounded-md overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted">
-                  <tr>
-                    {Object.keys(result[0]).map((key) => (
-                      <th key={key} className="px-4 py-2 text-left font-medium">
-                        {key}
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    {result.columns.map((col) => (
+                      <th key={col} className="px-4 py-2 text-left font-medium">
+                        {col}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {result.map((row, i) => (
-                    <tr key={i} className="border-t">
-                      {Object.values(row).map((val, j) => (
-                        <td key={j} className="px-4 py-2">
-                          {String(val)}
+                  {result.rows.map((row, idx) => (
+                    <tr key={idx} className="border-b last:border-0 hover:bg-muted/50">
+                      {result.columns.map((col) => (
+                        <td key={col} className="px-4 py-2">
+                          {String(row[col])}
                         </td>
                       ))}
                     </tr>
@@ -153,12 +177,9 @@ export function QueryBuilder() {
                 </tbody>
               </table>
             </div>
-            <div className="px-4 py-2 bg-muted text-sm text-muted-foreground">
-              {result.length} row{result.length !== 1 ? 's' : ''}
-            </div>
           </div>
         )}
       </CardContent>
     </Card>
-  )
+  );
 }

@@ -35,10 +35,6 @@ interface ValidationResponse {
 		patternRiskScore?: number;
 		normalizedEmail?: string;
 		hasPlusAddressing?: boolean;
-		hasKeyboardWalk?: boolean;
-		keyboardWalkType?: string;
-		isGibberish?: boolean;
-		gibberishConfidence?: number;
 		tldRiskScore?: number;
 	};
 	fingerprint: {
@@ -321,7 +317,7 @@ describe('Comprehensive Email Validation Test Suite', () => {
 
 				// Pattern should be detected (may be dated, random, or other)
 				expect(result.signals.patternType).toBeDefined();
-				// Without trained Markov models, some dated patterns may only be flagged as allow
+				// Legacy behavior allowed some dated patterns; keep for regression tracking
 				expect(['allow', 'warn', 'block']).toContain(result.decision);
 			});
 		});
@@ -367,96 +363,6 @@ describe('Comprehensive Email Validation Test Suite', () => {
 
 				expect(result.signals.hasPlusAddressing).toBe(true);
 				expect(result.signals.normalizedEmail).toBeDefined();
-			});
-		});
-	});
-
-	describe('Keyboard Walk Patterns - WARN/BLOCK', () => {
-		const testCases: ValidationPayload[] = [
-			{
-				email: 'qwerty@example.com',
-				consumer: 'MY_APP',
-				flow: 'SIGNUP_EMAIL_VERIFY',
-			},
-			{
-				email: 'asdfgh@test.com',
-				consumer: 'WEB_APP',
-				flow: 'PWDLESS_LOGIN_EMAIL',
-			},
-			{
-				email: 'zxcvbn@service.com',
-				consumer: 'API',
-				flow: 'SIGNUP_EMAIL_VERIFY',
-			},
-			{
-				email: 'qazwsx@company.com',
-				consumer: 'MY_APP',
-				flow: 'PASSWORD_RESET',
-			},
-			{
-				email: '123456@example.com',
-				consumer: 'WEB_APP',
-				flow: 'SIGNUP_EMAIL_VERIFY',
-			},
-			{
-				email: 'abc123@test.com',
-				consumer: 'API',
-				flow: 'EMAIL_CHANGE',
-			},
-		];
-
-		testCases.forEach(({ email, consumer, flow }) => {
-			it(`should detect keyboard walk: ${email} (${consumer}/${flow})`, async () => {
-				const result = await validateEmail({ email, consumer, flow });
-
-				expect(result.signals.hasKeyboardWalk).toBe(true);
-				expect(result.signals.keyboardWalkType).not.toBe('none');
-			});
-		});
-	});
-
-	describe('Gibberish/Random Emails - BLOCK/WARN', () => {
-		const testCases: ValidationPayload[] = [
-			{
-				email: 'xk9m2qw7r4p3@example.com',
-				consumer: 'MY_APP',
-				flow: 'SIGNUP_EMAIL_VERIFY',
-			},
-			{
-				email: 'zxkj3mq9wr@test.com',
-				consumer: 'WEB_APP',
-				flow: 'PWDLESS_LOGIN_EMAIL',
-			},
-			{
-				email: 'qp4k8j2mx@company.com',
-				consumer: 'API',
-				flow: 'SIGNUP_EMAIL_VERIFY',
-			},
-			{
-				email: 'a1b2c3d4e5f6@service.com',
-				consumer: 'MY_APP',
-				flow: 'PASSWORD_RESET',
-			},
-			{
-				email: 'rtyu1234vbnm@example.com',
-				consumer: 'WEB_APP',
-				flow: 'SIGNUP_EMAIL_VERIFY',
-			},
-			{
-				email: 'mxkq3j9w2r@test.com',
-				consumer: 'API',
-				flow: 'EMAIL_CHANGE',
-			},
-		];
-
-		testCases.forEach(({ email, consumer, flow }) => {
-			it(`should detect gibberish: ${email} (${consumer}/${flow})`, async () => {
-				const result = await validateEmail({ email, consumer, flow });
-
-				expect(result.signals.isGibberish).toBe(true);
-				// May be block or warn depending on other factors
-				expect(['warn', 'block']).toContain(result.decision);
-				expect(result.riskScore).toBeGreaterThan(0.3);
 			});
 		});
 	});
@@ -771,7 +677,7 @@ describe('Comprehensive Email Validation Test Suite', () => {
 				}
 			}
 
-			// Without trained Markov models, expect lower detection (will be > 40 once trained)
+			// Legacy expectation noted here; update once we have decision-tree benchmarks
 			expect(blockedCount + warnCount).toBeGreaterThan(20);
 			// Most should have pattern detected (pattern detection should still work)
 			expect(sequentialCount).toBeGreaterThan(30);
@@ -797,7 +703,7 @@ describe('Comprehensive Email Validation Test Suite', () => {
 				expect(result.signals.patternType).toBe('dated');
 			}
 
-			// Without trained Markov models, expect lower detection (will be > 25 once trained)
+			// Legacy expectation noted here; update once we have decision-tree benchmarks
 			expect(blockedCount + warnCount).toBeGreaterThan(12);
 		}, 15000); // 15 second timeout for batch processing
 	});

@@ -1,27 +1,17 @@
 {
   "riskThresholds": {
-    "block": 0.6,
-    "warn": 0.3
+    "block": 0.65,
+    "warn": 0.35
   },
   "baseRiskScores": {
     "invalidFormat": 0.8,
-    "disposableDomain": 0.95,
-    "highEntropy": 0.7
-  },
-  "confidenceThresholds": {
-    "markovFraud": 0.7,
-    "markovRisk": 0.6,
-    "patternRisk": 0.5
+    "disposableDomain": 0.95
   },
   "features": {
-    "enableMxCheck": false,
     "enableDisposableCheck": true,
     "enablePatternCheck": true,
-    "enableNGramAnalysis": true,
     "enableTLDRiskProfiling": true,
-    "enableBenfordsLaw": true,
-    "enableKeyboardWalkDetection": true,
-    "enableMarkovChainDetection": true
+    "enableMXCheck": true
   },
   "logging": {
     "logAllValidations": true,
@@ -35,18 +25,13 @@
   },
   "actionOverride": null,
   "riskWeights": {
-    "entropy": 0.05,
-    "domainReputation": 0.15,
-    "tldRisk": 0.15,
-    "patternDetection": 0.5,
-    "markovChain": 0.35
+    "domainReputation": 0.2,
+    "tldRisk": 0.3
   },
   "patternThresholds": {
-    "sequential": 0.8,
-    "dated": 0.7,
-    "plusAddressing": 0.6,
-    "keyboardWalk": 0.8,
-    "gibberish": 0.9
+    "sequential": 0.6,
+    "dated": 0.75,
+    "plusAddressing": 0.7
   },
   "rateLimiting": {
     "enabled": false,
@@ -56,190 +41,13 @@
   "admin": {
     "enabled": false
   },
-  "markov": {
-    "adaptationRate": 0.5,
-    "minTrainingExamples": 100,
-    "retrainIntervalDays": 7
+  "adjustments": {
+    "professionalEmailFactor": 0.5,
+    "professionalDomainFactor": 0.5,
+    "professionalAbnormalityFactor": 0.6
   },
-  "calibration": {
-    "version": "calibration_20251127160152406",
-    "createdAt": "2025-11-27T16:01:52.406Z",
-    "bias": 0.8172928142583307,
-    "features": [
-      {
-        "name": "ce_legit2",
-        "mean": 4.629971621705746,
-        "std": 1.1300644450323643,
-        "weight": 0.37489572204503274
-      },
-      {
-        "name": "ce_fraud2",
-        "mean": 4.5431166003145425,
-        "std": 0.5306718531006448,
-        "weight": -0.13818288874133097
-      },
-      {
-        "name": "ce_diff2",
-        "mean": 0.0868550213911717,
-        "std": 0.7555652392879781,
-        "weight": 0.6577672845048557
-      },
-      {
-        "name": "ce_legit3",
-        "mean": 4.428403977143776,
-        "std": 1.3697473718293702,
-        "weight": 0.904258455531832
-      },
-      {
-        "name": "ce_fraud3",
-        "mean": 4.301560765865886,
-        "std": 0.8190569741462598,
-        "weight": -1.9041303570211885
-      },
-      {
-        "name": "ce_diff3",
-        "mean": 0.12684321127784196,
-        "std": 1.332460138894432,
-        "weight": 2.100022964920788
-      },
-      {
-        "name": "min_entropy",
-        "mean": 3.7919481448703145,
-        "std": 0.9754613926336235,
-        "weight": 0.6805487371357801
-      },
-      {
-        "name": "sequential_confidence",
-        "mean": 0.01668823151760581,
-        "std": 0.11423081711830756,
-        "weight": 0.4358844160035737
-      },
-      {
-        "name": "plus_risk",
-        "mean": 0.00198330781766998,
-        "std": 0.01989198740507633,
-        "weight": 0.07389249150409588
-      },
-      {
-        "name": "local_length",
-        "mean": 10.63190281001531,
-        "std": 4.204204985689281,
-        "weight": -0.6998929454066595
-      },
-      {
-        "name": "digit_ratio",
-        "mean": 0.05927099184329532,
-        "std": 0.12920208369745126,
-        "weight": 0.6524292325205969
-      },
-      {
-        "name": "provider_is_free",
-        "mean": 0.2338683391772433,
-        "std": 0.4232894271153352,
-        "weight": 0.297259058716607
-      },
-      {
-        "name": "provider_is_disposable",
-        "mean": 0.05211121536866018,
-        "std": 0.2222512915630887,
-        "weight": 2.4827892114251373
-      },
-      {
-        "name": "tld_risk",
-        "mean": 0,
-        "std": 0.000001,
-        "weight": 0
-      },
-      {
-        "name": "abnormality_risk",
-        "mean": 0.2552712932917213,
-        "std": 0.24983392674531457,
-        "weight": 0.35379295066911876
-      },
-      {
-        "name": "pronounceability",
-        "mean": 0.5221813164408503,
-        "std": 0.21299420776057118,
-        "weight": 1.1988988692781062
-      },
-      {
-        "name": "vowel_ratio",
-        "mean": 0.3382245090943309,
-        "std": 0.15758049373777197,
-        "weight": -0.7576352897012683
-      },
-      {
-        "name": "max_consonant_cluster",
-        "mean": 2.8806755889179714,
-        "std": 1.750740985305519,
-        "weight": 1.6172204151500478
-      },
-      {
-        "name": "repeated_char_ratio",
-        "mean": 0.05197647479014181,
-        "std": 0.11475548859096704,
-        "weight": 0.3850300541428178
-      },
-      {
-        "name": "syllable_estimate",
-        "mean": 3.0697812237641364,
-        "std": 1.6549027472657765,
-        "weight": 0.15747115695268485
-      },
-      {
-        "name": "impossible_cluster_count",
-        "mean": 0.4851004987900637,
-        "std": 0.6388478420460637,
-        "weight": 0.4335950678336106
-      },
-      {
-        "name": "has_word_boundaries",
-        "mean": 0.2372561607980641,
-        "std": 0.42540060526681317,
-        "weight": -0.12305442732474703
-      },
-      {
-        "name": "segment_count",
-        "mean": 1.2578102622351721,
-        "std": 0.5087669019622848,
-        "weight": 0.36402123006161
-      },
-      {
-        "name": "avg_segment_length",
-        "mean": 9.055060814290659,
-        "std": 3.9341285434449476,
-        "weight": 0.16368080447104427
-      },
-      {
-        "name": "segments_without_vowels_ratio",
-        "mean": 0.09627986332070494,
-        "std": 0.27455344730262177,
-        "weight": 0.3832274320443716
-      },
-      {
-        "name": "unique_char_ratio",
-        "mean": 0.8093751659714291,
-        "std": 0.14878606007752823,
-        "weight": 0.17959787030082744
-      },
-      {
-        "name": "vowel_gap_ratio",
-        "mean": 0.34028375180453013,
-        "std": 0.2388557148337703,
-        "weight": -1.4901268616557153
-      },
-      {
-        "name": "max_digit_run",
-        "mean": 0.5516223023359178,
-        "std": 1.2446793118434099,
-        "weight": -0.0646964246027302
-      }
-    ],
-    "metrics": {
-      "accuracy": 0.8739394538001877,
-      "precision": 0.8679071103270012,
-      "recall": 0.8699594908597397,
-      "f1": 0.8689320886862402
-    }
+  "ood": {
+    "maxRisk": 0.65,
+    "warnZoneMin": 0.35
   }
 }

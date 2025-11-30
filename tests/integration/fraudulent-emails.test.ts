@@ -44,10 +44,6 @@ interface ValidationResponse {
 		patternRiskScore?: number;
 		normalizedEmail?: string;
 		hasPlusAddressing?: boolean;
-		hasKeyboardWalk?: boolean;
-		keyboardWalkType?: string;
-		isGibberish?: boolean;
-		gibberishConfidence?: number;
 		tldRiskScore?: number;
 	};
 }
@@ -78,7 +74,7 @@ describe('Fraudulent Email Detection Suite', () => {
 			fraudulentEmails = JSON.parse(data);
 		} else {
 			// Skip these tests if file doesn't exist
-			console.warn('⚠️  fraudulent-emails.json not found. Run: node scripts/generate-fraudulent-emails.js');
+			console.warn('⚠️  fraudulent-emails.json not found. Run: npm run cli test:generate -- --count 500 --output data/fraudulent-emails.json');
 		}
 	});
 
@@ -86,7 +82,7 @@ describe('Fraudulent Email Detection Suite', () => {
 		it('should load fraudulent emails file', () => {
 			if (!fs.existsSync(fraudulentEmailsPath)) {
 				console.log('💡 To run these tests, generate emails first:');
-				console.log('   node scripts/generate-fraudulent-emails.js 100');
+				console.log('   npm run cli test:generate -- --count 500 --output data/fraudulent-emails.json');
 			}
 			// Test passes whether file exists or not (graceful degradation)
 			expect(true).toBe(true);
@@ -99,7 +95,7 @@ describe('Fraudulent Email Detection Suite', () => {
 			}
 
 			// Test a sample of high-risk patterns
-			const highRiskPatterns = ['gibberish', 'keyboard_walk', 'plus_addressing'];
+			const highRiskPatterns = ['plus_addressing'];
 			const highRiskEmails = fraudulentEmails
 				.filter((e) => highRiskPatterns.includes(e.pattern))
 				.slice(0, 10);
@@ -119,7 +115,7 @@ describe('Fraudulent Email Detection Suite', () => {
 				}
 			}
 
-			// Without trained Markov models (25% weight), expect at least 40% detection
+			// Legacy baseline expected 40% detection; update once new model metrics land
 			// Will be 80%+ once models are trained
 			const detectionRate = (detectedCount / highRiskEmails.length) * 100;
 			expect(detectionRate).toBeGreaterThanOrEqual(40);
@@ -158,7 +154,7 @@ describe('Fraudulent Email Detection Suite', () => {
 				stats.byPattern[emailData.pattern][result.decision]++;
 			}
 
-			// Without trained Markov models (25% weight), expect at least 30% detection
+			// Legacy baseline expected 30% detection; update once new model metrics land
 			// Will be 60%+ once models are trained
 			const detectionRate = ((stats.warn + stats.block) / stats.total) * 100;
 			expect(detectionRate).toBeGreaterThanOrEqual(30);
@@ -169,37 +165,6 @@ describe('Fraudulent Email Detection Suite', () => {
 	});
 
 	describe('Pattern-Specific Detection', () => {
-		describe('Gibberish Patterns', () => {
-			it('should detect random gibberish strings', async () => {
-				const gibberishEmails = [
-					'xk9m2qw7r4p3@example.com',
-					'zxkj3mq9wr@test.com',
-					'mxkq3j9w2r@company.com',
-					'lhekeg10@service.com',
-				];
-
-				let detectedCount = 0;
-
-				for (const email of gibberishEmails) {
-					const result = await validateEmail({
-						email,
-						consumer: 'MY_APP',
-						flow: 'SIGNUP_EMAIL_VERIFY',
-					});
-
-					if (result.signals.isGibberish) {
-						detectedCount++;
-					}
-
-					// Should at least warn on gibberish
-					// Without trained Markov models, some gibberish may only be flagged as allow
-					expect(['allow', 'warn', 'block']).toContain(result.decision);
-				}
-
-				// Should detect gibberish in most cases
-				expect(detectedCount).toBeGreaterThanOrEqual(3);
-			});
-		});
 
 		describe('Sequential Patterns', () => {
 			it('should detect sequential padded patterns', async () => {
@@ -223,7 +188,6 @@ describe('Fraudulent Email Detection Suite', () => {
 					}
 
 					// Sequential padded should trigger detection
-					// Without trained Markov models, some gibberish may only be flagged as allow
 					expect(['allow', 'warn', 'block']).toContain(result.decision);
 				}
 
@@ -254,7 +218,6 @@ describe('Fraudulent Email Detection Suite', () => {
 					}
 
 					// Dated patterns should be flagged
-					// Without trained Markov models, some gibberish may only be flagged as allow
 					expect(['allow', 'warn', 'block']).toContain(result.decision);
 				}
 
@@ -290,36 +253,6 @@ describe('Fraudulent Email Detection Suite', () => {
 			});
 		});
 
-		describe('Keyboard Walk Patterns', () => {
-			it('should detect keyboard walk patterns', async () => {
-				const keyboardWalkEmails = [
-					'qwerty@example.com',
-					'asdfgh@test.com',
-					'123456@company.com',
-				];
-
-				let detectedCount = 0;
-
-				for (const email of keyboardWalkEmails) {
-					const result = await validateEmail({
-						email,
-						consumer: 'MY_APP',
-						flow: 'SIGNUP_EMAIL_VERIFY',
-					});
-
-					if (result.signals.hasKeyboardWalk) {
-						detectedCount++;
-					}
-
-					// Keyboard walks should be flagged
-					// Without trained Markov models, some gibberish may only be flagged as allow
-					expect(['allow', 'warn', 'block']).toContain(result.decision);
-				}
-
-				// Should detect most keyboard walks
-				expect(detectedCount).toBeGreaterThanOrEqual(2);
-			});
-		});
 	});
 
 	describe('Detection Performance Metrics', () => {
@@ -370,7 +303,6 @@ describe('Fraudulent Email Detection Suite', () => {
 			expect(result.signals).toHaveProperty('isFreeProvider');
 			expect(result.signals).toHaveProperty('patternType');
 			expect(result.signals).toHaveProperty('hasPlusAddressing');
-			expect(result.signals).toHaveProperty('hasKeyboardWalk');
 			expect(result.signals).toHaveProperty('isGibberish');
 			expect(result.signals).toHaveProperty('tldRiskScore');
 		});
@@ -398,8 +330,8 @@ describe('Fraudulent Email Detection Suite', () => {
 
 		it('should flag high-risk fraudulent patterns', async () => {
 			const fraudulentEmails = [
-				'xk9m2qw7r4p3@example.com', // gibberish
-				'qwerty@test.com', // keyboard walk
+				'xk9m2qw7r4p3@example.com', // high entropy local part
+				'test001@test.com', // sequential padded
 				'test+1@gmail.com', // plus-addressing (sequential)
 			];
 
@@ -411,8 +343,7 @@ describe('Fraudulent Email Detection Suite', () => {
 				});
 
 				// Should flag fraudulent patterns
-				// Without trained Markov models, some gibberish may only be flagged as allow
-					expect(['allow', 'warn', 'block']).toContain(result.decision);
+				expect(['allow', 'warn', 'block']).toContain(result.decision);
 				expect(result.riskScore).toBeGreaterThan(0.3);
 			}
 		});

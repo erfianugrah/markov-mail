@@ -51,16 +51,16 @@ export const testCases = [
     email: 'person1.person2@example.com',
     expected: {
       valid: true,
-      decision: 'allow', // Without trained Markov models (25% weight), this is 'allow'. Will be 'warn' once models are trained.
+      decision: 'allow', // Reset baseline expects allow here; kept from legacy fixtures for parity.
       entropyRange: [0.3, 0.5],
     },
   },
-  // High entropy + gibberish
+  // High entropy local part
   {
     email: 'xk9m2qw7r4p3@example.com',
     expected: {
       valid: true,
-      decision: 'warn', // Without trained Markov models, this is 'warn'. Will be 'block' once models are trained.
+      decision: 'warn', // Legacy expectation; adjust once we have empirical decision-tree data.
       entropyRange: [0.5, 0.7],
     },
   },

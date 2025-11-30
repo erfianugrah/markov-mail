@@ -1,254 +1,340 @@
-# 📚 Documentation Index
+# Markov Mail Documentation
 
-**Complete documentation for Bogus Email Pattern Recognition - Fraud Detection API**
+**Version**: 3.0.0
+**Last Updated**: 2025-11-30
 
----
+Welcome to the Markov Mail fraud detection system documentation. This guide provides comprehensive information about the architecture, configuration, and operation of the email fraud detection API.
 
-## 📖 Core Documentation
+## 📚 Documentation Index
+
+### Getting Started
 
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[Quick Start](QUICK_START.md)** | 5-minute deployment guide | Beginners |
-| **[First Deployment](FIRST_DEPLOY.md)** | Complete setup walkthrough (15 min) | Beginners |
-| **[Datasets Guide](DATASETS.md)** | Training data format and model training | ML Users, Data Scientists |
-| **[Getting Started](GETTING_STARTED.md)** | Detailed setup, installation, deployment | Developers |
-| **[API Reference](API.md)** | Endpoints, request/response formats | API Users |
-| **[Architecture](ARCHITECTURE.md)** | System design and algorithms | Developers, Architects |
-| **[Detectors](DETECTORS.md)** | Complete guide to all 8 fraud detectors | Developers, Data Scientists |
-| **[Risk Scoring](SCORING.md)** | Complete scoring system with examples | Developers, Analysts |
-| **[Configuration](CONFIGURATION.md)** | Configuration management via KV | DevOps |
-| **[CLI Reference](../cli/README.md)** | Command-line interface for all operations | Developers, DevOps |
-| **[Logging Standards](LOGGING_STANDARDS.md)** | Structured logging with Pino.js, event naming | Developers, DevOps |
-| **[Analytics](ANALYTICS.md)** | D1 metrics + dashboard queries | Analysts |
-| **[Integration Guide](INTEGRATION_GUIDE.md)** | Integration examples | Developers |
-| **[Testing](TESTING.md)** | Test suite and coverage | QA |
-| **[System Status](SYSTEM_STATUS.md)** | Current deployment status | All |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | System components, data flow, deployment architecture | Developers, DevOps |
+| [CONFIGURATION.md](./CONFIGURATION.md) | KV, D1, and environment setup | Operators, DevOps |
+| [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md) | Codebase organization and file structure | Developers |
 
----
+### Core Concepts
 
-## 📊 Project Status
+| Document | Description | Audience |
+|----------|-------------|----------|
+| [SCORING.md](./SCORING.md) | Risk scoring engine, thresholds, actions | All users |
+| [DETECTORS.md](./DETECTORS.md) | Feature extraction and detectors reference | ML Engineers, Developers |
+| [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md) | Unified Random Forest/Decision Tree training workflow | ML Engineers |
 
-**Production**: ✅ **Live at https://your-worker.workers.dev**
+### Operations
 
-**Version**: 2.4.2 (2025-01-12)
+| Document | Description | Audience |
+|----------|-------------|----------|
+| [SYSTEM_INVENTORY.md](./SYSTEM_INVENTORY.md) | Complete system inventory (models, data, config) | Operators, Auditors |
+| [CALIBRATION.md](./CALIBRATION.md) | Model calibration approach | ML Engineers |
 
-**Detection Stack**:
-- **Primary**: Markov Chain ensemble (2-gram + 3-gram) with OOD detection
-- **Deterministic**: Pattern classification (dated + high-confidence sequential patterns feed scoring, lighter hits stay telemetry-only), plus-addressing risk scorer
-- **Domain Signals**: TLD risk profiles + disposable domain reputation
-- **Batch**: Benford's Law (offline/batch analysis)
-- **Deprecated**: Keyboard Walk, Keyboard Mashing, N-Gram Gibberish remain disabled
-
-**Training Data**: 91K+ legit + 41K+ fraud samples (latest Markov models)
-
-**Performance**:
-- Latency: ~35ms average
-- Storage: Cloudflare D1 (validations, admin, training, AB tests)
-- Uptime: 99.9%
-
----
-
-## 🏗️ Documentation Structure
-
-```
-docs/
-├── README.md                      # This file - documentation index
-├── GETTING_STARTED.md             # Setup and quickstart
-├── API.md                         # API reference
-├── ARCHITECTURE.md                # System design
-├── DETECTORS.md                   # All 8 detector algorithms
-├── SCORING.md                     # Risk scoring system with examples
-├── CONFIGURATION.md               # Config management
-├── ../cli/README.md               # Command-line interface (43 commands)
-├── LOGGING_STANDARDS.md           # Structured logging with Pino.js
-├── ANALYTICS.md                   # Analytics & dashboard
-├── INTEGRATION_GUIDE.md           # Integration examples
-├── TESTING.md                     # Testing documentation
-└── SYSTEM_STATUS.md               # Deployment status
-```
-
----
-
-## 🎯 Quick Start Guide
-
-### For New Users (Start Here!)
-
-1. **[Quick Start](QUICK_START.md)** - Fastest path: deployed in 5 minutes
-2. **[First Deployment](FIRST_DEPLOY.md)** - Complete setup with explanations (15 minutes)
-3. **[Datasets Guide](DATASETS.md)** - Train models with your data
-4. **[API Reference](API.md)** - Use the fraud detection API
+## 🚀 Quick Start
 
 ### For Developers
 
-1. **[Getting Started](GETTING_STARTED.md)** - Detailed setup and development guide
-2. **[Architecture](ARCHITECTURE.md)** - Learn the system design
-3. **[Detectors](DETECTORS.md)** - Understand fraud detection algorithms
-4. **[Risk Scoring](SCORING.md)** - Complete scoring system with examples
-
-### For API Users
-
-1. **[API Reference](API.md)** - Complete endpoint documentation
-2. **[Integration Guide](INTEGRATION_GUIDE.md)** - Code examples
-3. **[System Status](SYSTEM_STATUS.md)** - Production status and metrics
-
-### For System Administrators
-
-1. **[Configuration](CONFIGURATION.md)** - Manage settings
-2. **[Analytics](ANALYTICS.md)** - Monitor system health
-3. **[CLI Reference](../cli/README.md)** - Command-line operations
-4. **[Logging Standards](LOGGING_STANDARDS.md)** - Structured logging guide
-
----
-
-## 🔧 Key System Components
-
-### Detection Stack (v2.4.2)
-
-- **Markov Chain (2-gram + 3-gram)** – Primary scoring, cross-entropy, and OOD detection (with short-local clamp that zeroes abnormality risk for ≤4 character locals and ramps 5‑12). Logistic calibration is treated as a boost on top of Markov confidence, never a replacement.
-- **Pattern Classification** – Extracts sequential/dated/simple families; dated patterns always score, sequential patterns feed scoring only when confidence clears configured thresholds (legit ≤3-digit suffixes stay observability-only)
-- **Plus-Addressing Risk Scorer** – Normalizes aliases and assigns 0.2‑0.9 risk when abuse is detected
-- **Disposable/TLD Signals** – KV-backed disposable list + TLD risk profiles
-- **Benford's Law** – Optional batch analysis for large datasets
-- **Deprecated** – Keyboard walk/mashing + standalone gibberish detectors remain disabled (Markov covers them)
-- **A/B Experiments** – KV-driven overrides for treatment variants without redeploying
-
-See [Detectors Guide](DETECTORS.md) for complete technical details.
-
-### Experiment Controls
-
-- Create/stop experiments via CLI (`npm run cli ab:create`, `ab:status`, `ab:stop`)
-- Worker middleware applies variant overrides automatically and logs `experiment_id`, `variant`, and `bucket` to D1
-- Dashboard overview + explorer fetch experiment status from `/admin/ab-test/status`
-- Programmatic status: `curl -H "X-API-Key:..." https://your-worker.dev/admin/ab-test/status`
-
-### Risk Scoring Strategy
-
-**Two-Dimensional Markov Approach (v2.4.x)**:
-1. **Classification Risk** – Fraud vs legit cross-entropy difference
-2. **Abnormality Risk** – OOD detection using min(H_legit, H_fraud) with piecewise thresholds (3.8 warn / 5.5 block)
-3. **Deterministic Signals** – Dated patterns (0.2‑0.9), sequential overrides for high-confidence automation (0.45‑0.95), plus-addressing risk helper (0.2 base + suspicious tag/group boosts)
-4. **Domain Signals** – `riskWeights.domainReputation` (default 0.2) + `riskWeights.tldRisk` (0.3)
-
-Final score = `max(classificationRisk, abnormalityRisk)` + domain signals (+ ensemble boost when Markov + TLD agree). See [SCORING.md](SCORING.md) for full details.
-
----
-
-## 🔧 Command Line Interface
-
-**43 commands across 6 categories** - See **[CLI Reference](../cli/README.md)** for complete documentation.
-
-### Quick Reference
-
 ```bash
-# Show all commands
-npm run cli
+# 1. Clone and install
+git clone https://github.com/yourusername/markov-mail
+cd markov-mail
+npm install
 
-# Training & Online Learning
-npm run cli train:markov              # Train Markov models from CSV
-npm run cli training:extract          # Pull validations from D1 for offline training
-npm run cli training:train            # Train from production data
-npm run cli training:validate         # Validate before deployment
+# 2. Set up environment
+cp .dev.vars.example .dev.vars
+# Edit .dev.vars with your API keys
 
-# Deployment
-npm run cli deploy --minify           # Deploy to Cloudflare
-npm run cli deploy:status             # Check deployment status
+# 3. Start local development
+npm run dev
+# Worker runs at http://localhost:8787
 
-# Data Management (KV & D1)
-npm run cli kv:list --binding CONFIG  # List KV keys
-npm run cli kv:get <key>              # Get KV value
-npm run cli analytics:query <sql>     # Run D1 SQL via /admin/analytics
-npm run cli analytics:stats --last 24 # Built-in analytics summaries
-
-# Testing
-npm run cli test:api <email>          # Test API endpoint
-npm run cli test:detectors            # Test pattern detectors
-npm run cli test:generate --count 100 # Generate test data
-
-# A/B Testing
-npm run cli ab:create                 # Create experiment
-npm run cli ab:analyze                # Analyze results
-npm run cli ab:stop                   # Stop experiment
-
-# Configuration
-npm run cli config:list               # List all config
-npm run cli config:sync --remote      # Sync to production
+# 4. Run tests
+npm test
 ```
 
-**For detailed usage, workflows, and examples:** See [CLI Reference](../cli/README.md)
+**Next Steps**: Read [ARCHITECTURE.md](./ARCHITECTURE.md) for system overview and [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md) for codebase navigation.
+
+### For ML Engineers
+
+```bash
+# 1. Export features from dataset
+npm run cli features:export --input data/main.csv
+
+# 2. Train Random Forest model
+npm run cli model:train -- --n-trees 20 --upload
+
+# 3. Validate production
+npm run cli test:batch -- --input data/main.csv \
+  --endpoint https://fraud.erfi.dev/validate
+```
+
+**Next Steps**: Read [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md) for training workflow and [DETECTORS.md](./DETECTORS.md) for feature engineering details.
+
+### For Operators
+
+```bash
+# 1. Check production config
+wrangler kv key get config.json --binding CONFIG --remote | jq .
+
+# 2. Check model versions
+wrangler kv key list --binding CONFIG --remote
+
+# 3. View analytics dashboard
+open https://fraud.erfi.dev/dashboard
+
+# 4. Query D1 database
+wrangler d1 execute DB --command="SELECT COUNT(*) FROM ANALYTICS_DATASET" --remote
+```
+
+**Next Steps**: Read [CONFIGURATION.md](./CONFIGURATION.md) for KV/D1 setup and [SYSTEM_INVENTORY.md](./SYSTEM_INVENTORY.md) for complete inventory.
+
+## 📖 Documentation by Topic
+
+### Architecture & Design
+
+```mermaid
+graph LR
+    A[ARCHITECTURE.md] --> B[System Components]
+    A --> C[Request Flow]
+    A --> D[Data Flow]
+    A --> E[Deployment]
+
+    style A fill:#5e35b1
+    style B fill:#00897b
+    style C fill:#00897b
+    style D fill:#00897b
+    style E fill:#00897b
+```
+
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)**: Complete system architecture with Mermaid diagrams covering components, request flow, model architecture, data flow, storage, deployment, security, monitoring, and scalability.
+
+### Model Training & ML
+
+```mermaid
+graph LR
+    A[MODEL_TRAINING_v3.md] --> B[Training Pipeline]
+    C[DETECTORS.md] --> D[Feature Extraction]
+    E[SCORING.md] --> F[Risk Scoring]
+
+    B --> D
+    D --> F
+
+    style A fill:#5e35b1
+    style C fill:#5e35b1
+    style E fill:#5e35b1
+```
+
+- **[MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md)**: Unified Random Forest/Decision Tree training workflow, conflict zone weighting, model versioning, and performance metrics.
+- **[DETECTORS.md](./DETECTORS.md)**: Complete reference for 12 detector categories covering 39 features, including linguistic analysis, sequential patterns, MX resolution, geo signals, and identity verification.
+- **[SCORING.md](./SCORING.md)**: Risk scoring engine details, threshold configuration, action determination, short-circuit rules, score interpretation, and troubleshooting.
+
+### Configuration & Operations
+
+```mermaid
+graph LR
+    A[CONFIGURATION.md] --> B[KV Storage]
+    A --> C[D1 Database]
+    D[SYSTEM_INVENTORY.md] --> E[Models]
+    D --> F[Data]
+    D --> G[Config]
+
+    style A fill:#1e88e5
+    style D fill:#1e88e5
+```
+
+- **[CONFIGURATION.md](./CONFIGURATION.md)**: KV namespace setup, D1 database configuration, environment variables, secrets management, and wrangler.jsonc configuration.
+- **[SYSTEM_INVENTORY.md](./SYSTEM_INVENTORY.md)**: Complete inventory of models (RF, DT), datasets (144K emails), configuration files, and deployment artifacts.
+
+### Development & Structure
+
+```mermaid
+graph LR
+    A[PROJECT_STRUCTURE.md] --> B[src/]
+    A --> C[cli/]
+    A --> D[dashboard/]
+    A --> E[tests/]
+
+    style A fill:#43a047
+```
+
+- **[PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md)**: Codebase organization, directory structure, file descriptions, and navigation guide for developers.
+
+## 🔑 Key Concepts
+
+### Feature Extraction Pipeline
+
+Markov Mail uses a **39-feature vector** to represent each email:
+
+```
+Email → Detectors → Features → Model → Risk Score → Action
+```
+
+**Feature Categories**:
+1. **Sequential/Pattern** (2): Sequential confidence, plus-addressing risk
+2. **Linguistic** (6): Pronounceability, vowel ratio, consonant clusters
+3. **Structural** (4): Word boundaries, segment analysis
+4. **Statistical** (4): Entropy, character distribution
+5. **Identity** (3): Name similarity, token overlap
+6. **Geo** (3): Language/timezone mismatches
+7. **MX** (9): Mail provider identification
+8. **Domain** (3): TLD risk, reputation
+9. **Basic** (5): Length, digit ratio, etc.
+
+See [DETECTORS.md](./DETECTORS.md) for detailed feature descriptions.
+
+### Model Architecture
+
+**Primary**: Random Forest (20 trees, 90.1% precision)
+**Fallback**: Decision Tree (1 tree, 75.0% precision)
+
+Both models are stored in KV with 60-second TTL caching for hot-reload without redeployment.
+
+See [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md) for training details.
+
+### Risk Scoring
+
+**Thresholds**:
+- **Block** (≥0.65): High confidence fraud
+- **Warn** (0.35-0.64): Suspicious but uncertain
+- **Allow** (<0.35): Legitimate
+
+See [SCORING.md](./SCORING.md) for scoring logic and threshold tuning.
+
+## 🛠️ Common Tasks
+
+### Update Production Config
+
+```bash
+# Edit config file
+vim config/production/config.json
+
+# Upload to KV
+wrangler kv key put config.json \
+  --binding CONFIG \
+  --path config/production/config.json \
+  --remote
+```
+
+See [CONFIGURATION.md](./CONFIGURATION.md#updating-configuration) for details.
+
+### Retrain Models
+
+```bash
+# Train Random Forest (production)
+npm run cli model:train -- --n-trees 20 --upload
+
+# Train Decision Tree (fallback)
+npm run cli model:train -- --n-trees 1 --upload
+```
+
+See [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md#training-workflow) for full workflow.
+
+### Test Production API
+
+```bash
+# Single email test
+npm run cli test:api user@example.com --debug
+
+# Batch test (144K emails)
+npm run cli test:batch -- --input data/main.csv \
+  --endpoint https://fraud.erfi.dev/validate \
+  --concurrency 20
+```
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md#testing-strategy) for testing approach.
+
+### Query Analytics
+
+```bash
+# Fraud rate over last 7 days
+wrangler d1 execute DB --remote --command="
+  SELECT DATE(timestamp) as day,
+         COUNT(*) as total,
+         SUM(CASE WHEN action='block' THEN 1 ELSE 0 END) as blocked
+  FROM ANALYTICS_DATASET
+  WHERE timestamp >= datetime('now', '-7 days')
+  GROUP BY day
+"
+```
+
+See [CONFIGURATION.md](./CONFIGURATION.md#d1-database) for more queries.
+
+## 📊 System Metrics
+
+### Performance
+
+| Metric | Value | Target |
+|--------|-------|--------|
+| P50 Latency | 7ms | <10ms ✅ |
+| P99 Latency | 45ms | <50ms ✅ |
+| Throughput | 10K req/s/region | Unlimited ✅ |
+| Model Size | 55KB (RF), 3.3KB (DT) | <100KB ✅ |
+
+### Accuracy
+
+| Metric | Random Forest | Decision Tree |
+|--------|---------------|---------------|
+| Precision | 90.1% | 75.0% |
+| Recall | 92.3% | 80.5% |
+| F1 Score | 91.2% | 77.6% |
+
+See [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md#model-performance) for detailed metrics.
+
+## 🔗 External Resources
+
+### Cloudflare Documentation
+- [Workers Documentation](https://developers.cloudflare.com/workers/)
+- [KV Storage](https://developers.cloudflare.com/kv/)
+- [D1 Database](https://developers.cloudflare.com/d1/)
+- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/)
+
+### Framework Documentation
+- [Hono Framework](https://hono.dev/)
+- [TypeScript](https://www.typescriptlang.org/)
+- [Vitest](https://vitest.dev/)
+- [Astro](https://astro.build/)
+
+### Machine Learning
+- [scikit-learn Documentation](https://scikit-learn.org/)
+- [Random Forest Classifier](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html)
+- [Decision Tree Classifier](https://scikit-learn.org/stable/modules/generated/sklearn.tree.DecisionTreeClassifier.html)
+
+## 🆘 Troubleshooting
+
+### Common Issues
+
+| Issue | Document | Section |
+|-------|----------|---------|
+| Model not loading | [SCORING.md](./SCORING.md#model-not-loading) | Troubleshooting |
+| False positives | [SCORING.md](./SCORING.md#score-too-high-false-positives) | Troubleshooting |
+| False negatives | [SCORING.md](./SCORING.md#score-too-low-false-negatives) | Troubleshooting |
+| Training errors | [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md#troubleshooting) | Troubleshooting |
+| KV/D1 issues | [CONFIGURATION.md](./CONFIGURATION.md) | Configuration |
+
+## 📝 Contributing
+
+When updating documentation:
+
+1. **Maintain consistency**: Follow existing format and structure
+2. **Update version**: Increment version number in headers
+3. **Update dates**: Set "Last Updated" to current date
+4. **Link properly**: Use relative paths for cross-references
+5. **Test examples**: Verify all command examples work
+6. **Add diagrams**: Use Mermaid for visual explanations
+7. **Update changelog**: Document significant changes
+
+## 📄 License
+
+See [LICENSE](../LICENSE) file for details.
+
+## 🤝 Support
+
+- **Issues**: [GitHub Issues](https://github.com/yourusername/markov-mail/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/yourusername/markov-mail/discussions)
+- **Production Support**: Contact the operations team
 
 ---
 
-## 📈 Detection Capabilities
-
-**Fraud Patterns Detected**:
-- ✅ Markov ensemble (2-gram + 3-gram) with OOD detection
-- ✅ Sequential overrides for high-confidence automation (0.45‑0.95 risk once threshold met)
-- ✅ Dated pattern overrides (0.2‑0.9 confidence)
-- ✅ Plus-addressing alias abuse (0.2‑0.9 risk)
-- ✅ Disposable domains (71K+ services) and domain reputation scoring
-- ✅ TLD risk profiling (143+ TLD categories)
-- ✅ Benford's Law (batch analysis)
-- ⚠️ Keyboard/gibberish heuristics remain telemetry-only; rely on Markov for enforcement
-
-**False-Positive Guardrails**:
-- Professional mailbox detection (info@, support@, admin@, etc.)
-- Birth-year awareness inside sequential detector
-- Professional-domain risk dampening factors
-- Configurable action overrides (`allow`, `warn`, `block`)
-
----
-
-## 📊 Analytics Dashboard
-
-**Access**: https://your-worker.workers.dev/analytics.html
-
-**Features**:
-- 22 interactive visualizations
-- Custom SQL query builder
-- Real-time metrics
-- Historical analysis
-- Export capabilities
-
-See [Analytics Documentation](ANALYTICS.md)
-
----
-
-## 🔐 Security & Privacy
-
-- Admin API key protection
-- No PII storage
-- Email hashing in logs
-- Rate limiting
-- Input validation
-
----
-
-## 📅 Version History
-
-**Current Version**: 2.4.2 (2025-01-12)
-
-**Recent Highlights**:
-- **2.4.2** (2025-01-12): Two-dimensional scoring clarifications, plus-addressing risk helper, tunable domain weights, D1-only metrics
-- **2.4.1** (2025-01-12): Piecewise OOD thresholds (3.8/5.5 nats) + ood_zone analytics
-- **2.4.0** (2025-01-10): Two-dimensional risk model + abnormality tracking columns
-- **2.3.x**: Ensemble (2-gram + 3-gram) Markov models, enhanced telemetry
-
----
-
-## 🆘 Support & Resources
-
-**Documentation**:
-- Start here: [Getting Started](GETTING_STARTED.md)
-- API questions: [API Reference](API.md)
-- System architecture: [Architecture](ARCHITECTURE.md)
-- Integration: [Integration Guide](INTEGRATION_GUIDE.md)
-
-**External Resources**:
-- [Cloudflare Workers](https://developers.cloudflare.com/workers/)
-- [Cloudflare D1](https://developers.cloudflare.com/d1/)
-- [RFC 5322 - Email Format](https://tools.ietf.org/html/rfc5322)
-
----
-
-**Production URL**: https://your-worker.workers.dev
-**Last Updated**: 2025-01-12
+**Last Updated**: 2025-11-30
+**Version**: 3.0.0
+**Status**: Production Ready ✅

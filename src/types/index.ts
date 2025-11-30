@@ -26,24 +26,32 @@ export interface ValidationSignals {
   patternRiskScore?: number;
   normalizedEmail?: string;
   hasPlusAddressing?: boolean;
-  hasKeyboardWalk?: boolean;
-  keyboardWalkType?: string;
-  // Phase 6A signals
-  isGibberish?: boolean;
-  gibberishConfidence?: number;
   tldRiskScore?: number;
-  // Phase 7: Markov Chain signals
-  markovDetected?: boolean;
-  markovConfidence?: number;
-  markovCrossEntropyLegit?: number;
-  markovCrossEntropyFraud?: number;
-  // Calibration signals
-  calibratedFraudProbability?: number;
-  classificationRisk?: number;
-  domainRisk?: number;
-  ensembleBoost?: number;
+  decisionTreeReason?: string;
+  decisionTreePath?: string[];
+  decisionTreeVersion?: string;
   plusAddressingRisk?: number;
   sequentialPatternRisk?: number;
+  identitySignals?: {
+    name?: string;
+    nameInEmail?: boolean;
+    similarityScore?: number;
+    tokenOverlap?: number;
+  };
+  geoSignals?: {
+    ipCountry?: string;
+    acceptLanguageCountry?: string | null;
+    languageMismatch?: boolean;
+    timezoneMismatch?: boolean;
+    anomalyScore?: number;
+  };
+  mxSignals?: {
+    hasRecords: boolean;
+    recordCount: number;
+    primaryProvider: string | null;
+    ttl?: number | null;
+    failure?: string;
+  };
 }
 
 export interface EmailValidationResult {
@@ -75,5 +83,6 @@ export interface FraudDetectionResult {
   riskScore: number;
   blockReason: string;
   valid: boolean;
+  latencyMs: number;
   signals: ValidationSignals;
 }
