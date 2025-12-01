@@ -180,12 +180,93 @@ const disposableDomains = [
   "fakeinbox.com", "tempinbox.com", "mohmal.com", "dispostable.com"
 ];
 
-// Typosquatted domains (common fraud technique)
-const typosquattedDomains = [
+// Typosquatted domains (common fraud technique) - EXPANDED with dynamic generation
+const legitimateProviders = [
+  "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "live.com",
+  "msn.com", "aol.com", "icloud.com", "protonmail.com", "zoho.com",
+  "mail.com", "gmx.com", "yandex.com", "fastmail.com"
+];
+
+// Generate comprehensive typosquatted versions dynamically
+function generateTyposquattedVariants(domain: string): string[] {
+  const [name, tld] = domain.split('.');
+  const variants: string[] = [];
+
+  // Character substitutions (homoglyphs)
+  const substitutions: Record<string, string[]> = {
+    'a': ['a', '@', '4'],
+    'e': ['e', '3'],
+    'i': ['i', '1', 'l', '!'],
+    'o': ['o', '0'],
+    's': ['s', '5', '$'],
+    'l': ['l', '1', 'i'],
+    't': ['t', '7'],
+    'g': ['g', '9', 'q'],
+    'm': ['m', 'n', 'rn'], // "m" looks like "rn"
+    'n': ['n', 'm']
+  };
+
+  // Apply single-character substitutions
+  for (let i = 0; i < name.length; i++) {
+    const char = name[i];
+    const subs = substitutions[char];
+    if (subs && subs.length > 1) {
+      for (const sub of subs) {
+        if (sub !== char) {
+          const typo = name.substring(0, i) + sub + name.substring(i + 1);
+          variants.push(`${typo}.${tld}`);
+        }
+      }
+    }
+  }
+
+  // Character swaps (transpositions)
+  for (let i = 0; i < name.length - 1; i++) {
+    const swapped = name.substring(0, i) + name[i + 1] + name[i] + name.substring(i + 2);
+    variants.push(`${swapped}.${tld}`);
+  }
+
+  // Double letters
+  for (let i = 0; i < name.length; i++) {
+    const doubled = name.substring(0, i) + name[i] + name[i] + name.substring(i + 1);
+    variants.push(`${doubled}.${tld}`);
+  }
+
+  // Missing letters
+  for (let i = 0; i < name.length; i++) {
+    const missing = name.substring(0, i) + name.substring(i + 1);
+    if (missing.length >= 3) { // Keep at least 3 chars
+      variants.push(`${missing}.${tld}`);
+    }
+  }
+
+  // TLD variations
+  const commonTLDMistakes = ['com', 'co', 'net', 'org', 'io', 'me'];
+  for (const altTld of commonTLDMistakes) {
+    if (altTld !== tld) {
+      variants.push(`${name}.${altTld}`);
+    }
+  }
+
+  return variants;
+}
+
+// Pre-generate typosquatted domains from all legitimate providers
+const typosquattedDomains: string[] = [];
+for (const provider of legitimateProviders) {
+  typosquattedDomains.push(...generateTyposquattedVariants(provider));
+}
+
+// Add some manually crafted typosquats that are particularly deceptive
+typosquattedDomains.push(
   "gmai1.com", "gmial.com", "gmal.com", "yaho0.com", "yahooo.com",
   "hotmai1.com", "hotmial.com", "outl0ok.com", "outlok.com",
-  "gmaiil.com", "yahho.com", "hotnail.com", "0utlook.com"
-];
+  "gmaiil.com", "yahho.com", "hotnail.com", "0utlook.com",
+  "gmaii.com", "gm4il.com", "yah00.com", "hotma1l.com",
+  "out1ook.com", "0utl00k.com", "gma1l.com", "yah0o.com"
+);
+
+console.log(`[Synthetic Generator] Generated ${typosquattedDomains.length} typosquatted domain variants`);
 
 const vpnDomains = [
   "vpn-mail.net", "secure-node.io", "exitrelay.net", "privacy-mail.org", "fastproxymail.com"
@@ -653,32 +734,50 @@ async function execute(args: ParsedArgs) {
     });
   }
 
-  // Generate fraud emails
+  // Generate fraud emails with weighted distribution to ensure typosquatting is well-represented
   logger.info(`Generating ${fraudCount.toLocaleString()} fraud emails...`);
+
+  // Weighted fraud generators (typosquatting and homoglyphs get 3x weight due to their importance)
   const fraudGenerators = [
-    generateSequentialFraud,
-    generateGibberishFraud,
-    generateDatedFraud,
-    generateDisposableFraud,
-    generatePlusAddressingFraud,
-    generateKeyboardWalkFraud,
-    generateRepeatedCharFraud,
-    generateMixedCaseFraud,
-    generateHeavyNumberFraud,
-    generateTyposquattedDomainFraud,
-    generateVpnProxyFraud,
-    generateHomoglyphFraud,
-    generateAIGibberishFraud,
+    { generator: generateSequentialFraud, weight: 10 },
+    { generator: generateGibberishFraud, weight: 10 },
+    { generator: generateDatedFraud, weight: 10 },
+    { generator: generateDisposableFraud, weight: 12 },
+    { generator: generatePlusAddressingFraud, weight: 10 },
+    { generator: generateKeyboardWalkFraud, weight: 8 },
+    { generator: generateRepeatedCharFraud, weight: 8 },
+    { generator: generateMixedCaseFraud, weight: 6 },
+    { generator: generateHeavyNumberFraud, weight: 10 },
+    { generator: generateTyposquattedDomainFraud, weight: 30 }, // 3x weight - critical pattern
+    { generator: generateVpnProxyFraud, weight: 8 },
+    { generator: generateHomoglyphFraud, weight: 30 }, // 3x weight - critical pattern
+    { generator: generateAIGibberishFraud, weight: 8 },
   ];
 
+  // Calculate total weight
+  const totalWeight = fraudGenerators.reduce((sum, g) => sum + g.weight, 0);
+
+  // Generate fraud emails using weighted selection
   for (let i = 0; i < fraudCount; i++) {
     if ((i + 1) % 2000 === 0 || i === fraudCount - 1) {
       logger.info(`  Generated ${(i + 1).toLocaleString()}/${fraudCount.toLocaleString()} fraud emails`);
     }
+
+    // Weighted random selection
+    let random = Math.random() * totalWeight;
+    let selectedGenerator = fraudGenerators[0].generator;
+
+    for (const { generator, weight } of fraudGenerators) {
+      random -= weight;
+      if (random <= 0) {
+        selectedGenerator = generator;
+        break;
+      }
+    }
+
     const culture = randomChoice(cultures);
-    const generator = randomChoice(fraudGenerators);
-    const { email, name } = generator(culture);
-    emails.push({ email, name, label: 'fraud', source: 'synthetic' });
+    const { email, name } = selectedGenerator(culture);
+    emails.push({ email, name, label: 'fraud', source: 'synthetic_fraud' });
   }
 
   // Shuffle the emails

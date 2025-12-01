@@ -173,12 +173,20 @@ cf-docs
 
 
 # Training models and temporary files
-models/
+# Ignore model output files at root, but not cli/commands/model/ (CLI code)
+/models/
+!cli/commands/model/
 test-emails.json
 training*.log
 data*
 !cli/commands/dataset/
 public/dashboard/
+
+# Auto-generated production models (uploaded to KV, not committed)
+config/production/*.auto.json
+config/production/random-forest*.json
+config/production/decision-tree*.json
+!config/production/*.example.json
 
 # Analysis archives (temporary data from tuning sessions)
 analysis-archive/
@@ -202,3 +210,4 @@ __pycache__/
 *$py.class
 *.so
 .Python
+tmp

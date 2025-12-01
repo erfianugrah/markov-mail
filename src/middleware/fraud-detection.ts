@@ -35,6 +35,7 @@ import { buildFeatureVector, type FeatureVector } from '../utils/feature-vector'
 import { computeIdentitySignals } from '../utils/identity-signals';
 import { computeGeoSignals } from '../utils/geo-signals';
 import { resolveMXRecords, getCachedMXRecords } from '../services/mx-resolver';
+import { getWellKnownMX } from '../utils/known-mx-providers';
 import { sendAnomalyAlert } from '../services/alerting';
 import { extractLocalPartFeatureSignals, type LocalPartFeatureSignals } from '../detectors/linguistic-features';
 import { logger } from '../logger';
@@ -53,7 +54,7 @@ import {
 
 const PATTERN_CLASSIFICATION_VERSION = '2.5.0';
 const AB_CONFIG_CACHE_TTL = 60000; // 1 minute
-const MX_LOOKUP_TIMEOUT_MS = 350;
+const MX_LOOKUP_TIMEOUT_MS = 1500; // Increased from 350ms to 1.5s to improve MX lookup success rate
 
 let cachedABTestConfig: ABTestConfig | null = null;
 let abConfigCacheTimestamp = 0;
@@ -224,47 +225,56 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 				}
 
 				if (config.features.enableMXCheck && domainValidation && !domainValidation.isDisposable) {
-					const cachedMx = getCachedMXRecords(domain);
-					if (cachedMx) {
-						mxAnalysis = cachedMx;
+					// Check well-known providers first (instant lookup for Gmail, Outlook, etc.)
+					const wellKnownMx = getWellKnownMX(domain);
+					if (wellKnownMx) {
+						mxAnalysis = wellKnownMx;
+						logger.info({ event: 'mx_well_known_hit', domain }, 'Using well-known MX records');
 					} else {
-						const mxPromise = resolveMXRecords(domain);
-						try {
-							let timeoutId: ReturnType<typeof setTimeout> | undefined;
-							const timeoutPromise = new Promise<null>((resolve) => {
-								timeoutId = setTimeout(() => {
-									timeoutId = undefined;
-									resolve(null);
-								}, MX_LOOKUP_TIMEOUT_MS);
-							});
-							const lookupResult = await Promise.race([mxPromise, timeoutPromise]);
-							if (timeoutId) {
-								clearTimeout(timeoutId);
-							}
-							if (lookupResult) {
-								mxAnalysis = lookupResult;
-							} else {
+						// Check cache second
+						const cachedMx = getCachedMXRecords(domain);
+						if (cachedMx) {
+							mxAnalysis = cachedMx;
+						} else {
+							// Fallback to DNS lookup with timeout
+							const mxPromise = resolveMXRecords(domain);
+							try {
+								let timeoutId: ReturnType<typeof setTimeout> | undefined;
+								const timeoutPromise = new Promise<null>((resolve) => {
+									timeoutId = setTimeout(() => {
+										timeoutId = undefined;
+										resolve(null);
+									}, MX_LOOKUP_TIMEOUT_MS);
+								});
+								const lookupResult = await Promise.race([mxPromise, timeoutPromise]);
+								if (timeoutId) {
+									clearTimeout(timeoutId);
+								}
+								if (lookupResult) {
+									mxAnalysis = lookupResult;
+								} else {
+									logger.warn({
+										event: 'mx_lookup_timeout',
+										domain,
+										timeoutMs: MX_LOOKUP_TIMEOUT_MS,
+									}, 'MX lookup timed out, deferring to background');
+									c.executionCtx.waitUntil(
+										mxPromise.catch((error) => {
+											logger.warn({
+												event: 'mx_lookup_failed',
+												domain,
+												error: error instanceof Error ? error.message : String(error),
+											}, 'MX lookup failed');
+										})
+									);
+								}
+							} catch (error) {
 								logger.warn({
-									event: 'mx_lookup_timeout',
+									event: 'mx_lookup_failed',
 									domain,
-									timeoutMs: MX_LOOKUP_TIMEOUT_MS,
-								}, 'MX lookup timed out, deferring to background');
-								c.executionCtx.waitUntil(
-									mxPromise.catch((error) => {
-										logger.warn({
-											event: 'mx_lookup_failed',
-											domain,
-											error: error instanceof Error ? error.message : String(error),
-										}, 'MX lookup failed');
-									})
-								);
+									error: error instanceof Error ? error.message : String(error),
+								}, 'MX lookup failed');
 							}
-						} catch (error) {
-							logger.warn({
-								event: 'mx_lookup_failed',
-								domain,
-								error: error instanceof Error ? error.message : String(error),
-							}, 'MX lookup failed');
 						}
 					}
 				}

@@ -1,7 +1,7 @@
 # Markov Mail Documentation
 
-**Version**: 3.0.0
-**Last Updated**: 2025-11-30
+**Version**: 3.0.1
+**Last Updated**: 2025-12-01
 
 Welcome to the Markov Mail fraud detection system documentation. This guide provides comprehensive information about the architecture, configuration, and operation of the email fraud detection API.
 
@@ -14,6 +14,7 @@ Welcome to the Markov Mail fraud detection system documentation. This guide prov
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | System components, data flow, deployment architecture | Developers, DevOps |
 | [CONFIGURATION.md](./CONFIGURATION.md) | KV, D1, and environment setup | Operators, DevOps |
 | [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md) | Codebase organization and file structure | Developers |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | Contributing guidelines, code standards, testing practices | Contributors, Developers |
 
 ### Core Concepts
 
@@ -27,6 +28,8 @@ Welcome to the Markov Mail fraud detection system documentation. This guide prov
 
 | Document | Description | Audience |
 |----------|-------------|----------|
+| [OPERATIONS.md](./OPERATIONS.md) | Automated training pipelines, deployment procedures, monitoring | Operators, ML Engineers |
+| [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | Problem diagnosis, common issues, historical analyses | All users |
 | [SYSTEM_INVENTORY.md](./SYSTEM_INVENTORY.md) | Complete system inventory (models, data, config) | Operators, Auditors |
 | [CALIBRATION.md](./CALIBRATION.md) | Model calibration approach | ML Engineers |
 | [THRESHOLD_ARTIFACTS.md](./THRESHOLD_ARTIFACTS.md) | Guardrail artifacts playbook & review checklist | ML Engineers, Reviewers |
@@ -214,8 +217,8 @@ See [DETECTORS.md](./DETECTORS.md) for detailed feature descriptions.
 
 ### Model Architecture
 
-**Primary**: Random Forest (20 trees, 90.1% precision)
-**Fallback**: Decision Tree (1 tree, 75.0% precision)
+**Primary**: Random Forest (100 trees, ~91% precision)
+**Fallback**: Decision Tree (1 tree, ~75% precision)
 
 Both models are stored in KV with 60-second TTL caching for hot-reload without redeployment.
 
@@ -224,9 +227,9 @@ See [MODEL_TRAINING.md](./MODEL_TRAINING.md) for training details.
 ### Risk Scoring
 
 **Thresholds**:
-- **Block** (≥0.65): High confidence fraud
-- **Warn** (0.35-0.64): Suspicious but uncertain
-- **Allow** (<0.35): Legitimate
+- **Block** (≥0.3): High confidence fraud
+- **Warn** (0.25-0.29): Suspicious but uncertain
+- **Allow** (<0.25): Legitimate
 
 See [SCORING.md](./SCORING.md) for scoring logic and threshold tuning.
 
@@ -298,15 +301,15 @@ See [CONFIGURATION.md](./CONFIGURATION.md#d1-database) for more queries.
 | P50 Latency | 7ms | <10ms ✅ |
 | P99 Latency | 45ms | <50ms ✅ |
 | Throughput | 10K req/s/region | Unlimited ✅ |
-| Model Size | 55KB (RF), 3.3KB (DT) | <100KB ✅ |
+| Model Size | ~280KB (RF), ~5KB (DT) | <500KB ✅ |
 
 ### Accuracy
 
 | Metric | Random Forest | Decision Tree |
 |--------|---------------|---------------|
-| Precision | 90.1% | 75.0% |
-| Recall | 92.3% | 80.5% |
-| F1 Score | 91.2% | 77.6% |
+| Precision | ~91% | ~75% |
+| Recall | ~92% | ~81% |
+| F1 Score | ~91% | ~78% |
 
 See [MODEL_TRAINING.md](./MODEL_TRAINING.md#model-performance) for detailed metrics.
 
