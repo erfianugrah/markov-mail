@@ -36,6 +36,7 @@ def parse_args() -> argparse.Namespace:
     args.add_argument("--conflict-weight", type=float, default=20.0, help="Weight for conflict zone samples (default: 20.0)")
     args.add_argument("--no-split", action="store_true", help="Train on 100%% of data (no train/test split for production)")
     args.add_argument("--calibration-output", default="data/calibration/latest.csv", help="CSV path for holdout scores/labels")
+    args.add_argument("--run-id", type=str, default=None, help="Training run ID for tracking (default: timestamp)")
     return args.parse_args()
 
 
@@ -184,34 +185,6 @@ def main():
         print(f"  TN: {cm[0,0]:,}  FP: {cm[0,1]:,}")
         print(f"  FN: {cm[1,0]:,}  TP: {cm[1,1]:,}")
 
-        calibration_path = Path(args.calibration_output)
-        calibration_path.parent.mkdir(parents=True, exist_ok=True)
-        calibration_inputs = y_score_test.reshape(-1, 1)
-
-        calibrator = LogisticRegression()
-        calibrator.fit(calibration_inputs, y_test)
-        calibrated_scores = calibrator.predict_proba(calibration_inputs)[:, 1]
-
-        calibration_info = {
-            "method": "platt",
-            "intercept": float(calibrator.intercept_[0]),
-            "coef": float(calibrator.coef_[0][0]),
-            "samples": int(len(y_test)),
-        }
-
-        print(f"\nCalibration (Platt scaling):")
-        print(f"  Intercept: {calibration_info['intercept']:.6f}")
-        print(f"  Coefficient: {calibration_info['coef']:.6f}")
-        print(f"  Samples: {calibration_info['samples']}")
-
-        calibration_df = pd.DataFrame({
-            "score": y_score_test,
-            "label": y_test.reset_index(drop=True),
-            "calibrated_score": calibrated_scores,
-        })
-        calibration_df.to_csv(calibration_path, index=False)
-        print(f"\nSaved calibration dataset to {calibration_path.resolve()}")
-
         # Conflict zone performance
         if 'bigram_entropy' in X_test.columns and 'domain_reputation_score' in X_test.columns:
             conflict_test_mask = (X_test['bigram_entropy'] > 3.0) & (X_test['domain_reputation_score'] >= 0.6)
@@ -237,6 +210,55 @@ def main():
         print("=" * 80)
         print(f"\n⚠️  No evaluation metrics (trained on 100% of data)")
         print(f"   Validate on production traffic for real-world performance")
+
+    # Generate calibration data (always, regardless of split mode)
+    print(f"\n{'=' * 80}")
+    print("Generating Calibration Data")
+    print("=" * 80)
+
+    calibration_path = Path(args.calibration_output)
+    calibration_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Use test set if available, otherwise use training set
+    if not args.no_split:
+        # Development mode: use held-out test set for calibration
+        calibration_scores = y_score_test
+        calibration_labels = y_test
+        calibration_mode = "test set (held-out 20%)"
+    else:
+        # Production mode: use training set for calibration
+        calibration_scores = clf.predict_proba(X_train)[:, 1]
+        calibration_labels = y_train
+        calibration_mode = "training set (100% of data)"
+
+    print(f"\nCalibration dataset: {calibration_mode}")
+    print(f"  Samples: {len(calibration_labels):,}")
+
+    # Fit Platt scaling
+    calibration_inputs = calibration_scores.reshape(-1, 1)
+    calibrator = LogisticRegression()
+    calibrator.fit(calibration_inputs, calibration_labels)
+    calibrated_scores = calibrator.predict_proba(calibration_inputs)[:, 1]
+
+    calibration_info = {
+        "method": "platt",
+        "intercept": float(calibrator.intercept_[0]),
+        "coef": float(calibrator.coef_[0][0]),
+        "samples": int(len(calibration_labels)),
+    }
+
+    print(f"\nPlatt Scaling Coefficients:")
+    print(f"  Intercept: {calibration_info['intercept']:.6f}")
+    print(f"  Coefficient: {calibration_info['coef']:.6f}")
+
+    # Save calibration dataset
+    calibration_df = pd.DataFrame({
+        "score": calibration_scores,
+        "label": calibration_labels.reset_index(drop=True) if hasattr(calibration_labels, 'reset_index') else calibration_labels,
+        "calibrated_score": calibrated_scores,
+    })
+    calibration_df.to_csv(calibration_path, index=False)
+    print(f"\nSaved calibration dataset to {calibration_path.resolve()}")
 
     # Feature importance
     print(f"\n{'=' * 80}")
@@ -270,9 +292,18 @@ def main():
             print(f"  Tree {i+1}/{args.n_trees}...")
         forest_json.append(tree_to_json(estimator, feature_columns))
 
+    # Generate run ID if not provided
+    run_id = args.run_id
+    if not run_id:
+        import time
+        run_id = str(int(time.time() * 1000))
+
     artifact = {
         "meta": {
             "version": "3.0.0-forest",
+            "runId": run_id,
+            "nTrees": args.n_trees,
+            "maxDepth": args.max_depth,
             "features": feature_columns,
             "feature_importance": importances.set_index('feature')['importance'].to_dict(),
             "tree_count": len(forest_json),
@@ -280,7 +311,8 @@ def main():
                 "n_trees": args.n_trees,
                 "max_depth": args.max_depth,
                 "min_samples_leaf": args.min_samples_leaf,
-                "conflict_weight": args.conflict_weight
+                "conflict_weight": args.conflict_weight,
+                "no_split": args.no_split
             },
         },
         "forest": forest_json
@@ -290,6 +322,7 @@ def main():
         artifact["meta"]["calibration"] = calibration_info
 
     output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(artifact, separators=(',', ':')))
 
     # Size check
