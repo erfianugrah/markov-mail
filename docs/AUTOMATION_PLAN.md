@@ -23,6 +23,7 @@ This document spells out how we will convert today’s manual “train → eyeba
 
 4. **Guardrail check in CI**
    - Add a Vitest script or standalone tool that asserts the new thresholds really hit the target on the calibration set (no more ad-hoc manual verification).
+   - **Status**: `npm run guardrail` (alias for `model:guardrail` with default paths/constraints) now orchestrates calibration, threshold recommendation, and constraint verification. It fails fast if the warn/block pair no longer satisfies `recall ≥ 0.95`, `FPR/FNR ≤ 0.05`, or the minimum warn/block gap, making it ideal for CI jobs before auto-updating configs.
 
 Deliverable: one scripted flow (`model:train → model:calibrate → model:thresholds → config:update-thresholds`) that requires no hand-editing.
 
@@ -57,6 +58,7 @@ Deliverable: one scripted flow (`model:train → model:calibrate → model:thres
    - Hook this into the analytics job so the heuristics evolve from data, not manual commits.
 
 Deliverable: heuristics live in config/KV, are updated automatically based on observed misses, and the code simply consumes them.
+**Status**: The `model:pipeline` CLI accepts a `--search '[{...}]'` array so multiple hyperparameter sets (tree counts, depths, conflict weights) run automatically until the guardrail passes. All attempts are logged, and promotion continues only when the target SLO is satisfied.
 
 ---
 
@@ -78,6 +80,7 @@ Deliverable: heuristics live in config/KV, are updated automatically based on ob
 
 4. **Auto-publish**
    - Once all guardrails pass, automatically push the new model/config to KV (`kv:put random_forest.json`, `config:upload`) and tag the release.
+   - **Status**: `npm run pipeline` orchestrates export → training → guardrail → threshold update → config sync (with optional `--upload-model`, `--apply-thresholds`, `--sync-config`). It also snapshots artifacts so reviewers can inspect the promotion bundle.
 
 Deliverable: a full closed loop where training → calibration → thresholding → batch validation → promotion happens via scripts/CI, and any regression is caught + reported without manual eyeballing.
 
@@ -98,14 +101,14 @@ Deliverable: a full closed loop where training → calibration → thresholding 
 
 ### Implementation Checklist
 
-- [ ] `model:calibrate` emits threshold-scan report
-- [ ] `model:thresholds` CLI with constraint solving
-- [ ] Config auto-update command + changelog hook
-- [ ] Heuristic definitions moved to config/KV
+- [x] `model:calibrate` emits threshold-scan report
+- [x] `model:thresholds` CLI with constraint solving
+- [x] Config auto-update command + changelog hook
+- [x] CI guardrail job (calibrate → threshold → batch)
+- [x] Heuristic definitions moved to config/KV
 - [ ] Analytics job updating heuristics/watchlists
 - [ ] FN warehouse & pattern breakdowns
-- [ ] CI guardrail job (calibrate → threshold → batch)
 - [ ] Dashboard widgets for calibration + heuristics
-- [ ] Auto-publish commands once guardrails pass
+- [x] Auto-publish commands once guardrails pass
 
 Each box can be tackled in isolation; prioritize Phase 1 + Phase 2 to eliminate manual tweaks, then build the feedback loop to keep accuracy within SLO automatically.

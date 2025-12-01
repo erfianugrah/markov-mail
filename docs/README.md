@@ -29,6 +29,7 @@ Welcome to the Markov Mail fraud detection system documentation. This guide prov
 |----------|-------------|----------|
 | [SYSTEM_INVENTORY.md](./SYSTEM_INVENTORY.md) | Complete system inventory (models, data, config) | Operators, Auditors |
 | [CALIBRATION.md](./CALIBRATION.md) | Model calibration approach | ML Engineers |
+| [THRESHOLD_ARTIFACTS.md](./THRESHOLD_ARTIFACTS.md) | Guardrail artifacts playbook & review checklist | ML Engineers, Reviewers |
 
 ## 🚀 Quick Start
 
@@ -66,6 +67,34 @@ npm run cli model:train -- --n-trees 20 --upload
 # 3. Validate production
 npm run cli test:batch -- --input data/main.csv \
   --endpoint https://fraud.erfi.dev/validate
+
+# (Optional) full automation with multi-mode export + search
+npm run pipeline -- \
+  --dataset data/main.csv \
+  --export-modes fast,full \
+  --search '[{"label":"fast-pass","nTrees":10,"featureMode":"fast"},{"label":"full-depth","nTrees":20,"maxDepth":8,"featureMode":"full"}]' \
+  --calibration-retries 1 \
+  --upload-model \
+  --apply-thresholds \
+  --sync-config \
+  --config-dry-run
+
+# Resume a failed automation run
+npm run pipeline -- --resume tmp/pipeline-runs/2025-12-01-07-30-00
+
+# Full-MX automation (100-tree forest)
+npm run pipeline -- \
+  --dataset data/main.csv \
+  --export-modes full \
+  --search '[{"label":"mx-forest","nTrees":100,"featureMode":"full"}]' \
+  --calibration-retries 1 \
+  --upload-model \
+  --apply-thresholds \
+  --sync-config \
+  --config-dry-run
+
+# Resume the most recent pipeline attempt
+npm run pipeline -- --resume latest
 ```
 
 **Next Steps**: Read [MODEL_TRAINING.md](./MODEL_TRAINING.md) for training workflow and [DETECTORS.md](./DETECTORS.md) for feature engineering details.

@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "cli": "bun run cli/index.ts",
+    "guardrail": "bun run cli/index.ts model:guardrail --input data/calibration/latest.csv --scan data/calibration/threshold-scan.json --recommendation data/calibration/threshold-recommendation.json --min-recall 0.95 --max-fpr 0.05 --max-fnr 0.05",
+    "pipeline": "bun run cli/index.ts model:pipeline --upload-model --apply-thresholds --sync-config",
     "build": "npm run build:dashboard",
     "build:dashboard": "cd dashboard && npm run build",
     "typecheck": "tsc --noEmit",

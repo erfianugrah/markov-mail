@@ -71,6 +71,36 @@ Override the normal decision logic for specific use cases.
 
 **Recommended**: block=0.6, warn=0.3 (91.8% accuracy)
 
+## Heuristic Risk Adjustments
+
+Deterministic bumps (extreme TLD risk, known-bad domains, sequential locals, plus-tagger abuse, high bot scores) now live in `config/risk-heuristics.json`. Each entry defines:
+
+```json
+{
+  "threshold": 0.9,
+  "decision": "block",
+  "reason": "heuristic_tld_extreme",
+  "minScoreOffset": 0.1,
+  "direction": "gte"
+}
+```
+
+- `threshold`: detector score required to trigger the bump (e.g., domain reputation ≥ 0.95)
+- `decision`: whether we’re targeting the warn or block band
+- `minScoreOffset`: amount to add on top of the decision’s threshold (defaults to `+0.05` block / `+0.03` warn if omitted)
+- `reason`: logged verbatim for observability
+- `direction`: comparison operator (`"gte"` default, `"lte"` for metrics like bot score where lower values are worse)
+
+Upload changes alongside `config.json`:
+
+```bash
+npm run cli -- config:sync
+# or explicitly:
+# npm run cli -- config:sync --config config/production/config.json --heuristics config/risk-heuristics.json
+```
+
+The Worker caches the heuristics for 60 seconds and falls back to the defaults in git if the KV entry is missing. Append `--dry-run` to verify the files exist without sending writes (useful in CI gates).
+
 ## Feature Flags
 
 Toggle runtime detectors/inputs without redeploying:

@@ -28,6 +28,7 @@ import {
 } from '../ab-testing';
 import { loadDisposableDomains } from '../services/disposable-domain-updater';
 import { loadTLDRiskProfiles } from '../services/tld-risk-updater';
+import { loadRiskHeuristics, type HeuristicRule } from '../services/risk-heuristics';
 import { writeValidationMetric } from '../utils/metrics';
 import { getConfig } from '../config';
 import { buildFeatureVector, type FeatureVector } from '../utils/feature-vector';
@@ -152,6 +153,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			'X-API-KEY': c.env['X-API-KEY'],
 			ORIGIN_URL: c.env.ORIGIN_URL,
 		});
+		const heuristicsConfig = await loadRiskHeuristics(c.env.CONFIG);
 
 		const fingerprint = await generateFingerprint(rawRequest);
 		const geoSignals = computeGeoSignals({
@@ -454,34 +456,28 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 		};
 
 		if (heuristicsEligible) {
-			if (tldRiskScore >= 0.9) {
-				elevateRisk('block', 'heuristic_tld_extreme', blockThreshold + 0.1);
-			} else if (tldRiskScore >= 0.8) {
-				elevateRisk('warn', 'heuristic_tld_high', warnThreshold + 0.1);
-			}
+			const applyRules = (value: number | undefined, rules: HeuristicRule[]) => {
+				if (value === undefined || value === null || Number.isNaN(value)) {
+					return;
+				}
+				for (const rule of rules) {
+					const direction = rule.direction ?? 'gte';
+					const matches = direction === 'lte' ? value <= rule.threshold : value >= rule.threshold;
+					if (matches) {
+						const baseline = rule.decision === 'block' ? blockThreshold : warnThreshold;
+						const offset = rule.minScoreOffset ?? (rule.decision === 'block' ? 0.05 : 0.03);
+						elevateRisk(rule.decision, rule.reason, baseline + offset);
+						break;
+					}
+				}
+			};
 
-			if (domainReputationScore >= 0.95) {
-				elevateRisk('block', 'heuristic_domain_reputation_critical', blockThreshold + 0.08);
-			} else if (domainReputationScore >= 0.85) {
-				elevateRisk('warn', 'heuristic_domain_reputation_watch', warnThreshold + 0.08);
-			}
-
-			if (sequentialConfidence >= 0.98 || digitRatio >= 0.9) {
-				elevateRisk('block', 'heuristic_sequence_numeric_extreme', blockThreshold + 0.05);
-			} else if (sequentialConfidence >= 0.9 || digitRatio >= 0.8) {
-				elevateRisk('warn', 'heuristic_sequence_numeric_high', warnThreshold + 0.05);
-			}
-
-			if (plusRisk >= 0.8) {
-				elevateRisk('block', 'heuristic_plus_tag_abuse', blockThreshold + 0.03);
-			}
-
-			const botScore = fingerprint.botScore ?? 0;
-			if (botScore >= 75) {
-				elevateRisk('block', 'heuristic_bot_score_extreme', blockThreshold + 0.02);
-			} else if (botScore >= 60) {
-				elevateRisk('warn', 'heuristic_bot_score_high', warnThreshold + 0.04);
-			}
+			applyRules(tldRiskScore, heuristicsConfig.tldRisk);
+			applyRules(domainReputationScore, heuristicsConfig.domainReputation);
+			applyRules(sequentialConfidence, heuristicsConfig.sequentialConfidence);
+			applyRules(digitRatio, heuristicsConfig.digitRatio);
+			applyRules(plusRisk, heuristicsConfig.plusAddressing);
+			applyRules(fingerprint.botScore, heuristicsConfig.botScore);
 
 			if (heuristicsApplied.length > 0) {
 				logger.info({

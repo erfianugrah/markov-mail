@@ -6,6 +6,7 @@ import { logger } from '../../utils/logger.ts';
 import { parseArgs, getOption, hasFlag } from '../../utils/args.ts';
 import { $ } from 'bun';
 import { resolve } from 'path';
+import { existsSync } from 'fs';
 
 export default async function config(args: string[]) {
   const parsed = parseArgs(args);
@@ -168,8 +169,39 @@ EXAMPLES
       logger.error(`❌ Failed to upload config: ${error}`);
     }
   } else if (command?.includes('config:sync')) {
-    logger.info('Syncing configuration to KV');
-    logger.warn('Not yet implemented - use config:set to update individual values');
+    const configPath = resolve(getOption(parsed, 'config') ?? 'config/production/config.json');
+    const heuristicsPath = getOption(parsed, 'heuristics', 'risk-heuristics');
+    const resolvedHeuristicsPath = heuristicsPath ? resolve(heuristicsPath) : resolve('config/risk-heuristics.json');
+    const dryRun = hasFlag(parsed, 'dry-run');
+
+    if (!existsSync(configPath)) {
+      logger.error(`❌ Config file not found: ${configPath}`);
+      return;
+    }
+
+    if (!existsSync(resolvedHeuristicsPath)) {
+      logger.error(`❌ Risk heuristics file not found: ${resolvedHeuristicsPath}`);
+      return;
+    }
+
+    if (dryRun) {
+      logger.info(`[dry-run] Would upload ${configPath} → config.json`);
+      logger.info(`[dry-run] Would upload ${resolvedHeuristicsPath} → risk-heuristics.json`);
+      return;
+    }
+
+    try {
+      logger.info(`Uploading ${configPath} → config.json`);
+      await $`npx wrangler kv key put config.json --path=${configPath} --binding=${binding} --remote`;
+      logger.success('✅ config.json updated');
+
+      logger.info(`Uploading ${resolvedHeuristicsPath} → risk-heuristics.json`);
+      await $`npx wrangler kv key put risk-heuristics.json --path=${resolvedHeuristicsPath} --binding=${binding} --remote`;
+      logger.success('✅ risk-heuristics.json updated');
+    } catch (error) {
+      logger.error(`❌ Failed to sync config: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
   } else {
     logger.error('❌ Unknown config command');
     logger.info('Available commands: config:get, config:set, config:list');

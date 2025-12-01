@@ -13,6 +13,8 @@ export default async function calibrate(rawArgs: string[]) {
 	const parsed = parseArgs(rawArgs);
 	const input = getOption(parsed, 'input') ?? 'data/calibration/latest.csv';
 	const output = getOption(parsed, 'output') ?? 'data/calibration/calibrated.csv';
+	const thresholdJson = getOption(parsed, 'threshold-output', 'threshold-json') ?? 'data/calibration/threshold-scan.json';
+	const thresholdCsv = getOption(parsed, 'threshold-csv') ?? 'data/calibration/threshold-scan.csv';
 
 	const repoRoot = process.cwd();
 	const pythonPath = resolve(repoRoot, 'venv/bin/python');
@@ -32,8 +34,35 @@ export default async function calibrate(rawArgs: string[]) {
 	logger.section('📐 Calibrating Random Forest Scores');
 	logger.info(`Input:  ${input}`);
 	logger.info(`Output: ${output}`);
+	logger.info(`Threshold JSON: ${thresholdJson}`);
+	logger.info(`Threshold CSV:  ${thresholdCsv}`);
 
-	const pythonArgs = [scriptPath, '--input', input, '--output', output];
+	const pythonArgs = [
+		scriptPath,
+		'--input',
+		input,
+		'--output',
+		output,
+		'--threshold-json',
+		thresholdJson,
+		'--threshold-csv',
+		thresholdCsv,
+	];
+
+	const thresholdMin = getOption(parsed, 'threshold-min');
+	if (thresholdMin) {
+		pythonArgs.push('--threshold-min', thresholdMin);
+	}
+
+	const thresholdMax = getOption(parsed, 'threshold-max');
+	if (thresholdMax) {
+		pythonArgs.push('--threshold-max', thresholdMax);
+	}
+
+	const thresholdStep = getOption(parsed, 'threshold-step');
+	if (thresholdStep) {
+		pythonArgs.push('--threshold-step', thresholdStep);
+	}
 	const result = spawnSync(pythonPath, pythonArgs, {
 		stdio: 'inherit',
 	});
