@@ -237,6 +237,7 @@ npm run pipeline -- \
   --search '[{"label":"fast-pass","nTrees":10,"featureMode":"fast"},{"label":"full-depth","nTrees":20,"maxDepth":8,"featureMode":"full"}]' \
   --calibration-retries 1 \
   --retry-threshold-step 0.02 \
+  --adaptive '{"maxTrees":200,"maxDepth":8,"maxConflictWeight":40,"nTreesStep":25,"conflictStep":5}' \
   --upload-model \
   --apply-thresholds \
   --sync-config \
@@ -254,11 +255,12 @@ The pipeline:
 
 Toggle uploads or syncing with `--upload-model`, `--sync-config`, and `--config-dry-run`. Use `--skip-guardrail`, `--skip-artifacts`, or `--skip-export` for faster local iterations.
 
-**Run Directories & Resume**
+**Run Directories, Resume, and Adaptive Search**
 
 - Every run stores its manifest under `tmp/pipeline-runs/<timestamp>/manifest.json` (override with `--run-dir`).
 - To continue a failed run, pass `--resume latest` (or a specific directory) and the pipeline will skip completed exports/attempts and continue with the remaining search configs.
 - Manifest entries track hyperparameters, export modes, guardrail outcomes, uploads, config sync results, and the artifact snapshot directory for auditability.
+- Add `--adaptive '{"maxTrees":200,...}'` to let the pipeline auto-escalate tree count/depth/conflict weight when every configured attempt fails the guardrail. It will append new attempts (e.g., n_trees +25, conflict weight +5) until the SLO passes or the specified ceilings are reached.
 
 **Full-MX, 100 Tree Run**
 

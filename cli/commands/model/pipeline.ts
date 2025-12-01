@@ -26,6 +26,7 @@ type AttemptConfig = {
 	skipMx?: boolean;
 	noSplit?: boolean;
 	featureMode?: string;
+	adaptive?: boolean;
 };
 
 type AttemptSummary = {
@@ -289,7 +290,35 @@ export default async function automationPipeline(rawArgs: string[]) {
 	const exportModes = normalizeExportModes(getOption(parsed, 'export-modes'), featuresOutput, fastFeaturesOutput);
 	const searchOption = getOption(parsed, 'search');
 	const searchConfigs = parseSearchConfigs(searchOption);
-	const attempts = searchConfigs.length ? searchConfigs : [{}];
+	const adaptiveOption = getOption(parsed, 'adaptive');
+	const adaptiveStrategy: AdaptiveStrategy | null = adaptiveOption
+		? (() => {
+				try {
+					const parsed = JSON.parse(adaptiveOption);
+					return {
+						maxTrees: parsed.maxTrees ?? 200,
+						maxDepth: parsed.maxDepth ?? 8,
+						maxConflictWeight: parsed.maxConflictWeight ?? 40,
+						nTreesStep: parsed.nTreesStep ?? 25,
+						conflictStep: parsed.conflictStep ?? 5,
+					} as AdaptiveStrategy;
+				} catch (error) {
+					throw new Error(`Failed to parse --adaptive: ${(error as Error).message}`);
+				}
+		  })()
+		: null;
+	const attempts: AttemptConfig[] = searchConfigs.length
+		? searchConfigs
+		: [
+				{
+					label: 'auto-base',
+					nTrees: 100,
+					maxDepth: 6,
+					conflictWeight: 20,
+					featureMode: exportModes[0]?.name ?? 'full',
+					adaptive: Boolean(adaptiveStrategy),
+				},
+		  ];
 	const runDirOption = getOption(parsed, 'run-dir');
 	const resumeDirOption = getOption(parsed, 'resume');
 
@@ -392,7 +421,8 @@ export default async function automationPipeline(rawArgs: string[]) {
 	let finalAttempt: AttemptConfig | null = null;
 	let finalRecommendation: GuardrailRecommendation | null = null;
 
-	for (let i = attemptStartIndex; i < attempts.length; i++) {
+	let i = attemptStartIndex;
+	while (i < attempts.length) {
 		const attempt = attempts[i];
 		const label = attemptLabel(i, attempts.length, attempt.label);
 		const attemptParams: AttemptConfig = {
@@ -482,10 +512,40 @@ export default async function automationPipeline(rawArgs: string[]) {
 				manifest = updateManifest(manifestPath, (m) => {
 					m.attempts.push(summary);
 				});
+				if (attempt.adaptive && adaptiveStrategy) {
+					const nextTrees = Math.min(
+						(attemptParams.nTrees ?? 100) + adaptiveStrategy.nTreesStep,
+						adaptiveStrategy.maxTrees
+					);
+					const nextDepth = Math.min(
+						(attemptParams.maxDepth ?? 6) + 1,
+						adaptiveStrategy.maxDepth
+					);
+					const nextConflict = Math.min(
+						(attemptParams.conflictWeight ?? 20) + adaptiveStrategy.conflictStep,
+						adaptiveStrategy.maxConflictWeight
+					);
+					const improved =
+						nextTrees > (attemptParams.nTrees ?? 100) ||
+						nextDepth > (attemptParams.maxDepth ?? 6) ||
+						nextConflict > (attemptParams.conflictWeight ?? 20);
+					if (improved) {
+						const adaptiveAttempt: AttemptConfig = {
+							label: `auto-${nextTrees}`,
+							nTrees: nextTrees,
+							maxDepth: nextDepth,
+							conflictWeight: nextConflict,
+							featureMode: attemptParams.featureMode,
+							adaptive: true,
+						};
+						attempts.push(adaptiveAttempt);
+					}
+				}
 				continue;
 			}
 			throw error;
 		}
+		i++;
 	}
 
 	if (!finalAttempt) {
@@ -624,3 +684,10 @@ logger.table(attemptSummaries.map((summary) => ({
 		}
 	});
 }
+type AdaptiveStrategy = {
+	maxTrees: number;
+	maxDepth: number;
+	maxConflictWeight: number;
+	nTreesStep: number;
+	conflictStep: number;
+};

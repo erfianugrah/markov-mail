@@ -166,11 +166,21 @@ const COMMANDS = {
 		file: 'commands/config/manage.ts',
 		usage: 'config:sync',
 	},
+	'config:update-thresholds': {
+		description: 'Update config defaults with new warn/block thresholds',
+		file: 'commands/config/update-thresholds.ts',
+		usage: 'config:update-thresholds [--warn <value> --block <value>] [--input <recommendation.json>]',
+	},
 
 	'features:export': {
 		description: 'Generate feature matrix for model training',
 		file: 'commands/features/export.ts',
 		usage: 'features:export [--input data/main.csv] [--output data/features/export.csv]',
+	},
+	'artifacts:snapshot': {
+		description: 'Copy latest calibration/threshold artifacts into tmp folder',
+		file: 'commands/artifacts/snapshot.ts',
+		usage: 'artifacts:snapshot [--output <dir>]',
 	},
 	'model:train': {
 		description: 'Train ML model (1 tree = decision tree, 10+ trees = random forest)',
@@ -186,6 +196,21 @@ const COMMANDS = {
 		description: 'Calibrate Random Forest scores via Platt scaling',
 		file: 'commands/model/calibrate.ts',
 		usage: 'model:calibrate [--input <path>] [--output <path>]',
+	},
+	'model:thresholds': {
+		description: 'Recommend warn/block thresholds from calibration scan',
+		file: 'commands/model/thresholds.ts',
+		usage: 'model:thresholds [--input <threshold-scan.json>]',
+	},
+	'model:guardrail': {
+		description: 'CI guardrail: run calibration + threshold recommendation + verification',
+		file: 'commands/model/guardrail.ts',
+		usage: 'model:guardrail [--skip-calibrate] [--skip-thresholds]',
+	},
+	'model:pipeline': {
+		description: 'Run export → train → guardrail → sync pipeline',
+		file: 'commands/model/pipeline.ts',
+		usage: 'model:pipeline [--dataset <path>] [--export-modes fast,full] [--search <json>] [--run-dir <dir>] [--resume <dir>] [--upload-model] [--apply-thresholds] [--sync-config]',
 	},
 	'model:analyze': {
 		description: 'Analyze a trained model (e.g., view feature importances)',
@@ -262,6 +287,8 @@ Usage: npm run cli <command> [options]
 
 🛠️ MODEL PIPELINE
   features:export           Mirror runtime feature vector for model training
+  artifacts:snapshot        Copy guardrail artifacts for review
+  model:pipeline            Export → train → guardrail → snapshot (+optional upload)
   model:train               Train model (1 tree = decision tree, 10+ = random forest)
   model:tune                Randomized search for optimal RF hyperparameters
   model:calibrate           Run Platt scaling on validation scores
