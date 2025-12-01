@@ -28,12 +28,14 @@ import {
 } from '../ab-testing';
 import { loadDisposableDomains } from '../services/disposable-domain-updater';
 import { loadTLDRiskProfiles } from '../services/tld-risk-updater';
+import { loadRiskHeuristics, type HeuristicRule } from '../services/risk-heuristics';
 import { writeValidationMetric } from '../utils/metrics';
 import { getConfig } from '../config';
 import { buildFeatureVector, type FeatureVector } from '../utils/feature-vector';
 import { computeIdentitySignals } from '../utils/identity-signals';
 import { computeGeoSignals } from '../utils/geo-signals';
 import { resolveMXRecords, getCachedMXRecords } from '../services/mx-resolver';
+import { getWellKnownMX } from '../utils/known-mx-providers';
 import { sendAnomalyAlert } from '../services/alerting';
 import { extractLocalPartFeatureSignals, type LocalPartFeatureSignals } from '../detectors/linguistic-features';
 import { logger } from '../logger';
@@ -52,7 +54,7 @@ import {
 
 const PATTERN_CLASSIFICATION_VERSION = '2.5.0';
 const AB_CONFIG_CACHE_TTL = 60000; // 1 minute
-const MX_LOOKUP_TIMEOUT_MS = 350;
+const MX_LOOKUP_TIMEOUT_MS = 1500; // Increased from 350ms to 1.5s to improve MX lookup success rate
 
 let cachedABTestConfig: ABTestConfig | null = null;
 let abConfigCacheTimestamp = 0;
@@ -152,6 +154,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			'X-API-KEY': c.env['X-API-KEY'],
 			ORIGIN_URL: c.env.ORIGIN_URL,
 		});
+		const heuristicsConfig = await loadRiskHeuristics(c.env.CONFIG);
 
 		const fingerprint = await generateFingerprint(rawRequest);
 		const geoSignals = computeGeoSignals({
@@ -222,47 +225,56 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 				}
 
 				if (config.features.enableMXCheck && domainValidation && !domainValidation.isDisposable) {
-					const cachedMx = getCachedMXRecords(domain);
-					if (cachedMx) {
-						mxAnalysis = cachedMx;
+					// Check well-known providers first (instant lookup for Gmail, Outlook, etc.)
+					const wellKnownMx = getWellKnownMX(domain);
+					if (wellKnownMx) {
+						mxAnalysis = wellKnownMx;
+						logger.info({ event: 'mx_well_known_hit', domain }, 'Using well-known MX records');
 					} else {
-						const mxPromise = resolveMXRecords(domain);
-						try {
-							let timeoutId: ReturnType<typeof setTimeout> | undefined;
-							const timeoutPromise = new Promise<null>((resolve) => {
-								timeoutId = setTimeout(() => {
-									timeoutId = undefined;
-									resolve(null);
-								}, MX_LOOKUP_TIMEOUT_MS);
-							});
-							const lookupResult = await Promise.race([mxPromise, timeoutPromise]);
-							if (timeoutId) {
-								clearTimeout(timeoutId);
-							}
-							if (lookupResult) {
-								mxAnalysis = lookupResult;
-							} else {
+						// Check cache second
+						const cachedMx = getCachedMXRecords(domain);
+						if (cachedMx) {
+							mxAnalysis = cachedMx;
+						} else {
+							// Fallback to DNS lookup with timeout
+							const mxPromise = resolveMXRecords(domain);
+							try {
+								let timeoutId: ReturnType<typeof setTimeout> | undefined;
+								const timeoutPromise = new Promise<null>((resolve) => {
+									timeoutId = setTimeout(() => {
+										timeoutId = undefined;
+										resolve(null);
+									}, MX_LOOKUP_TIMEOUT_MS);
+								});
+								const lookupResult = await Promise.race([mxPromise, timeoutPromise]);
+								if (timeoutId) {
+									clearTimeout(timeoutId);
+								}
+								if (lookupResult) {
+									mxAnalysis = lookupResult;
+								} else {
+									logger.warn({
+										event: 'mx_lookup_timeout',
+										domain,
+										timeoutMs: MX_LOOKUP_TIMEOUT_MS,
+									}, 'MX lookup timed out, deferring to background');
+									c.executionCtx.waitUntil(
+										mxPromise.catch((error) => {
+											logger.warn({
+												event: 'mx_lookup_failed',
+												domain,
+												error: error instanceof Error ? error.message : String(error),
+											}, 'MX lookup failed');
+										})
+									);
+								}
+							} catch (error) {
 								logger.warn({
-									event: 'mx_lookup_timeout',
+									event: 'mx_lookup_failed',
 									domain,
-									timeoutMs: MX_LOOKUP_TIMEOUT_MS,
-								}, 'MX lookup timed out, deferring to background');
-								c.executionCtx.waitUntil(
-									mxPromise.catch((error) => {
-										logger.warn({
-											event: 'mx_lookup_failed',
-											domain,
-											error: error instanceof Error ? error.message : String(error),
-										}, 'MX lookup failed');
-									})
-								);
+									error: error instanceof Error ? error.message : String(error),
+								}, 'MX lookup failed');
 							}
-						} catch (error) {
-							logger.warn({
-								event: 'mx_lookup_failed',
-								domain,
-								error: error instanceof Error ? error.message : String(error),
-							}, 'MX lookup failed');
 						}
 					}
 				}
@@ -454,34 +466,28 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 		};
 
 		if (heuristicsEligible) {
-			if (tldRiskScore >= 0.9) {
-				elevateRisk('block', 'heuristic_tld_extreme', blockThreshold + 0.1);
-			} else if (tldRiskScore >= 0.8) {
-				elevateRisk('warn', 'heuristic_tld_high', warnThreshold + 0.1);
-			}
+			const applyRules = (value: number | undefined, rules: HeuristicRule[]) => {
+				if (value === undefined || value === null || Number.isNaN(value)) {
+					return;
+				}
+				for (const rule of rules) {
+					const direction = rule.direction ?? 'gte';
+					const matches = direction === 'lte' ? value <= rule.threshold : value >= rule.threshold;
+					if (matches) {
+						const baseline = rule.decision === 'block' ? blockThreshold : warnThreshold;
+						const offset = rule.minScoreOffset ?? (rule.decision === 'block' ? 0.05 : 0.03);
+						elevateRisk(rule.decision, rule.reason, baseline + offset);
+						break;
+					}
+				}
+			};
 
-			if (domainReputationScore >= 0.95) {
-				elevateRisk('block', 'heuristic_domain_reputation_critical', blockThreshold + 0.08);
-			} else if (domainReputationScore >= 0.85) {
-				elevateRisk('warn', 'heuristic_domain_reputation_watch', warnThreshold + 0.08);
-			}
-
-			if (sequentialConfidence >= 0.98 || digitRatio >= 0.9) {
-				elevateRisk('block', 'heuristic_sequence_numeric_extreme', blockThreshold + 0.05);
-			} else if (sequentialConfidence >= 0.9 || digitRatio >= 0.8) {
-				elevateRisk('warn', 'heuristic_sequence_numeric_high', warnThreshold + 0.05);
-			}
-
-			if (plusRisk >= 0.8) {
-				elevateRisk('block', 'heuristic_plus_tag_abuse', blockThreshold + 0.03);
-			}
-
-			const botScore = fingerprint.botScore ?? 0;
-			if (botScore >= 75) {
-				elevateRisk('block', 'heuristic_bot_score_extreme', blockThreshold + 0.02);
-			} else if (botScore >= 60) {
-				elevateRisk('warn', 'heuristic_bot_score_high', warnThreshold + 0.04);
-			}
+			applyRules(tldRiskScore, heuristicsConfig.tldRisk);
+			applyRules(domainReputationScore, heuristicsConfig.domainReputation);
+			applyRules(sequentialConfidence, heuristicsConfig.sequentialConfidence);
+			applyRules(digitRatio, heuristicsConfig.digitRatio);
+			applyRules(plusRisk, heuristicsConfig.plusAddressing);
+			applyRules(fingerprint.botScore, heuristicsConfig.botScore);
 
 			if (heuristicsApplied.length > 0) {
 				logger.info({

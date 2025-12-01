@@ -192,7 +192,7 @@ Workflow:
 2. The trainer fits a single-variable logistic regression (`calibrated = σ(intercept + coef * raw_score)`) and records the coefficients in the model metadata.
 3. `src/models/random-forest.ts` reads `meta.calibration` and converts every forest vote into a calibrated probability before the middleware compares it with the warn/block thresholds.
 
-Use `npm run cli model:calibrate -- --input data/calibration/latest.csv --output data/calibration/calibrated.csv` if you need to recompute calibrations on a newer dataset or generate ROC/PR reports. Always embed the final coefficients in the JSON (`meta.calibration`) so the Worker stays synchronized with the published thresholds.
+Use `npm run cli model:calibrate -- --input data/calibration/latest.csv --output data/calibration/calibrated.csv` if you need to recompute calibrations on a newer dataset or generate ROC/PR reports. Follow it with `npm run cli model:thresholds` to derive warn/block cutoffs that satisfy your recall/FPR targets, then `npm run cli config:update-thresholds` (optionally `--dry-run`) to persist the new numbers everywhere. For CI, `npm run cli model:guardrail` chains these steps and fails if the resulting thresholds no longer meet the configured recall/FPR/FNR constraints. Always embed the final coefficients in the JSON (`meta.calibration`) so the Worker stays synchronized with the published thresholds.
 
 ## Logging & Analytics
 

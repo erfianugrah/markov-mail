@@ -15,6 +15,7 @@ interface ModelTrainOptions {
 	features?: string;
 	labelColumn?: string;
 	skipMx?: boolean;
+	skipExport?: boolean;
 	noSplit?: boolean;
 	nTrees?: number;
 	maxDepth?: number;
@@ -61,7 +62,7 @@ function parseArgs(args: string[]): ModelTrainOptions {
 					options[camelKey as keyof ModelTrainOptions] = parseInt(value, 10) as any;
 				} else if (camelKey === 'conflictWeight') {
 					options[camelKey as keyof ModelTrainOptions] = parseFloat(value) as any;
-				} else if (camelKey === 'skipMx' || camelKey === 'upload' || camelKey === 'noSplit') {
+				} else if (camelKey === 'skipMx' || camelKey === 'upload' || camelKey === 'noSplit' || camelKey === 'skipExport') {
 					options[camelKey as keyof ModelTrainOptions] = (value === 'true' || value === '1') as any;
 				} else {
 					options[camelKey as keyof ModelTrainOptions] = value as any;
@@ -252,29 +253,36 @@ Configuration:
 	}
 
 	try {
-		// Step 1: Export features
-		console.log('📤 Step 1/3: Exporting features...\n');
+		// Step 1: Export features (optional)
+		if (options.skipExport) {
+			console.log('📤 Step 1/3: Skipping feature export (precomputed features provided).\n');
+			if (!existsSync(features)) {
+				throw new Error(`Precomputed features file not found: ${features}`);
+			}
+		} else {
+			console.log('📤 Step 1/3: Exporting features...\n');
 
-		const featureArgs = [
-			'run',
-			'cli',
-			'--',
-			'features:export',
-			'--input',
-			input,
-			'--output',
-			features,
-			'--label-column',
-			labelColumn,
-		];
+			const featureArgs = [
+				'run',
+				'cli',
+				'--',
+				'features:export',
+				'--input',
+				input,
+				'--output',
+				features,
+				'--label-column',
+				labelColumn,
+			];
 
-		if (skipMx) {
-			featureArgs.push('--skip-mx');
-		}
+			if (skipMx) {
+				featureArgs.push('--skip-mx');
+			}
 
-		const exportResult = run('npm', featureArgs);
-		if (!exportResult.success) {
-			throw new Error('Feature export failed');
+			const exportResult = run('npm', featureArgs);
+			if (!exportResult.success) {
+				throw new Error('Feature export failed');
+			}
 		}
 
 		// Step 2: Train model with Python

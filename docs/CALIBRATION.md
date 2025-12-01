@@ -25,11 +25,69 @@ Random Forest models are now **calibrated with Platt scaling** on a held-out val
    npm run cli -- model:calibrate -- \
      --input data/calibration/latest.csv \
      --output data/calibration/calibrated.csv
+     --threshold-output data/calibration/threshold-scan.json
    ```
 
    Behind the scenes this shells into `scripts/calibrate_scores.py`, logs the intercept/coef, and writes an additional `calibrated_score` column for plotting ROC / PR curves.
 
-3. **Runtime usage**
+   The command now also emits a threshold sweep (defaults shown below) covering warn/block candidates from 0.05 → 0.95 in 0.05 increments. You get both JSON and CSV artifacts:
+
+   - `data/calibration/threshold-scan.json`
+   - `data/calibration/threshold-scan.csv`
+
+   Example JSON entry (one per threshold):
+
+   ```json
+   {
+     "threshold": 0.75,
+     "tp": 612,
+     "fp": 41,
+     "tn": 931,
+     "fn": 67,
+     "precision": 0.9372,
+     "recall": 0.9014,
+     "fpr": 0.0426,
+     "fnr": 0.0986,
+     "support_positive": 679,
+     "support_negative": 972
+   }
+   ```
+
+   Use `--threshold-output` (alias `--threshold-json`) or `--threshold-csv` to change file locations, and `--threshold-min`, `--threshold-max`, or `--threshold-step` if you want different bounds or granularity.
+
+3. **Pick thresholds automatically**
+
+   ```bash
+   npm run cli -- model:thresholds -- \
+     --input data/calibration/threshold-scan.json \
+     --output data/calibration/threshold-recommendation.json \
+     --min-recall 0.95 \
+     --max-fpr 0.05 \
+     --max-fnr 0.05
+   ```
+
+   This command ingests the scan JSON/CSV, filters thresholds that meet your constraints, and stores the recommended warn/block pair (plus supporting metrics) under `data/calibration/threshold-recommendation.json`. Adjust `--min-gap` if you need a larger separation between warn and block (default: `0.01`).
+
+4. **Apply thresholds to configs**
+
+   ```bash
+   npm run cli -- config:update-thresholds [--dry-run]
+   ```
+
+   By default this reads `data/calibration/threshold-recommendation.json`, patches both `config/production/config.json` and `src/config/defaults.ts`, and logs the change inside `CHANGELOG.md`. Pass `--dry-run` if you only want to preview the edits, or provide `--warn/--block` to override the recommendation file.
+
+5. **Guardrail / CI automation**
+
+   Automate the whole loop (calibrate → thresholds → verification) with:
+
+   ```bash
+   npm run guardrail
+   ```
+
+   This shortcut expands to `model:guardrail` with the default dataset/scan/recommendation paths and the current SLO (`recall ≥ 0.95`, `FPR/FNR ≤ 0.05`). Use the CLI form directly if you need to customize arguments (e.g., different files or stricter gaps). The guardrail command reruns calibration (unless `--skip-calibrate` is passed), regenerates the recommendation, and fails if the resulting thresholds violate your constraints—perfect for CI guardrails before `config:update-thresholds`.  
+   See [THRESHOLD_ARTIFACTS.md](./THRESHOLD_ARTIFACTS.md) for the review playbook and snapshot checklist.
+
+6. **Runtime usage**
 
    `src/models/random-forest.ts` inspects `meta.calibration` and applies:
 

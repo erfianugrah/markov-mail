@@ -63,8 +63,8 @@ export interface FraudDetectionConfig {
 
 export const DEFAULT_CONFIG: FraudDetectionConfig = {
 	riskThresholds: {
-		block: 0.85,
-		warn: 0.6,
+		block: 0.3,
+		warn: 0.25,
 	},
 	baseRiskScores: {
 		invalidFormat: 0.8,

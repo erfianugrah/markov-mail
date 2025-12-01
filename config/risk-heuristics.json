@@ -1,0 +1,82 @@
+{
+  "tldRisk": [
+    {
+      "threshold": 0.9,
+      "decision": "block",
+      "reason": "heuristic_tld_extreme",
+      "minScoreOffset": 0.1
+    },
+    {
+      "threshold": 0.8,
+      "decision": "warn",
+      "reason": "heuristic_tld_high",
+      "minScoreOffset": 0.1
+    }
+  ],
+  "domainReputation": [
+    {
+      "threshold": 0.95,
+      "decision": "block",
+      "reason": "heuristic_domain_reputation_critical",
+      "minScoreOffset": 0.08
+    },
+    {
+      "threshold": 0.85,
+      "decision": "warn",
+      "reason": "heuristic_domain_reputation_watch",
+      "minScoreOffset": 0.08
+    }
+  ],
+  "sequentialConfidence": [
+    {
+      "threshold": 0.98,
+      "decision": "block",
+      "reason": "heuristic_sequence_numeric_extreme",
+      "minScoreOffset": 0.05
+    },
+    {
+      "threshold": 0.9,
+      "decision": "warn",
+      "reason": "heuristic_sequence_numeric_high",
+      "minScoreOffset": 0.05
+    }
+  ],
+  "digitRatio": [
+    {
+      "threshold": 0.9,
+      "decision": "block",
+      "reason": "heuristic_sequence_numeric_extreme",
+      "minScoreOffset": 0.05
+    },
+    {
+      "threshold": 0.8,
+      "decision": "warn",
+      "reason": "heuristic_sequence_numeric_high",
+      "minScoreOffset": 0.05
+    }
+  ],
+  "plusAddressing": [
+    {
+      "threshold": 0.8,
+      "decision": "block",
+      "reason": "heuristic_plus_tag_abuse",
+      "minScoreOffset": 0.03
+    }
+  ],
+  "botScore": [
+    {
+      "threshold": 30,
+      "direction": "lte",
+      "decision": "block",
+      "reason": "heuristic_bot_score_extreme",
+      "minScoreOffset": 0.02
+    },
+    {
+      "threshold": 40,
+      "direction": "lte",
+      "decision": "warn",
+      "reason": "heuristic_bot_score_high",
+      "minScoreOffset": 0.04
+    }
+  ]
+}

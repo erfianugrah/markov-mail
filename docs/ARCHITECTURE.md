@@ -1,7 +1,7 @@
 # Architecture
 
-**Version**: 3.0.0
-**Last Updated**: 2025-11-30
+**Version**: 3.0.1
+**Last Updated**: 2025-12-01
 
 ## Overview
 
@@ -131,7 +131,7 @@ sequenceDiagram
     alt Cache hit (< 60s)
         ModelLoader-->>Worker: Cached model
     else Cache miss
-        KV-->>ModelLoader: Model JSON (55KB)
+        KV-->>ModelLoader: Model JSON (~280KB)
         ModelLoader-->>Worker: Fresh model
     end
 
@@ -140,9 +140,9 @@ sequenceDiagram
     ModelEval-->>Worker: {score: 0.92, reason: "high_seq"}
 
     Worker->>Worker: Apply thresholds
-    alt score >= 0.65
+    alt score >= 0.3
         Worker->>Worker: action = "block"
-    else score >= 0.35
+    else score >= 0.25
         Worker->>Worker: action = "warn"
     else
         Worker->>Worker: action = "allow"
@@ -175,15 +175,15 @@ flowchart TD
     D --> E{Model Type?}
 
     E -->|n_trees=1| F[Decision Tree Training<br/>scikit-learn]
-    E -->|n_trees=20| G[Random Forest Training<br/>scikit-learn]
+    E -->|n_trees=100| G[Random Forest Training<br/>scikit-learn]
 
     F --> H[Python Exporter]
     G --> H
 
     H --> I[Minified JSON<br/>t/f/v/l/r format]
 
-    I --> J[Decision Tree<br/>decision_tree.json<br/>3.3KB]
-    I --> K[Random Forest<br/>random_forest.json<br/>55KB]
+    I --> J[Decision Tree<br/>decision_tree.json<br/>~5KB]
+    I --> K[Random Forest<br/>random_forest.json<br/>~280KB]
 
     J --> L[Upload to KV]
     K --> L
@@ -200,7 +200,7 @@ flowchart TD
 **Training Configuration**:
 ```json
 {
-  "n_trees": 20,
+  "n_trees": 100,
   "max_depth": 6,
   "min_samples_leaf": 20,
   "conflict_weight": 20.0
@@ -213,7 +213,7 @@ flowchart TD
 flowchart LR
     A[Feature Vector<br/>45 features] --> B{Random Forest<br/>Available?}
 
-    B -->|Yes| C[Evaluate RF<br/>20 trees]
+    B -->|Yes| C[Evaluate RF<br/>100 trees]
     B -->|No| D{Decision Tree<br/>Available?}
 
     C --> E[Average Scores<br/>across trees]
@@ -225,9 +225,9 @@ flowchart LR
     G --> F
     H --> F
 
-    F --> I{Score >= 0.65?}
+    F --> I{Score >= 0.3?}
     I -->|Yes| J[Block]
-    I -->|No| K{Score >= 0.35?}
+    I -->|No| K{Score >= 0.25?}
     K -->|Yes| L[Warn]
     K -->|No| M[Allow]
 
@@ -296,9 +296,9 @@ graph TD
 KV Structure:
 ├── config.json (1.1KB)
 │   └── Thresholds, feature flags
-├── random_forest.json (55KB)
+├── random_forest.json (~280KB)
 │   └── Primary scoring model
-└── decision_tree.json (3.3KB)
+└── decision_tree.json (~5KB)
     └── Fallback scoring model
 ```
 
@@ -317,7 +317,7 @@ wrangler kv key put config.json \
   --remote
 
 # Update model
-npm run cli model:train -- --n-trees 20 --upload
+npm run cli model:train -- --n-trees 100 --upload
 ```
 
 ### D1 Database (Analytics)
@@ -646,7 +646,7 @@ npm run cli test:batch -- --input data/main.csv \
 npm run cli features:export
 
 # 2. Train Random Forest (primary)
-npm run cli model:train -- --n-trees 20 --upload
+npm run cli model:train -- --n-trees 100 --upload
 
 # 3. Train Decision Tree (fallback)
 npm run cli model:train -- --n-trees 1 --upload
@@ -714,8 +714,8 @@ npm run cli test:batch -- --input data/test.csv \
 
 | Model | Size | Inference | Accuracy | Use Case |
 |-------|------|-----------|----------|----------|
-| Random Forest (20) | 55KB | 1-2ms | 90.1% | Production |
-| Decision Tree (1) | 3.3KB | <1ms | 75.0% | Fallback |
+| Random Forest (100) | ~280KB | 1-2ms | ~91% | Production |
+| Decision Tree (1) | ~5KB | <1ms | ~75% | Fallback |
 
 ## Future Enhancements
 

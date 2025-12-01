@@ -194,9 +194,27 @@ This dumps the ranked feature list and highlights which detectors are carrying t
      --output data/calibration/calibrated.csv
    ```
 
-2. **Threshold sweep** – run a quick ROC/PR sweep (see `docs/CALIBRATION.md` for snippets) to locate the smallest block threshold that still meets the current SLO (`recall ≥ 95%` and `FP/FN < 5%`). For the 2025‑11‑30 build this lands at **block = 0.85** and **warn = 0.60**.
+   This now produces `data/calibration/threshold-scan.[json|csv]` with recall/FPR/FNR counts for each candidate threshold.
 
-3. **Update configs** – write the chosen thresholds to `config/production/config.json` (and `DEFAULT_CONFIG` if they become the new baseline) before uploading.
+2. **Automatic threshold selection** – feed the scan into the new helper to obtain warn/block recommendations that hit your SLO (defaults: recall ≥ 0.95, FPR/FNR ≤ 0.05):
+
+   ```bash
+   npm run cli -- model:thresholds -- \
+     --input data/calibration/threshold-scan.json \
+     --min-recall 0.95 \
+     --max-fpr 0.05 \
+     --max-fnr 0.05
+   ```
+
+   The output JSON (`data/calibration/threshold-recommendation.json`) includes the metrics for each chosen threshold plus the constraints used to derive them.
+
+3. **Update configs** – apply the selected thresholds everywhere with a single command:
+
+   ```bash
+   npm run cli -- config:update-thresholds [--dry-run]
+   ```
+
+   This patches `config/production/config.json`, `src/config/defaults.ts`, and records the change inside `CHANGELOG.md`. Pass `--dry-run` for CI previews or `--warn/--block` to override the recommendation file when experimenting. CI jobs can chain everything with `npm run cli -- model:guardrail` to fail fast whenever the calibration set no longer meets the recall/FPR SLO.
 
 ### Step 4: Deploy
 
@@ -205,6 +223,59 @@ npm run deploy
 ```
 
 Worker automatically loads new model from KV within 60 seconds.
+
+### One-Command Automation
+
+When you want the whole flow (feature export → training → guardrail → threshold update → config sync → artifact snapshot) handled for you, run:
+
+```bash
+npm run pipeline -- \
+  --dataset data/main.csv \
+  --features-output data/features/export.csv \
+  --model-output config/production/random-forest.auto.json \
+  --export-modes fast,full \
+  --search '[{"label":"fast-pass","nTrees":10,"featureMode":"fast"},{"label":"full-depth","nTrees":20,"maxDepth":8,"featureMode":"full"}]' \
+  --calibration-retries 1 \
+  --retry-threshold-step 0.02 \
+  --adaptive '{"maxTrees":200,"maxDepth":8,"maxConflictWeight":40,"nTreesStep":25,"conflictStep":5}' \
+  --upload-model \
+  --apply-thresholds \
+  --sync-config \
+  --config-dry-run
+```
+
+The pipeline:
+1. Exports features for each mode listed in `--export-modes` (`fast = skip MX, full = full MX). Use `--fast-features-output` / `--features-output` to control file paths or `--skip-export` if you already have the files.
+2. Trains the model (pass `--n-trees`, `--max-depth`, etc.) for every entry in the `--search` grid, automatically binding the right feature file via `featureMode`.
+3. Runs the guardrail after each attempt. If it fails, optional `--calibration-retries` rerun calibration with alternate sweep parameters (`--retry-threshold-step`, etc.) before moving to the next attempt. Promotion continues only when the SLO is satisfied.
+4. Updates `config/production/config.json` + `src/config/defaults.ts` (dry-run unless `--apply-thresholds`).
+5. Uploads the final model to KV when `--upload-model` is present (use `--upload-dry-run` to preview).
+6. Syncs both config and `risk-heuristics.json` to KV (respecting `--config-dry-run`).
+7. Captures the calibration/threshold artifacts in `tmp/threshold-artifacts/<timestamp>`.
+
+Toggle uploads or syncing with `--upload-model`, `--sync-config`, and `--config-dry-run`. Use `--skip-guardrail`, `--skip-artifacts`, or `--skip-export` for faster local iterations.
+
+**Run Directories, Resume, and Adaptive Search**
+
+- Every run stores its manifest under `tmp/pipeline-runs/<timestamp>/manifest.json` (override with `--run-dir`).
+- To continue a failed run, pass `--resume latest` (or a specific directory) and the pipeline will skip completed exports/attempts and continue with the remaining search configs.
+- Manifest entries track hyperparameters, export modes, guardrail outcomes, uploads, config sync results, and the artifact snapshot directory for auditability.
+- Add `--adaptive '{"maxTrees":200,...}'` to let the pipeline auto-escalate tree count/depth/conflict weight when every configured attempt fails the guardrail. It will append new attempts (e.g., n_trees +25, conflict weight +5) until the SLO passes or the specified ceilings are reached.
+
+**Full-MX, 100 Tree Run**
+
+```bash
+npm run pipeline -- \
+  --dataset data/main.csv \
+  --export-modes full \
+  --search '[{"label":"mx-forest","nTrees":100,"maxDepth":8,"featureMode":"full"}]' \
+  --calibration-retries 1 \
+  --upload-model \
+  --apply-thresholds \
+  --sync-config
+```
+
+Drop `--config-dry-run` when you’re ready for the pipeline to push the updated thresholds + config to KV. Use `--resume latest` if the run halts mid-way so it can pick up from the next attempt automatically.
 
 ## Feature Set (45 Features)
 
