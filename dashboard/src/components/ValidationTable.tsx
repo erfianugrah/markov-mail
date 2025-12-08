@@ -156,7 +156,16 @@ export default function ValidationTable({ apiKey, hours = 24 }: ValidationTableP
       <CardContent className="p-0">
         <div className="border border-border rounded-lg overflow-hidden mx-6 mb-6">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-full">
+            <table className="w-full min-w-full table-fixed">
+              <colgroup>
+                <col className="w-[140px]" />
+                <col className="w-[220px]" />
+                <col className="w-[90px]" />
+                <col className="w-[70px]" />
+                <col className="w-[180px]" />
+                <col className="w-[80px]" />
+                <col className="w-[140px]" />
+              </colgroup>
               <thead className="bg-muted/50 border-b border-border">
                 <tr>
                   <th className="px-3 py-3.5 text-left text-sm font-semibold text-foreground">
@@ -207,9 +216,9 @@ export default function ValidationTable({ apiKey, hours = 24 }: ValidationTableP
                         })}
                       </td>
                       <td className="px-3 py-3.5 text-sm">
-                        <span className="font-mono text-xs text-foreground">
+                        <div className="font-mono text-xs text-foreground truncate" title={validation.email}>
                           {validation.email}
-                        </span>
+                        </div>
                       </td>
                       <td className="px-3 py-3.5">
                         <DecisionBadge decision={validation.decision} />
@@ -217,17 +226,21 @@ export default function ValidationTable({ apiKey, hours = 24 }: ValidationTableP
                       <td className="px-3 py-3.5">
                         <RiskBadge score={validation.risk_score} />
                       </td>
-                      <td className="px-3 py-3.5 text-sm text-muted-foreground max-w-[200px] truncate">
-                        {validation.block_reason || '—'}
+                      <td className="px-3 py-3.5 text-sm text-muted-foreground">
+                        <div className="truncate" title={validation.block_reason || ''}>
+                          {validation.block_reason || '—'}
+                        </div>
                       </td>
                       <td className="px-3 py-3.5 text-sm text-foreground">
-                        {validation.country || '—'}
+                        <div className="truncate" title={validation.country || ''}>
+                          {validation.country || '—'}
+                        </div>
                       </td>
                       <td className="px-3 py-3.5 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <span>{validation.pattern_type || '—'}</span>
+                        <div className="flex items-center gap-1 truncate">
+                          <span className="truncate" title={validation.pattern_type || ''}>{validation.pattern_type || '—'}</span>
                           {validation.is_disposable && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive border border-destructive/20">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive border border-destructive/20 flex-shrink-0">
                               disposable
                             </span>
                           )}
