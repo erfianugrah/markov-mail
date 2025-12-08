@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './ui/card';
 import { Button } from './ui/button';
 
 interface Validation {
@@ -16,6 +17,34 @@ interface Validation {
 interface ValidationTableProps {
   apiKey: string;
   hours?: number;
+}
+
+function RiskBadge({ score }: { score: number }) {
+  const getColorClass = () => {
+    if (score >= 70) return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 border-red-200 dark:border-red-800';
+    if (score >= 40) return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800';
+    return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800';
+  };
+
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getColorClass()}`}>
+      {score.toFixed(1)}
+    </span>
+  );
+}
+
+function DecisionBadge({ decision }: { decision: string }) {
+  const getColorClass = () => {
+    if (decision === 'allow') return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800';
+    if (decision === 'block') return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 border-red-200 dark:border-red-800';
+    return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800';
+  };
+
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getColorClass()}`}>
+      {decision}
+    </span>
+  );
 }
 
 export default function ValidationTable({ apiKey, hours = 24 }: ValidationTableProps) {
@@ -77,22 +106,33 @@ export default function ValidationTable({ apiKey, hours = 24 }: ValidationTableP
 
   if (loading) {
     return (
-      <div className="rounded-lg border bg-card p-6">
-        <div className="animate-pulse space-y-3">
-          <div className="h-4 bg-muted rounded w-full"></div>
-          <div className="h-4 bg-muted rounded w-full"></div>
-          <div className="h-4 bg-muted rounded w-full"></div>
-        </div>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Validations</CardTitle>
+          <CardDescription>Loading validation data...</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-12 bg-muted/50 rounded animate-pulse"></div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     );
   }
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive bg-destructive/10 p-6">
-        <p className="text-sm font-medium text-destructive">Failed to load validations</p>
-        <p className="text-sm text-muted-foreground mt-1">{error}</p>
-      </div>
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-destructive">
+            <AlertCircle size={20} />
+            Failed to Load Validations
+          </CardTitle>
+          <CardDescription>{error}</CardDescription>
+        </CardHeader>
+      </Card>
     );
   }
 
@@ -102,124 +142,146 @@ export default function ValidationTable({ apiKey, hours = 24 }: ValidationTableP
   const totalPages = Math.ceil(validations.length / pageSize);
 
   return (
-    <div className="rounded-lg border bg-card shadow-sm">
-      {/* Header */}
-      <div className="p-6 border-b border-border">
-        <h3 className="text-lg font-semibold text-foreground">Recent Validations</h3>
-        <p className="text-sm text-muted-foreground mt-1">
-          Email validation attempts in the last {hours} hours
-        </p>
-      </div>
-
-      {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="text-left p-4 text-sm font-medium text-muted-foreground">Timestamp</th>
-              <th className="text-left p-4 text-sm font-medium text-muted-foreground">Email</th>
-              <th className="text-left p-4 text-sm font-medium text-muted-foreground">Decision</th>
-              <th className="text-left p-4 text-sm font-medium text-muted-foreground">Risk Score</th>
-              <th className="text-left p-4 text-sm font-medium text-muted-foreground">Reason</th>
-              <th className="text-left p-4 text-sm font-medium text-muted-foreground">Country</th>
-              <th className="text-left p-4 text-sm font-medium text-muted-foreground">Pattern</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {paginatedData.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="p-8 text-center text-muted-foreground">
-                  No validations found
-                </td>
-              </tr>
-            ) : (
-              paginatedData.map((validation, idx) => (
-                <tr
-                  key={`${validation.timestamp}-${idx}`}
-                  className="hover:bg-muted/30 transition-colors"
-                >
-                  <td className="p-4 text-sm text-foreground">
-                    {new Date(validation.timestamp).toLocaleString()}
-                  </td>
-                  <td className="p-4 text-sm text-foreground font-mono">
-                    {validation.email}
-                  </td>
-                  <td className="p-4">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        validation.decision === 'allow'
-                          ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
-                          : validation.decision === 'block'
-                          ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300'
-                          : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300'
-                      }`}
-                    >
-                      {validation.decision}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <span
-                      className={`text-sm font-semibold ${
-                        validation.risk_score >= 70
-                          ? 'text-red-600 dark:text-red-400'
-                          : validation.risk_score >= 40
-                          ? 'text-yellow-600 dark:text-yellow-400'
-                          : 'text-green-600 dark:text-green-400'
-                      }`}
-                    >
-                      {validation.risk_score.toFixed(1)}
-                    </span>
-                  </td>
-                  <td className="p-4 text-sm text-muted-foreground max-w-xs truncate">
-                    {validation.block_reason || '-'}
-                  </td>
-                  <td className="p-4 text-sm text-foreground">
-                    {validation.country || '-'}
-                  </td>
-                  <td className="p-4 text-sm text-muted-foreground">
-                    {validation.pattern_type || '-'}
-                    {validation.is_disposable && (
-                      <span className="ml-1 text-xs text-destructive">(disposable)</span>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="p-4 border-t border-border flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">
-            Showing {startIndex + 1}-{Math.min(endIndex, validations.length)} of {validations.length}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage(page - 1)}
-              disabled={page === 0}
-            >
-              <ChevronLeft size={16} />
-              Previous
-            </Button>
-            <span className="text-sm text-foreground">
-              Page {page + 1} of {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage(page + 1)}
-              disabled={page >= totalPages - 1}
-            >
-              Next
-              <ChevronRight size={16} />
-            </Button>
+    <Card>
+      <CardHeader>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <CardTitle>Recent Validations</CardTitle>
+            <CardDescription>
+              Email validation attempts in the last {hours} hours ({validations.length} total)
+            </CardDescription>
           </div>
         </div>
-      )}
-    </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="border border-border rounded-lg overflow-hidden mx-6 mb-6">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-full">
+              <thead className="bg-muted/50 border-b border-border">
+                <tr>
+                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-foreground">
+                    Timestamp
+                  </th>
+                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-foreground">
+                    Email
+                  </th>
+                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-foreground">
+                    Decision
+                  </th>
+                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-foreground">
+                    Risk
+                  </th>
+                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-foreground">
+                    Block Reason
+                  </th>
+                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-foreground">
+                    Country
+                  </th>
+                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-foreground">
+                    Pattern
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedData.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-4 py-8 text-center text-muted-foreground"
+                    >
+                      No validations found in the last {hours} hours
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedData.map((validation, idx) => (
+                    <tr
+                      key={`${validation.timestamp}-${idx}`}
+                      className="border-t border-border hover:bg-muted/40 transition-colors cursor-pointer"
+                    >
+                      <td className="px-3 py-3.5 text-sm text-foreground whitespace-nowrap">
+                        {new Date(validation.timestamp).toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </td>
+                      <td className="px-3 py-3.5 text-sm">
+                        <span className="font-mono text-xs text-foreground">
+                          {validation.email}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3.5">
+                        <DecisionBadge decision={validation.decision} />
+                      </td>
+                      <td className="px-3 py-3.5">
+                        <RiskBadge score={validation.risk_score} />
+                      </td>
+                      <td className="px-3 py-3.5 text-sm text-muted-foreground max-w-[200px] truncate">
+                        {validation.block_reason || '—'}
+                      </td>
+                      <td className="px-3 py-3.5 text-sm text-foreground">
+                        {validation.country || '—'}
+                      </td>
+                      <td className="px-3 py-3.5 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <span>{validation.pattern_type || '—'}</span>
+                          {validation.is_disposable && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive border border-destructive/20">
+                              disposable
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/20">
+              <div className="flex items-center gap-2">
+                <p className="text-sm text-muted-foreground">
+                  Showing <span className="font-medium text-foreground">{startIndex + 1}</span> to{' '}
+                  <span className="font-medium text-foreground">{Math.min(endIndex, validations.length)}</span> of{' '}
+                  <span className="font-medium text-foreground">{validations.length}</span> results
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(page - 1)}
+                  disabled={page === 0}
+                  className="gap-1"
+                >
+                  <ChevronLeft size={16} />
+                  Previous
+                </Button>
+                <div className="flex items-center gap-1">
+                  <span className="text-sm text-muted-foreground">Page</span>
+                  <span className="text-sm font-medium text-foreground">{page + 1}</span>
+                  <span className="text-sm text-muted-foreground">of</span>
+                  <span className="text-sm font-medium text-foreground">{totalPages}</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(page + 1)}
+                  disabled={page >= totalPages - 1}
+                  className="gap-1"
+                >
+                  Next
+                  <ChevronRight size={16} />
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
