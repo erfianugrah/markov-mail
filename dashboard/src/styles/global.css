@@ -1,58 +1,100 @@
 @import "tailwindcss";
 
 @layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 262 83% 58%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 262 83% 58%;
-    --radius: 0.5rem;
-  }
+	:root {
+		--background: 220 18% 97%;
+		--foreground: 220 16% 20%;
+		--card: 220 20% 99%;
+		--card-foreground: 220 16% 20%;
+		--popover: 220 20% 99%;
+		--popover-foreground: 220 16% 20%;
+		--primary: 213 40% 48%;
+		--primary-foreground: 0 0% 100%;
+		--secondary: 220 16% 93%;
+		--secondary-foreground: 220 16% 20%;
+		--muted: 220 16% 93%;
+		--muted-foreground: 220 16% 42%;
+		--accent: 220 16% 89%;
+		--accent-foreground: 220 16% 20%;
+		--destructive: 354 42% 56%;
+		--destructive-foreground: 0 0% 100%;
+		--border: 220 13% 88%;
+		--input: 220 13% 88%;
+		--ring: 213 40% 48%;
+		--radius: 0.5rem;
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 263 70% 64%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 263 70% 64%;
-  }
+		/* Chart colors - Nord palette */
+		--chart-1: 213 32% 52%;
+		--chart-2: 92 28% 65%;
+		--chart-3: 311 20% 63%;
+		--chart-4: 14 51% 63%;
+		--chart-5: 179 25% 65%;
+	}
+
+	.dark {
+		--background: 220 18% 16%;
+		--foreground: 218 24% 88%;
+		--card: 220 18% 19%;
+		--card-foreground: 218 24% 88%;
+		--popover: 220 18% 19%;
+		--popover-foreground: 218 24% 88%;
+		--primary: 213 42% 55%;
+		--primary-foreground: 0 0% 100%;
+		--secondary: 220 17% 26%;
+		--secondary-foreground: 218 24% 88%;
+		--muted: 220 17% 26%;
+		--muted-foreground: 218 20% 60%;
+		--accent: 220 16% 30%;
+		--accent-foreground: 218 24% 88%;
+		--destructive: 354 42% 56%;
+		--destructive-foreground: 0 0% 100%;
+		--border: 220 16% 30%;
+		--input: 220 16% 30%;
+		--ring: 213 42% 55%;
+
+		/* Chart colors - Nord palette (brightened for dark mode) */
+		--chart-1: 213 32% 60%;
+		--chart-2: 92 28% 70%;
+		--chart-3: 311 20% 68%;
+		--chart-4: 14 51% 68%;
+		--chart-5: 179 25% 70%;
+	}
 }
 
 @layer base {
-  * {
-    border-color: hsl(var(--border));
-  }
-  body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
-  }
+	* {
+		border-color: hsl(var(--border));
+	}
+	body {
+		background-color: hsl(var(--background));
+		color: hsl(var(--foreground));
+	}
+}
+
+/* Custom scrollbar styles */
+@layer utilities {
+	.custom-scrollbar::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+	}
+
+	.custom-scrollbar::-webkit-scrollbar-track {
+		background: hsl(var(--muted));
+		border-radius: 4px;
+	}
+
+	.custom-scrollbar::-webkit-scrollbar-thumb {
+		background: hsl(var(--muted-foreground) / 0.3);
+		border-radius: 4px;
+	}
+
+	.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+		background: hsl(var(--muted-foreground) / 0.5);
+	}
+
+	/* Firefox */
+	.custom-scrollbar {
+		scrollbar-width: thin;
+		scrollbar-color: hsl(var(--muted-foreground) / 0.3) hsl(var(--muted));
+	}
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 
-export default function ThemeToggle() {
+export function ThemeToggle() {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     // Initialize from document state (already set by Layout script) - prevents flash
     if (typeof window !== 'undefined') {
