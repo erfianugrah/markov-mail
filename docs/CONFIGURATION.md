@@ -133,6 +133,42 @@ wrangler secret put ALERT_WEBHOOK_URL
 
 If the secret is unset no alerts are sent (fully opt-in).
 
+## Cache Management
+
+The Worker maintains in-memory caches for configuration, heuristics, and ML models to reduce KV latency. When you update configuration or models in KV, you can force cache invalidation via admin endpoints:
+
+### Clear All Caches
+
+```bash
+curl -X DELETE "https://fraud.erfi.dev/admin/cache/all" \
+  -H "X-API-Key: $ADMIN_API_KEY"
+```
+
+Clears all in-memory caches (config, heuristics, and models). Use this after uploading new models or configuration.
+
+### Clear Model Caches Only
+
+```bash
+curl -X DELETE "https://fraud.erfi.dev/admin/cache/models" \
+  -H "X-API-Key: $ADMIN_API_KEY"
+```
+
+Clears only the Random Forest and Decision Tree model caches. Use this after updating models via `npm run cli train:*`.
+
+### Clear Heuristics Cache Only
+
+```bash
+curl -X DELETE "https://fraud.erfi.dev/admin/cache/heuristics" \
+  -H "X-API-Key: $ADMIN_API_KEY"
+```
+
+Clears only the risk heuristics cache. Use this after updating `risk-heuristics.json`.
+
+**Note**: The Worker will automatically reload data from KV on the next request. Cache TTLs are:
+- Config: 60 seconds
+- Heuristics: 60 seconds
+- Models: 5 minutes
+
 ## See Also
 
 - [Training Guide](./TRAINING.md)

@@ -14,6 +14,9 @@ import { updateTLDRiskProfiles, getTLDRiskMetadata, clearTLDCache, getTLDRiskPro
 import { getAllTLDProfiles, getTLDStats } from '../detectors/tld-risk';
 import { D1Queries, executeD1Query } from '../database/queries';
 import { getExperimentStatus } from '../ab-testing/config-loader';
+import { clearRiskHeuristicsCache } from '../services/risk-heuristics';
+import { clearRandomForestCache } from '../models/random-forest';
+import { clearDecisionTreeCache } from '../models/decision-tree';
 
 const admin = new Hono<{ Bindings: Env }>();
 
@@ -338,6 +341,46 @@ admin.delete('/config/cache', (c) => {
 	return c.json({
 		success: true,
 		message: 'Configuration cache cleared',
+	});
+});
+
+/**
+ * DELETE /admin/cache/heuristics
+ * Clear heuristic/rule caches
+ */
+admin.delete('/cache/heuristics', (c) => {
+	clearRiskHeuristicsCache();
+	return c.json({
+		success: true,
+		message: 'Risk heuristics cache cleared',
+	});
+});
+
+/**
+ * DELETE /admin/cache/models
+ * Clear model caches (random forest + decision tree)
+ */
+admin.delete('/cache/models', (c) => {
+	clearRandomForestCache();
+	clearDecisionTreeCache();
+	return c.json({
+		success: true,
+		message: 'Model caches cleared',
+	});
+});
+
+/**
+ * DELETE /admin/cache/all
+ * Clear all in-memory caches (config, heuristics, models)
+ */
+admin.delete('/cache/all', (c) => {
+	clearConfigCache();
+	clearRiskHeuristicsCache();
+	clearRandomForestCache();
+	clearDecisionTreeCache();
+	return c.json({
+		success: true,
+		message: 'All caches cleared',
 	});
 });
 

@@ -51,6 +51,7 @@ const HEURISTICS_KV_KEY = 'risk-heuristics.json';
 
 let cachedHeuristics: RiskHeuristicsConfig | null = null;
 let lastLoadedAt = 0;
+let loadingPromise: Promise<RiskHeuristicsConfig> | null = null;
 
 function normalizeRule(rule: Partial<HeuristicRule> & { min?: number }): HeuristicRule {
 	const threshold = typeof rule.threshold === 'number' ? rule.threshold : (typeof rule.min === 'number' ? rule.min : 0);
@@ -118,34 +119,45 @@ export async function loadRiskHeuristics(kv: KVNamespace | undefined): Promise<R
 		return cachedHeuristics;
 	}
 
+	if (loadingPromise) {
+		return loadingPromise;
+	}
+
 	if (!kv) {
 		cachedHeuristics = DEFAULT_RISK_HEURISTICS;
 		lastLoadedAt = now;
 		return cachedHeuristics;
 	}
 
-	try {
-		const remote = await kv.get<RiskHeuristicsConfig | null>(HEURISTICS_KV_KEY, 'json');
-		if (remote && validateHeuristics(remote)) {
-			cachedHeuristics = normalizeConfig(remote);
-		} else {
+	loadingPromise = (async () => {
+		try {
+			const remote = await kv.get<RiskHeuristicsConfig | null>(HEURISTICS_KV_KEY, 'json');
+			if (remote && validateHeuristics(remote)) {
+				cachedHeuristics = normalizeConfig(remote);
+			} else {
+				cachedHeuristics = DEFAULT_RISK_HEURISTICS;
+			}
+		} catch (error) {
+			logger.warn({
+				event: 'risk_heuristics_load_failed',
+				message: error instanceof Error ? error.message : String(error),
+			}, 'Failed to load risk heuristics from KV, using defaults');
 			cachedHeuristics = DEFAULT_RISK_HEURISTICS;
+		} finally {
+			lastLoadedAt = Date.now();
+			loadingPromise = null;
 		}
-	} catch (error) {
-		logger.warn({
-			event: 'risk_heuristics_load_failed',
-			message: error instanceof Error ? error.message : String(error),
-		}, 'Failed to load risk heuristics from KV, using defaults');
-		cachedHeuristics = DEFAULT_RISK_HEURISTICS;
-	}
 
-	lastLoadedAt = now;
-	return cachedHeuristics;
+		return cachedHeuristics!;
+	})();
+
+	return loadingPromise;
 }
 
 export function clearRiskHeuristicsCache(): void {
 	cachedHeuristics = null;
 	lastLoadedAt = 0;
+	loadingPromise = null;
 }
 
 export { DEFAULT_RISK_HEURISTICS };
