@@ -625,30 +625,39 @@ admin.get('/analytics/info', (c) => {
  * POST /admin/analytics/truncate
  * Delete old data from D1 database
  * Migration Note: Now actually deletes data (D1 supports DELETE)
+ * SECURITY: Validates hours parameter to prevent SQL injection
  */
 admin.post('/analytics/truncate', async (c) => {
 	try {
 		const body = await c.req.json<{ olderThanHours?: number }>();
-		const hours = body.olderThanHours || 24;
+		const inputHours = body.olderThanHours || 24;
 
 		if (!c.env.DB) {
 			return c.json({ error: 'D1 database not configured' }, 503);
 		}
 
-		// Calculate cutoff timestamp
-		const cutoffQuery = `datetime('now', '-${hours} hours')`;
+		// SECURITY: Validate hours parameter
+		const hours = Math.floor(Math.abs(inputHours));
+		if (hours < 1 || hours > 8760) {
+			return c.json(
+				{
+					error: 'Invalid hours parameter',
+					message: 'Hours must be between 1 and 8760 (1 year)',
+				},
+				400
+			);
+		}
 
-		// Delete old data
+		// Use parameterized query to prevent SQL injection
 		const result = await c.env.DB.prepare(
-			`DELETE FROM validations WHERE timestamp < datetime('now', '-${hours} hours')`
-		).run();
+			`DELETE FROM validations WHERE timestamp < datetime('now', ?)`
+		).bind(`-${hours} hours`).run();
 
 		return c.json({
 			success: true,
 			message: `Deleted data older than ${hours} hours`,
 			deletedRows: result.meta.changes,
 			hoursKept: hours,
-			cutoffTime: cutoffQuery,
 		});
 	} catch (error) {
 		return c.json(
