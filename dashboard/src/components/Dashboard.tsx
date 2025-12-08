@@ -6,6 +6,7 @@ import { CardSkeleton, ChartSkeleton } from './CardSkeleton';
 
 // Lazy load heavy components for better performance
 const MetricsGrid = lazy(() => import('./MetricsGrid'));
+const ValidationTable = lazy(() => import('./ValidationTable'));
 const BlockReasonsChart = lazy(() => import('./BlockReasonsChart'));
 const TimeSeriesChart = lazy(() => import('./TimeSeriesChart'));
 const ModelMetrics = lazy(() => import('./ModelMetrics'));
@@ -84,6 +85,12 @@ export default function Dashboard() {
           <ErrorBoundary>
             <Suspense fallback={<MetricsGridSkeleton />}>
               <MetricsGrid apiKey={apiKey} key={`metrics-${refreshKey}`} />
+            </Suspense>
+          </ErrorBoundary>
+
+          <ErrorBoundary>
+            <Suspense fallback={<CardSkeleton />}>
+              <ValidationTable apiKey={apiKey} key={`validations-${refreshKey}`} />
             </Suspense>
           </ErrorBoundary>
 
