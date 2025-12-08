@@ -90,11 +90,18 @@ export async function queryAnalytics(
 
 /**
  * Get metrics summary for the last N hours
+ * SECURITY: Validates hours parameter before use
  */
 export async function getMetricsSummary(
   hours: number = 24,
   apiKey: string
 ): Promise<MetricsSummary> {
+  // SECURITY: Validate and sanitize hours parameter
+  const validHours = Math.floor(Math.abs(hours));
+  if (validHours < 1 || validHours > 8760) {
+    throw new Error('Invalid hours parameter. Must be between 1 and 8760.');
+  }
+
   const sql = `
     SELECT
       COUNT(*) as totalValidations,
@@ -104,10 +111,10 @@ export async function getMetricsSummary(
       AVG(latency) as avgLatency,
       0.0 as errorRate
     FROM validations
-    WHERE timestamp >= datetime('now', '-${hours} hours')
+    WHERE timestamp >= datetime('now', '-${validHours} hours')
   `;
 
-  const response = await queryAnalytics({ query: sql, hours }, apiKey);
+  const response = await queryAnalytics({ query: sql, hours: validHours }, apiKey);
   const row = response.results[0];
 
   return {
@@ -122,26 +129,33 @@ export async function getMetricsSummary(
 
 /**
  * Get block reasons distribution
+ * SECURITY: Validates hours parameter before use
  */
 export async function getBlockReasons(
   hours: number = 24,
   apiKey: string
 ): Promise<BlockReason[]> {
+  // SECURITY: Validate and sanitize hours parameter
+  const validHours = Math.floor(Math.abs(hours));
+  if (validHours < 1 || validHours > 8760) {
+    throw new Error('Invalid hours parameter. Must be between 1 and 8760.');
+  }
+
   const sql = `
     SELECT
       block_reason as reason,
       COUNT(*) as count,
-      (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM validations WHERE decision = 'block' AND timestamp >= datetime('now', '-${hours} hours'))) as percentage
+      (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM validations WHERE decision = 'block' AND timestamp >= datetime('now', '-${validHours} hours'))) as percentage
     FROM validations
     WHERE decision = 'block'
-      AND timestamp >= datetime('now', '-${hours} hours')
+      AND timestamp >= datetime('now', '-${validHours} hours')
       AND block_reason IS NOT NULL
     GROUP BY block_reason
     ORDER BY count DESC
     LIMIT 10
   `;
 
-  const response = await queryAnalytics({ query: sql, hours }, apiKey);
+  const response = await queryAnalytics({ query: sql, hours: validHours }, apiKey);
 
   return response.results.map((row) => ({
     reason: row.reason || 'Unknown',
@@ -152,11 +166,18 @@ export async function getBlockReasons(
 
 /**
  * Get time series data for validations
+ * SECURITY: Validates hours parameter before use
  */
 export async function getTimeSeriesData(
   hours: number = 24,
   apiKey: string
 ): Promise<Array<{ timestamp: string; count: number; blocks: number; warns: number }>> {
+  // SECURITY: Validate and sanitize hours parameter
+  const validHours = Math.floor(Math.abs(hours));
+  if (validHours < 1 || validHours > 8760) {
+    throw new Error('Invalid hours parameter. Must be between 1 and 8760.');
+  }
+
   const sql = `
     SELECT
       strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
@@ -164,12 +185,12 @@ export async function getTimeSeriesData(
       SUM(CASE WHEN decision = 'block' THEN 1 ELSE 0 END) as blocks,
       SUM(CASE WHEN decision = 'warn' THEN 1 ELSE 0 END) as warns
     FROM validations
-    WHERE timestamp >= datetime('now', '-${hours} hours')
+    WHERE timestamp >= datetime('now', '-${validHours} hours')
     GROUP BY hour
     ORDER BY hour ASC
   `;
 
-  const response = await queryAnalytics({ query: sql, hours }, apiKey);
+  const response = await queryAnalytics({ query: sql, hours: validHours }, apiKey);
 
   if (!response.results || !Array.isArray(response.results)) {
     return [];

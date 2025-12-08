@@ -506,14 +506,14 @@ admin.get('/analytics', async (c) => {
 		}
 
 		// Execute query on D1
-		const data = await executeD1Query(c.env.DB, query);
+		const results = await executeD1Query(c.env.DB, query);
 
 		return c.json({
 			success: true,
 			mode,
 			query,
 			hours,
-			data,
+			results,
 		});
 	} catch (error) {
 		return c.json(
@@ -573,14 +573,14 @@ admin.post('/analytics', async (c) => {
 		}
 
 		// Execute query on D1
-		const data = await executeD1Query(c.env.DB, query);
+		const results = await executeD1Query(c.env.DB, query);
 
 		return c.json({
 			success: true,
 			mode: 'custom',
 			query,
 			hours,
-			data,
+			results,
 		});
 	} catch (error) {
 		return c.json(
