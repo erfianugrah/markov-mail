@@ -1,6 +1,6 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { Button } from './ui/button';
 import ApiKeyDialog from './ApiKeyDialog';
+import { GlobalControlsBar } from './GlobalControlsBar';
 import { ErrorBoundary } from './ErrorBoundary';
 import { CardSkeleton, ChartSkeleton } from './CardSkeleton';
 
@@ -27,35 +27,45 @@ function MetricsGridSkeleton() {
 export default function Dashboard() {
   const [apiKey, setApiKey] = useState('');
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [refreshInterval, setRefreshInterval] = useState(30);
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Load auto-refresh preference from localStorage on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem(AUTO_REFRESH_KEY);
+      const storedInterval = localStorage.getItem(`${AUTO_REFRESH_KEY}-interval`);
       if (stored === 'true') {
         setAutoRefresh(true);
+      }
+      if (storedInterval) {
+        setRefreshInterval(parseInt(storedInterval, 10));
       }
     }
   }, []);
 
-  // Auto-refresh every 30 seconds when enabled
+  // Auto-refresh based on interval when enabled
   useEffect(() => {
     if (!autoRefresh || !apiKey) return;
 
     const interval = setInterval(() => {
       setRefreshKey((prev) => prev + 1);
-    }, 30000);
+    }, refreshInterval * 1000);
 
     return () => clearInterval(interval);
-  }, [autoRefresh, apiKey]);
+  }, [autoRefresh, apiKey, refreshInterval]);
 
-  // Persist auto-refresh preference
+  // Persist auto-refresh preference and interval
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem(AUTO_REFRESH_KEY, String(autoRefresh));
+      localStorage.setItem(`${AUTO_REFRESH_KEY}-interval`, String(refreshInterval));
     }
-  }, [autoRefresh]);
+  }, [autoRefresh, refreshInterval]);
+
+  const handleManualRefresh = () => {
+    setRefreshKey((prev) => prev + 1);
+  };
 
   return (
     <>
@@ -63,15 +73,13 @@ export default function Dashboard() {
 
       {apiKey ? (
         <div className="space-y-4 sm:space-y-6">
-          <div className="flex justify-end">
-            <Button
-              variant={autoRefresh ? 'default' : 'outline'}
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              className="whitespace-nowrap"
-            >
-              {autoRefresh ? '🔄 Auto-refresh ON' : 'Auto-refresh OFF'}
-            </Button>
-          </div>
+          <GlobalControlsBar
+            autoRefresh={autoRefresh}
+            refreshInterval={refreshInterval}
+            onAutoRefreshChange={setAutoRefresh}
+            onRefreshIntervalChange={setRefreshInterval}
+            onManualRefresh={handleManualRefresh}
+          />
 
           <ErrorBoundary>
             <Suspense fallback={<MetricsGridSkeleton />}>
