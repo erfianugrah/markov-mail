@@ -59,6 +59,39 @@ const MX_LOOKUP_TIMEOUT_MS = 1500; // Increased from 350ms to 1.5s to improve MX
 let cachedABTestConfig: ABTestConfig | null = null;
 let abConfigCacheTimestamp = 0;
 
+type ParsedBody =
+	| { parsed: true; body: any }
+	| { parsed: false; error?: string };
+
+async function parseRequestBody(request: Request): Promise<ParsedBody> {
+	const contentType = request.headers.get('content-type')?.toLowerCase() ?? '';
+
+	try {
+		if (contentType.includes('application/json')) {
+			return { parsed: true, body: await request.json() };
+		}
+
+		if (contentType.includes('multipart/form-data') || contentType.includes('application/x-www-form-urlencoded')) {
+			const form = await request.formData();
+			const body: Record<string, any> = {};
+			form.forEach((value, key) => {
+				body[key] = typeof value === 'string' ? value : value?.toString() ?? '';
+			});
+			return { parsed: true, body };
+		}
+
+		// Fallback: try JSON, then raw text
+		try {
+			return { parsed: true, body: await request.clone().json() };
+		} catch {
+			const text = await request.text();
+			return { parsed: true, body: { raw: text } };
+		}
+	} catch (error) {
+		return { parsed: false, error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
 async function getActiveABTestConfig(kv: KVNamespace | undefined): Promise<ABTestConfig | null> {
 	if (!kv) {
 		return null;
@@ -97,50 +130,40 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 		return next();
 	}
 
-	let requestBody: any;
-	let bodyParsed = false;
+	// Parse body using a clone so downstream handlers can still read the stream if needed
+	const parsedBody = await parseRequestBody(rawRequest.clone());
 
-	try {
-		requestBody = await c.req.json();
-		bodyParsed = true;
-	} catch {
-		try {
-			const formData = await c.req.formData();
-			requestBody = {} as Record<string, string>;
-			formData.forEach((value, key) => {
-				(requestBody as Record<string, string>)[key] = value?.toString() ?? '';
-			});
-			bodyParsed = true;
-		} catch {
-			try {
-				const rawText = await c.req.text();
-				requestBody = { raw: rawText };
-				bodyParsed = true;
-			} catch {
-				bodyParsed = false;
-			}
+	if (!parsedBody.parsed) {
+		// For generic POST routes, don't hard-block on parse failure; let route handle it
+		if (path !== '/validate') {
+			return next();
 		}
-	}
 
-	if (!bodyParsed) {
 		return c.json({
 			error: 'Unable to parse request body. Expected JSON or form data with an email field.',
 			code: 'invalid_request_body',
+			message: parsedBody.error,
 		}, 400);
 	}
 
-	const email = requestBody.email;
-	const consumer = requestBody.consumer;
-	const flow = requestBody.flow;
-	const displayName = typeof requestBody.name === 'string' ? requestBody.name : undefined;
+	const requestBody = parsedBody.body;
+	const email = typeof requestBody?.email === 'string' ? requestBody.email : undefined;
+	const consumer = requestBody?.consumer;
+	const flow = requestBody?.flow;
+	const displayName = typeof requestBody?.name === 'string' ? requestBody.name : undefined;
 
+	// Share parsed body with routes, but leave raw stream untouched
 	c.set('requestBody', requestBody);
 
-	if (!email || typeof email !== 'string') {
-		return c.json({
-			error: 'Email is required in the request body.',
-			code: 'email_required',
-		}, 400);
+	if (!email) {
+		// Allow non-email POST routes to proceed; /validate still requires email
+		if (path === '/validate') {
+			return c.json({
+				error: 'Email is required in the request body.',
+				code: 'email_required',
+			}, 400);
+		}
+		return next();
 	}
 
 	logger.info({
@@ -181,6 +204,9 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 				}, 'Applied A/B experiment variant overrides');
 			}
 		}
+
+		const blockThreshold = config.riskThresholds.block;
+		const warnThreshold = config.riskThresholds.warn;
 
 		const emailValidation = validateEmail(email);
 
@@ -435,20 +461,39 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 					treeVersion: decisionTreeVersion,
 				}, 'Decision tree evaluation complete (forest unavailable)');
 			} else {
-				riskScore = 0;
-				blockReason = (forestLoaded || treeLoaded) ? 'evaluation_failed' : 'model_unavailable';
+				const degradedReason = (forestLoaded || treeLoaded) ? 'evaluation_failed' : 'model_unavailable';
+				blockReason = degradedReason;
+				// Fail at least to warn so outages don't silently allow traffic
+				const warnFloor = Math.max(warnThreshold + 0.01, blockThreshold * 0.8);
+				riskScore = Math.min(1, warnFloor);
+
+				// Notify ops if webhook is configured
+				if (c.env.ALERT_WEBHOOK_URL) {
+					const maskedEmail = email.replace(/^(.{3}).+(@.+)$/, (_: string, start: string, end: string) => `${start}***${end}`);
+					c.executionCtx.waitUntil(sendAnomalyAlert(c.env, {
+						email: maskedEmail,
+						riskScore,
+						decision: 'warn',
+						reasons: ['model_outage'],
+						identitySimilarity: identitySignals.similarityScore,
+						geoLanguageMismatch: geoSignals.languageMismatch,
+						geoTimezoneMismatch: geoSignals.timezoneMismatch,
+						mxProvider: mxAnalysis?.primaryProvider ?? null,
+						timestamp: new Date().toISOString(),
+					}));
+				}
+
 				logger.warn({
 					event: 'model_unavailable',
 					forestVersion: randomForestVersion,
 					treeVersion: decisionTreeVersion,
 					forestLoaded,
 					treeLoaded,
-				}, 'No models available, defaulting to 0 risk');
+					degradedReason,
+					appliedRiskScore: Math.round(riskScore * 100) / 100,
+				}, 'Models unavailable or failed; elevating to warn floor');
 			}
 		}
-
-		const blockThreshold = config.riskThresholds.block;
-		const warnThreshold = config.riskThresholds.warn;
 
 		const heuristicsEligible = blockReason !== 'invalid_format' && blockReason !== 'disposable_domain';
 		const scoreBeforeHeuristics = riskScore;
@@ -558,7 +603,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			riskScore >= config.riskThresholds.warn;
 
 		if (shouldAlert) {
-			const maskedEmail = email.replace(/^(.{3}).+(@.+)$/, (_, start, end) => `${start}***${end}`);
+			const maskedEmail = email.replace(/^(.{3}).+(@.+)$/, (_: string, start: string, end: string) => `${start}***${end}`);
 			c.executionCtx.waitUntil(sendAnomalyAlert(c.env, {
 				email: maskedEmail,
 				riskScore,

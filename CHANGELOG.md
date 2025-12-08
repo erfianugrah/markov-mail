@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### 2025-12-08 - Fraud Middleware Hardening
+
+**Improvements**:
+- **Request Parsing**: Added robust body parsing with content-type branching (JSON/form-data/fallback). Non-email POSTs now pass through to route handlers instead of hard-blocking.
+- **Model Degradation Handling**: When ML models fail to load or evaluate, system now applies a warn-floor risk score (max of `warnThreshold + 0.01` or `blockThreshold * 0.8`) instead of silently allowing traffic with 0 risk. Alerts are sent to ops webhook when degradation occurs.
+- **Metrics Quality**: Replaced boolean coercion (`0`/`1`) with proper `null` binding for unknown signals (MX, disposable, bot flags), improving data quality for analytics.
+- **Performance**: Added shared in-memory caches for config, heuristics, and models with configurable TTLs (60s for config/heuristics, 5min for models). New admin endpoints for cache invalidation: `DELETE /admin/cache/{heuristics|models|all}`.
+- **Testing**: Added integration tests for middleware behavior with malformed requests and model outages.
+- **Documentation**: Updated CONFIGURATION.md with cache management endpoints and usage examples.
+
+**Benefits**:
+- Reduced KV pressure and improved P95 latency through intelligent caching
+- Better operational visibility during model outages with explicit degradation alerts
+- Improved data quality in analytics D1 tables for future model training
+- More resilient to edge cases (malformed bodies, missing models)
+
+**Note**: 79 pre-existing test failures in comprehensive-validation.test.ts remain unresolved (international domains and batch attack tests). These failures existed before this work and are tracked separately.
+
 ### 2025-12-01 - Model Tracking Fix
 
 **Issue**: Models were being deployed without proper identification metadata, making it impossible to track which training run generated which model. This caused confusion when multiple training jobs ran in parallel and overwrote each other's outputs.

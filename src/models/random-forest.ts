@@ -27,6 +27,7 @@ const FOREST_CACHE_TTL_MS = 60_000; // Refresh every minute to allow hot swaps
 let cachedForest: ForestModel | null = null;
 let cachedForestVersion = 'unavailable';
 let lastLoadedAt = 0;
+let loadingPromise: Promise<boolean> | null = null;
 
 /**
  * Loads the Random Forest model from KV.
@@ -40,8 +41,13 @@ export async function loadRandomForestModel(env: Env, options: { force?: boolean
 	const now = Date.now();
 	const cacheFresh = lastLoadedAt > 0 && now - lastLoadedAt < FOREST_CACHE_TTL_MS;
 
-	if (!options.force && cacheFresh) {
-		return cachedForest !== null;
+	if (!options.force) {
+		if (cacheFresh) {
+			return cachedForest !== null;
+		}
+		if (loadingPromise) {
+			return loadingPromise;
+		}
 	}
 
 	lastLoadedAt = now;
@@ -52,51 +58,57 @@ export async function loadRandomForestModel(env: Env, options: { force?: boolean
 		return false;
 	}
 
-	try {
-		// Load model from KV
-		const forestJson = await env.CONFIG.get<ForestModel | null>(KV_RANDOM_FOREST_KEY, 'json');
+	loadingPromise = (async () => {
+		try {
+			// Load model from KV
+			const forestJson = await env.CONFIG!.get<ForestModel | null>(KV_RANDOM_FOREST_KEY, 'json');
 
-		if (!forestJson) {
-			cachedForest = null;
-			cachedForestVersion = 'unavailable';
-			logger.warn({
-				event: 'random_forest_not_found',
-				key: KV_RANDOM_FOREST_KEY,
-			}, 'Random Forest model not found in KV');
-			return false;
-		}
+			if (!forestJson) {
+				cachedForest = null;
+				cachedForestVersion = 'unavailable';
+				logger.warn({
+					event: 'random_forest_not_found',
+					key: KV_RANDOM_FOREST_KEY,
+				}, 'Random Forest model not found in KV');
+				return false;
+			}
 
-		// Validate model structure
-		if (!validateForestModel(forestJson)) {
+			// Validate model structure
+			if (!validateForestModel(forestJson)) {
+				cachedForest = null;
+				cachedForestVersion = 'unavailable';
+				logger.error({
+					event: 'random_forest_invalid',
+					key: KV_RANDOM_FOREST_KEY,
+				}, 'Invalid Random Forest model structure');
+				return false;
+			}
+
+			cachedForest = forestJson;
+			cachedForestVersion = forestJson.meta.version || 'unknown';
+
+			logger.info({
+				event: 'random_forest_loaded',
+				version: cachedForestVersion,
+				treeCount: forestJson.meta.tree_count,
+				features: forestJson.meta.features.length,
+			}, 'Random Forest model loaded successfully');
+
+			return true;
+		} catch (error) {
 			cachedForest = null;
 			cachedForestVersion = 'unavailable';
 			logger.error({
-				event: 'random_forest_invalid',
-				key: KV_RANDOM_FOREST_KEY,
-			}, 'Invalid Random Forest model structure');
+				event: 'random_forest_load_failed',
+				message: error instanceof Error ? error.message : String(error),
+			}, 'Failed to load Random Forest from KV');
 			return false;
+		} finally {
+			loadingPromise = null;
 		}
+	})();
 
-		cachedForest = forestJson;
-		cachedForestVersion = forestJson.meta.version || 'unknown';
-
-		logger.info({
-			event: 'random_forest_loaded',
-			version: cachedForestVersion,
-			treeCount: forestJson.meta.tree_count,
-			features: forestJson.meta.features.length,
-		}, 'Random Forest model loaded successfully');
-
-		return true;
-	} catch (error) {
-		cachedForest = null;
-		cachedForestVersion = 'unavailable';
-		logger.error({
-			event: 'random_forest_load_failed',
-			message: error instanceof Error ? error.message : String(error),
-		}, 'Failed to load Random Forest from KV');
-		return false;
-	}
+	return loadingPromise;
 }
 
 /**
@@ -120,6 +132,7 @@ export function clearRandomForestCache(): void {
 	cachedForest = null;
 	cachedForestVersion = 'unavailable';
 	lastLoadedAt = 0;
+	loadingPromise = null;
 }
 
 /**
