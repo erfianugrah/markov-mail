@@ -720,6 +720,13 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 				tldRiskScore: Math.round(tldRiskScore * 100) / 100,
 				plusAddressingRisk: Math.round(plusRisk * 100) / 100,
 				sequentialPatternRisk: Math.round(sequentialConfidence * 100) / 100,
+				// Markov Chain and OOD detection (for RPC consumers)
+				markovDetected: patternFamilyResult ?
+					['sequential', 'dated', 'plus-addressing'].includes(patternFamilyResult.patternType) &&
+					(patternFamilyResult.confidence >= 0.5) : false,
+				markovConfidence: patternFamilyResult?.confidence ?
+					Math.round(patternFamilyResult.confidence * 100) / 100 : 0,
+				oodDetected: patternFamilyResult?.patternType === 'random',
 				identitySignals: {
 					name: identitySignals.name,
 					nameInEmail: identitySignals.nameInEmail,

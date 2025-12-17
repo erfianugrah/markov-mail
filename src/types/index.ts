@@ -32,6 +32,10 @@ export interface ValidationSignals {
   decisionTreeVersion?: string;
   plusAddressingRisk?: number;
   sequentialPatternRisk?: number;
+  // Markov Chain and OOD detection signals (for RPC consumers)
+  markovDetected?: boolean;      // True if suspicious pattern detected (sequential, dated, etc.)
+  markovConfidence?: number;     // Confidence score (0-1) from pattern detection
+  oodDetected?: boolean;         // True if Out-of-Distribution (random/gibberish pattern)
   identitySignals?: {
     name?: string;
     nameInEmail?: boolean;
