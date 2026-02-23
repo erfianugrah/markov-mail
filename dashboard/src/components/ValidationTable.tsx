@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './ui/card';
 import { Button } from './ui/button';
 
@@ -12,6 +12,17 @@ interface Validation {
   country?: string;
   pattern_type?: string;
   is_disposable?: boolean;
+  is_free_provider?: boolean;
+  entropy_score?: number;
+  bot_score?: number;
+  tld_risk_score?: number;
+  domain_reputation_score?: number;
+  model_version?: string;
+  latency?: number;
+  client_ip?: string;
+  fingerprint_hash?: string;
+  decision_tree_reason?: string;
+  pattern_confidence?: number;
 }
 
 interface ValidationTableProps {
@@ -47,11 +58,23 @@ function DecisionBadge({ decision }: { decision: string }) {
   );
 }
 
+function DetailField({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div>
+      <span className="text-muted-foreground text-xs">{label}</span>
+      <div className="font-mono text-xs text-foreground mt-0.5 truncate" title={value || ''}>
+        {value || '—'}
+      </div>
+    </div>
+  );
+}
+
 export default function ValidationTable({ apiKey, hours = 24 }: ValidationTableProps) {
   const [validations, setValidations] = useState<Validation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
+  const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const pageSize = 10;
 
   useEffect(() => {
@@ -71,7 +94,18 @@ export default function ValidationTable({ apiKey, hours = 24 }: ValidationTableP
             block_reason,
             country,
             pattern_type,
-            is_disposable
+            is_disposable,
+            is_free_provider,
+            entropy_score,
+            bot_score,
+            tld_risk_score,
+            domain_reputation_score,
+            model_version,
+            latency,
+            client_ip,
+            fingerprint_hash,
+            decision_tree_reason,
+            pattern_confidence
           FROM validations
           WHERE timestamp >= datetime('now', '-${hours} hours')
           ORDER BY timestamp DESC
@@ -202,52 +236,80 @@ export default function ValidationTable({ apiKey, hours = 24 }: ValidationTableP
                     </td>
                   </tr>
                 ) : (
-                  paginatedData.map((validation, idx) => (
-                    <tr
-                      key={`${validation.timestamp}-${idx}`}
-                      className="border-t border-border hover:bg-muted/40 transition-colors"
-                    >
-                      <td className="px-3 py-3.5 text-sm text-foreground whitespace-nowrap">
-                        {new Date(validation.timestamp).toLocaleDateString(undefined, {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </td>
-                      <td className="px-3 py-3.5 text-sm">
-                        <div className="font-mono text-xs text-foreground truncate" title={validation.email}>
-                          {validation.email}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3.5">
-                        <DecisionBadge decision={validation.decision} />
-                      </td>
-                      <td className="px-3 py-3.5">
-                        <RiskBadge score={validation.risk_score} />
-                      </td>
-                      <td className="px-3 py-3.5 text-sm text-muted-foreground">
-                        <div className="truncate" title={validation.block_reason || ''}>
-                          {validation.block_reason || '—'}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3.5 text-sm text-foreground">
-                        <div className="truncate" title={validation.country || ''}>
-                          {validation.country || '—'}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3.5 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1 truncate">
-                          <span className="truncate" title={validation.pattern_type || ''}>{validation.pattern_type || '—'}</span>
-                          {validation.is_disposable && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive border border-destructive/20 flex-shrink-0">
-                              disposable
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                  paginatedData.map((validation, idx) => {
+                    const globalIdx = startIndex + idx;
+                    const isExpanded = expandedRow === globalIdx;
+                    return (
+                      <React.Fragment key={`row-${validation.timestamp}-${idx}`}>
+                        <tr
+                          className="border-t border-border hover:bg-muted/40 transition-colors cursor-pointer"
+                          onClick={() => setExpandedRow(isExpanded ? null : globalIdx)}
+                        >
+                          <td className="px-3 py-3.5 text-sm text-foreground whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              {isExpanded ? <ChevronUp size={14} className="text-muted-foreground flex-shrink-0" /> : <ChevronDown size={14} className="text-muted-foreground flex-shrink-0" />}
+                              {new Date(validation.timestamp).toLocaleDateString(undefined, {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3.5 text-sm">
+                            <div className="font-mono text-xs text-foreground truncate" title={validation.email}>
+                              {validation.email}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3.5">
+                            <DecisionBadge decision={validation.decision} />
+                          </td>
+                          <td className="px-3 py-3.5">
+                            <RiskBadge score={validation.risk_score} />
+                          </td>
+                          <td className="px-3 py-3.5 text-sm text-muted-foreground">
+                            <div className="truncate" title={validation.block_reason || ''}>
+                              {validation.block_reason || '—'}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3.5 text-sm text-foreground">
+                            <div className="truncate" title={validation.country || ''}>
+                              {validation.country || '—'}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3.5 text-sm text-muted-foreground">
+                            <div className="flex items-center gap-1 truncate">
+                              <span className="truncate" title={validation.pattern_type || ''}>{validation.pattern_type || '—'}</span>
+                              {validation.is_disposable && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive border border-destructive/20 flex-shrink-0">
+                                  disposable
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr key={`detail-${validation.timestamp}-${idx}`} className="border-t border-border/50 bg-muted/20">
+                            <td colSpan={7} className="px-4 py-4">
+                              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-3 text-sm">
+                                <DetailField label="Entropy" value={validation.entropy_score?.toFixed(3)} />
+                                <DetailField label="Bot Score" value={validation.bot_score?.toFixed(2)} />
+                                <DetailField label="TLD Risk" value={validation.tld_risk_score?.toFixed(3)} />
+                                <DetailField label="Domain Reputation" value={validation.domain_reputation_score?.toFixed(3)} />
+                                <DetailField label="Pattern Confidence" value={validation.pattern_confidence?.toFixed(3)} />
+                                <DetailField label="Model Version" value={validation.model_version} />
+                                <DetailField label="Latency" value={validation.latency ? `${validation.latency.toFixed(1)}ms` : undefined} />
+                                <DetailField label="Free Provider" value={validation.is_free_provider ? 'Yes' : 'No'} />
+                                <DetailField label="Tree Reason" value={validation.decision_tree_reason} />
+                                <DetailField label="Fingerprint" value={validation.fingerprint_hash?.slice(0, 12)} />
+                                <DetailField label="Client IP" value={validation.client_ip} />
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
                 )}
               </tbody>
             </table>

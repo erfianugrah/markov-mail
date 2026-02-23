@@ -61,9 +61,161 @@ async function serveAsset(c: AppContext, path: string) {
 // Mount admin routes (protected by API key)
 app.route('/admin', adminRoutes);
 
-app.get('/dashboard', (c) => serveAsset(c, '/dashboard/index.html'));
-app.get('/dashboard/*', (c) => serveAsset(c, c.req.path));
-app.get('/analytics', (c) => serveAsset(c, '/analytics.html'));
+// Dashboard auth: cookie-based session so static assets are never exposed without auth
+const DASHBOARD_COOKIE = '__dashboard_session';
+const SESSION_MAX_AGE = 60 * 60 * 24; // 24 hours
+
+async function signSession(apiKey: string, secret: string): Promise<string> {
+	const encoder = new TextEncoder();
+	const key = await crypto.subtle.importKey(
+		'raw', encoder.encode(secret),
+		{ name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+	);
+	const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(apiKey));
+	const expires = Date.now() + SESSION_MAX_AGE * 1000;
+	const payload = btoa(String(expires));
+	const sigHex = [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('');
+	return `${payload}.${sigHex}`;
+}
+
+async function verifySession(cookie: string, secret: string): Promise<boolean> {
+	try {
+		const [payload, sigHex] = cookie.split('.');
+		if (!payload || !sigHex) return false;
+		const expires = Number(atob(payload));
+		if (Date.now() > expires) return false;
+		const encoder = new TextEncoder();
+		const key = await crypto.subtle.importKey(
+			'raw', encoder.encode(secret),
+			{ name: 'HMAC', hash: 'SHA-256' }, false, ['verify']
+		);
+		const sigBytes = new Uint8Array(sigHex.match(/.{2}/g)!.map(h => parseInt(h, 16)));
+		// Verify against the API key (secret is the API key itself)
+		return await crypto.subtle.verify('HMAC', key, sigBytes, encoder.encode(secret));
+	} catch {
+		return false;
+	}
+}
+
+function getCookie(req: Request, name: string): string | null {
+	const header = req.headers.get('Cookie') || '';
+	const match = header.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+	return match ? decodeURIComponent(match[1]) : null;
+}
+
+function loginPage(error?: string): Response {
+	const errorHtml = error ? `<p style="color:#ef4444;margin-bottom:16px;font-size:14px">${error}</p>` : '';
+	const html = `<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard Login</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a0b;color:#e4e4e7;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.card{background:#18181b;border:1px solid #27272a;border-radius:12px;padding:32px;max-width:400px;width:100%}
+h1{font-size:20px;font-weight:600;margin-bottom:4px}
+p.sub{color:#a1a1aa;font-size:14px;margin-bottom:24px}
+label{display:block;font-size:14px;font-weight:500;margin-bottom:6px}
+input{width:100%;padding:10px 12px;background:#09090b;border:1px solid #27272a;border-radius:8px;color:#e4e4e7;font-size:14px;outline:none}
+input:focus{border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,0.2)}
+button{width:100%;margin-top:16px;padding:10px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer}
+button:hover{background:#4f46e5}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>Fraud Detection Dashboard</h1>
+<p class="sub">Enter your API key to continue</p>
+${errorHtml}
+<form method="POST" action="/dashboard/auth">
+<label for="key">API Key</label>
+<input type="password" id="key" name="key" placeholder="Enter your API key..." autofocus required>
+<button type="submit">Sign In</button>
+</form>
+</div>
+</body>
+</html>`;
+	return new Response(html, {
+		status: error ? 401 : 200,
+		headers: { 'Content-Type': 'text/html; charset=utf-8' },
+	});
+}
+
+// Dashboard auth endpoint: validate key, set session cookie
+app.post('/dashboard/auth', async (c) => {
+	c.set('skipFraudDetection', true);
+	const secret = c.env['X-API-KEY'];
+	if (!secret) return loginPage('Dashboard authentication not configured');
+
+	let key = '';
+	const contentType = c.req.header('content-type') || '';
+	if (contentType.includes('application/x-www-form-urlencoded')) {
+		const body = await c.req.parseBody();
+		key = String(body['key'] || '').trim();
+	} else {
+		const body = await c.req.json<{ key: string }>().catch(() => ({ key: '' }));
+		key = String(body.key || '').trim();
+	}
+
+	if (!key) return loginPage('API key is required');
+
+	// Timing-safe comparison
+	const encoder = new TextEncoder();
+	const a = encoder.encode(key);
+	const b = encoder.encode(secret);
+	if (a.byteLength !== b.byteLength) return loginPage('Invalid API key');
+
+	const match = await crypto.subtle.timingSafeEqual(a, b);
+	if (!match) return loginPage('Invalid API key');
+
+	const session = await signSession(secret, secret);
+	const cookie = `${DASHBOARD_COOKIE}=${encodeURIComponent(session)}; Path=/dashboard; HttpOnly; Secure; SameSite=Strict; Max-Age=${SESSION_MAX_AGE}`;
+
+	return new Response(null, {
+		status: 302,
+		headers: {
+			'Location': '/dashboard',
+			'Set-Cookie': cookie,
+		},
+	});
+});
+
+// Dashboard logout
+app.get('/dashboard/logout', (c) => {
+	const cookie = `${DASHBOARD_COOKIE}=; Path=/dashboard; HttpOnly; Secure; SameSite=Strict; Max-Age=0`;
+	return new Response(null, {
+		status: 302,
+		headers: { 'Location': '/dashboard', 'Set-Cookie': cookie },
+	});
+});
+
+// Dashboard routes: require valid session cookie
+async function dashboardAuth(c: AppContext): Promise<Response | undefined> {
+	const secret = c.env['X-API-KEY'];
+	if (!secret) return loginPage('Dashboard not configured');
+	const session = getCookie(c.req.raw, DASHBOARD_COOKIE);
+	if (!session || !(await verifySession(session, secret))) {
+		return loginPage();
+	}
+	return undefined; // authenticated
+}
+
+app.get('/dashboard', async (c) => {
+	const denied = await dashboardAuth(c);
+	if (denied) return denied;
+	return serveAsset(c, '/dashboard/index.html');
+});
+app.get('/dashboard/*', async (c) => {
+	const denied = await dashboardAuth(c);
+	if (denied) return denied;
+	return serveAsset(c, c.req.path);
+});
+app.get('/analytics', async (c) => {
+	const denied = await dashboardAuth(c);
+	if (denied) return denied;
+	return serveAsset(c, '/analytics.html');
+});
 
 // Root endpoint - Welcome message
 app.get('/', (c) => {

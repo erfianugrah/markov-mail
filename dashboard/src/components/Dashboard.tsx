@@ -5,6 +5,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { CardSkeleton, ChartSkeleton } from './CardSkeleton';
 
 // Lazy load heavy components for better performance
+const SystemStatusBar = lazy(() => import('./SystemStatusBar'));
 const MetricsGrid = lazy(() => import('./MetricsGrid'));
 const ValidationTable = lazy(() => import('./ValidationTable'));
 const BlockReasonsChart = lazy(() => import('./BlockReasonsChart'));
@@ -77,6 +78,12 @@ export default function Dashboard() {
 
       {apiKey ? (
         <div className="space-y-4 sm:space-y-6">
+          <ErrorBoundary>
+            <Suspense fallback={<div className="h-10 rounded-lg bg-muted/30 animate-pulse" />}>
+              <SystemStatusBar apiKey={apiKey} />
+            </Suspense>
+          </ErrorBoundary>
+
           <GlobalControlsBar
             autoRefresh={autoRefresh}
             refreshInterval={refreshInterval}

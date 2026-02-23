@@ -33,6 +33,26 @@ export interface BlockReason {
   percentage: number;
 }
 
+export interface SystemConfig {
+  riskThresholds: { block: number; warn: number };
+  features: Record<string, boolean>;
+  modelVersion?: string;
+  riskWeights?: Record<string, number>;
+  adjustments?: Record<string, number>;
+}
+
+/**
+ * Fetch the active system configuration
+ */
+export async function getSystemConfig(apiKey: string): Promise<SystemConfig> {
+  const response = await fetch(`${API_BASE}/admin/config`, {
+    headers: { 'X-API-Key': apiKey },
+  });
+  if (!response.ok) throw new Error(`Config fetch failed: ${response.status}`);
+  const data = await response.json() as { config: SystemConfig };
+  return data.config;
+}
+
 /**
  * Execute a SQL query against the analytics database
  */
