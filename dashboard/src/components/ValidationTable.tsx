@@ -280,7 +280,7 @@ export default function ValidationTable({ apiKey, hours = 24 }: ValidationTableP
                           <td className="px-3 py-3.5 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1 truncate">
                               <span className="truncate" title={validation.pattern_type || ''}>{validation.pattern_type || '—'}</span>
-                              {validation.is_disposable && (
+                              {!!validation.is_disposable && (
                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive border border-destructive/20 flex-shrink-0">
                                   disposable
                                 </span>
