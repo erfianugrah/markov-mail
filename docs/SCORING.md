@@ -108,13 +108,13 @@ const config = {
 };
 
 if (riskScore >= config.blockThreshold) {
-  action = 'block';
+  decision = 'block';
   allowed = false;
 } else if (riskScore >= config.warnThreshold) {
-  action = 'warn';
+  decision = 'warn';
   allowed = true;  // Allow but flag for review
 } else {
-  action = 'allow';
+  decision = 'allow';
   allowed = true;
 }
 ```
@@ -198,18 +198,20 @@ Use `npm run cli model:calibrate -- --input data/calibration/latest.csv --output
 
 All scoring decisions are logged to **D1 database** for analysis:
 
-**Table**: `ANALYTICS_DATASET`
+**Table**: `validations`
 
 ```sql
-INSERT INTO ANALYTICS_DATASET (
-  email,
+INSERT INTO validations (
+  email_local_part,
+  domain,
   risk_score,
-  action,
-  random_forest_score,
-  decision_tree_score,
-  reason,
+  decision,
+  block_reason,
+  fingerprint_hash,
+  model_version,
+  latency,
   timestamp
-) VALUES (?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 ```
 
 **Dashboard**: Access analytics at `https://fraud.erfi.dev/dashboard`
@@ -322,7 +324,7 @@ wrangler kv key get decision_tree.json --binding CONFIG --remote
 ## References
 
 - [DETECTORS.md](./DETECTORS.md) - Feature extraction details
-- [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md) - Training workflow
+- [MODEL_TRAINING.md](./MODEL_TRAINING.md) - Training workflow
 - [CONFIGURATION.md](./CONFIGURATION.md) - KV and D1 setup
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - System overview
 

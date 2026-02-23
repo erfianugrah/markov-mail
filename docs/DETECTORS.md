@@ -477,7 +477,7 @@ The following detectors were removed as part of the v3.0 ML-first architecture:
 ## References
 
 - [Feature Vector Definition](../src/utils/feature-vector.ts) - Complete feature list
-- [Model Training](./MODEL_TRAINING_v3.md) - How features feed into RF/DT
+- [Model Training](./MODEL_TRAINING.md) - How features feed into RF/DT
 - [Configuration](./CONFIGURATION.md) - Thresholds and model settings
 - [Scoring Logic](./SCORING.md) - How features become risk scores
 

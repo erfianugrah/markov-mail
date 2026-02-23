@@ -218,8 +218,6 @@ export function getDomainReputationScore(domain: string, disposableDomains?: Set
     'gmx.com',
     'gmx.de',
     'gmx.net',
-    'proton.me',
-    'protonmail.com',
     'yandex.com',
     'yandex.ru'
   ];
@@ -227,7 +225,20 @@ export function getDomainReputationScore(domain: string, disposableDomains?: Set
     return 0.6; // High scrutiny
   }
 
-  // 3. Trusted Free Providers - High friction signup, better abuse prevention
+  // 3. Privacy-focused providers - Legitimate services with strong verification
+  const privacyProviders = [
+    'proton.me',
+    'protonmail.com',
+    'pm.me',
+    'tutanota.com',
+    'tuta.com',
+    'tuta.io'
+  ];
+  if (privacyProviders.includes(normalizedDomain)) {
+    return 0.3; // Moderate scrutiny - neutral baseline
+  }
+
+  // 4. Trusted Free Providers - High friction signup, better abuse prevention
   const trustedProviders = [
     'gmail.com',
     'googlemail.com',
@@ -244,7 +255,7 @@ export function getDomainReputationScore(domain: string, disposableDomains?: Set
     return 0.1; // Low scrutiny
   }
 
-  // 4. Suspicious characteristics add to base score
+  // 5. Suspicious characteristics add to base score
   const suspicious = isDomainSuspicious(normalizedDomain);
   let suspicionScore = 0.0;
 
@@ -257,6 +268,6 @@ export function getDomainReputationScore(domain: string, disposableDomains?: Set
     suspicionScore += 0.1 * validation.signals.subdomainDepth;
   }
 
-  // 5. Default neutral for corporate/ISP domains + suspicion adjustments
+  // 6. Default neutral for corporate/ISP domains + suspicion adjustments
   return Math.min(0.3 + suspicionScore, 1.0);
 }

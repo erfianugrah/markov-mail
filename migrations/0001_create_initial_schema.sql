@@ -1,4 +1,4 @@
--- Decision-tree reset schema (2025-01-??)
+-- Consolidated schema (2025-01)
 -- Single table captures all runtime telemetry we still care about.
 CREATE TABLE IF NOT EXISTS validations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,10 +45,10 @@ CREATE TABLE IF NOT EXISTS validations (
     city TEXT,
     postal_code TEXT,
     timezone TEXT,
-    latitude TEXT,
-    longitude TEXT,
+    latitude REAL,
+    longitude REAL,
     continent TEXT,
-    is_eu_country TEXT,
+    is_eu_country INTEGER DEFAULT 0,
     as_organization TEXT,
     colo TEXT,
     http_protocol TEXT,
@@ -64,9 +64,26 @@ CREATE TABLE IF NOT EXISTS validations (
     ja4_signals TEXT,
 
     pattern_classification_version TEXT,
-    latency REAL NOT NULL
+    latency REAL NOT NULL,
+
+    -- Identity signals
+    identity_similarity REAL,
+    identity_token_overlap REAL,
+    identity_name_in_email INTEGER,
+
+    -- Geo signals
+    geo_language_mismatch INTEGER,
+    geo_timezone_mismatch INTEGER,
+    geo_anomaly_score REAL,
+
+    -- MX signals
+    mx_has_records INTEGER,
+    mx_record_count INTEGER,
+    mx_primary_provider TEXT,
+    mx_provider_hits TEXT,
+    mx_lookup_failure TEXT,
+    mx_ttl INTEGER
 );
--- NOTE: identity, geo, and MX columns are added by migration 0002.
 
 CREATE INDEX IF NOT EXISTS idx_validations_timestamp ON validations(timestamp);
 CREATE INDEX IF NOT EXISTS idx_validations_decision ON validations(decision);

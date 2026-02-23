@@ -69,7 +69,7 @@ export default function TimeSeriesChart({ apiKey, hours = 24 }: TimeSeriesChartP
         </CardHeader>
         <CardContent>
           <div className="h-80 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <div role="status" aria-label="Loading time series data" className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         </CardContent>
       </Card>

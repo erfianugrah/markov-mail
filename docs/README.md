@@ -40,7 +40,7 @@ Welcome to the Markov Mail fraud detection system documentation. This guide prov
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/yourusername/markov-mail
+git clone https://github.com/erfianugrah/markov-mail
 cd markov-mail
 npm install
 
@@ -115,7 +115,7 @@ wrangler kv key list --binding CONFIG --remote
 open https://fraud.erfi.dev/dashboard
 
 # 4. Query D1 database
-wrangler d1 execute DB --command="SELECT COUNT(*) FROM ANALYTICS_DATASET" --remote
+wrangler d1 execute DB --command="SELECT COUNT(*) FROM validations" --remote
 ```
 
 **Next Steps**: Read [CONFIGURATION.md](./CONFIGURATION.md) for KV/D1 setup and [SYSTEM_INVENTORY.md](./SYSTEM_INVENTORY.md) for complete inventory.
@@ -227,9 +227,9 @@ See [MODEL_TRAINING.md](./MODEL_TRAINING.md) for training details.
 ### Risk Scoring
 
 **Thresholds**:
-- **Block** (≥0.3): High confidence fraud
-- **Warn** (0.25-0.29): Suspicious but uncertain
-- **Allow** (<0.25): Legitimate
+- **Block** (≥0.65): High confidence fraud
+- **Warn** (0.35-0.64): Suspicious but uncertain
+- **Allow** (<0.35): Legitimate
 
 See [SCORING.md](./SCORING.md) for scoring logic and threshold tuning.
 
@@ -283,8 +283,8 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md#testing-strategy) for testing approach.
 wrangler d1 execute DB --remote --command="
   SELECT DATE(timestamp) as day,
          COUNT(*) as total,
-         SUM(CASE WHEN action='block' THEN 1 ELSE 0 END) as blocked
-  FROM ANALYTICS_DATASET
+         SUM(CASE WHEN decision='block' THEN 1 ELSE 0 END) as blocked
+  FROM validations
   WHERE timestamp >= datetime('now', '-7 days')
   GROUP BY day
 "
@@ -362,8 +362,8 @@ See [LICENSE](../LICENSE) file for details.
 
 ## 🤝 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/markov-mail/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/markov-mail/discussions)
+- **Issues**: [GitHub Issues](https://github.com/erfianugrah/markov-mail/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/erfianugrah/markov-mail/discussions)
 - **Production Support**: Contact the operations team
 
 ---

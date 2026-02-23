@@ -54,6 +54,7 @@ export function GlobalControlsBar({
           {/* Refresh Interval Selector */}
           {autoRefresh && (
             <select
+              aria-label="Refresh interval"
               value={refreshInterval}
               onChange={(e) => onRefreshIntervalChange(parseInt(e.target.value))}
               className="px-3 py-2 text-sm border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"

@@ -63,13 +63,13 @@ Override the normal decision logic for specific use cases.
 ```json
 {
   "riskThresholds": {
-    "block": 0.6,    // Score > 0.6 = block
-    "warn": 0.3      // Score > 0.3 = warn
+    "block": 0.65,   // Score >= 0.65 = block
+    "warn": 0.35     // Score >= 0.35 = warn
   }
 }
 ```
 
-**Recommended**: block=0.6, warn=0.3 (91.8% accuracy)
+**Recommended**: block=0.65, warn=0.35
 
 ## Heuristic Risk Adjustments
 
@@ -171,8 +171,8 @@ Clears only the risk heuristics cache. Use this after updating `risk-heuristics.
 
 ## See Also
 
-- [Training Guide](./TRAINING.md)
-- [Architecture Overview](../README.md)
+- [Training Guide](./MODEL_TRAINING.md)
+- [Architecture Overview](./ARCHITECTURE.md)
 
 ## A/B Experiments
 

@@ -196,8 +196,12 @@ export function getNGramRiskScore(localPart: string): number {
     return 0.1; // Low risk by default for very short
   }
 
+  // Naturalness ceiling: scores at or above this are considered fully natural.
+  // Use length-dependent threshold matching analyzeNGramNaturalness.
+  const naturalnessThreshold = localPart.length < 5 ? 0.30 : 0.40;
+
   // Calculate base risk (inverse of naturalness)
-  const baseRisk = Math.max(0, 1 - (analysis.overallScore / 0.4));
+  const baseRisk = Math.max(0, 1 - (analysis.overallScore / naturalnessThreshold));
 
   // Adjust by confidence
   const adjustedRisk = baseRisk * analysis.confidence;

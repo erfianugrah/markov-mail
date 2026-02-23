@@ -270,9 +270,9 @@ Access at: https://fraud.erfi.dev/dashboard
 wrangler d1 execute DB --remote --command="
   SELECT DATE(timestamp) as day,
          COUNT(*) as total,
-         SUM(CASE WHEN action='block' THEN 1 ELSE 0 END) as blocked,
-         ROUND(100.0 * SUM(CASE WHEN action='block' THEN 1 ELSE 0 END) / COUNT(*), 2) as block_rate
-  FROM ANALYTICS_DATASET
+         SUM(CASE WHEN decision='block' THEN 1 ELSE 0 END) as blocked,
+         ROUND(100.0 * SUM(CASE WHEN decision='block' THEN 1 ELSE 0 END) / COUNT(*), 2) as block_rate
+  FROM validations
   WHERE timestamp >= datetime('now', '-7 days')
   GROUP BY day
   ORDER BY day DESC
@@ -282,9 +282,9 @@ wrangler d1 execute DB --remote --command="
 wrangler d1 execute DB --remote --command="
   SELECT reason,
          COUNT(*) as count,
-         ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM ANALYTICS_DATASET WHERE action='block'), 2) as pct
-  FROM ANALYTICS_DATASET
-  WHERE action='block'
+         ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM validations WHERE decision='block'), 2) as pct
+  FROM validations
+  WHERE decision='block'
     AND timestamp >= datetime('now', '-24 hours')
   GROUP BY reason
   ORDER BY count DESC
@@ -297,7 +297,7 @@ wrangler d1 execute DB --remote --command="
     SELECT latency,
            ROW_NUMBER() OVER (ORDER BY latency) as row_num,
            COUNT(*) OVER () as total_count
-    FROM ANALYTICS_DATASET
+    FROM validations
     WHERE timestamp >= datetime('now', '-1 hour')
   )
   SELECT

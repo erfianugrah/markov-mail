@@ -29,7 +29,7 @@ Guidelines for contributing to the Markov Mail fraud detection system, including
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/yourusername/markov-mail
+git clone https://github.com/erfianugrah/markov-mail
 cd markov-mail
 
 # 2. Install dependencies
@@ -333,7 +333,7 @@ describe('Fraud Detection API', () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data).toHaveProperty('riskScore');
-    expect(data).toHaveProperty('action');
+    expect(data).toHaveProperty('decision');
   });
 });
 ```

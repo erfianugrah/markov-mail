@@ -50,4 +50,4 @@ Or manually:
 2. Train model with CLI (internally uses Python/scikit-learn)
 3. Upload: `npm run cli kv:put -- --binding CONFIG --key <model_key> --file <model_file>`
 
-For detailed training instructions, see [MODEL_TRAINING_v3.md](./MODEL_TRAINING_v3.md).
+For detailed training instructions, see [MODEL_TRAINING.md](./MODEL_TRAINING.md).

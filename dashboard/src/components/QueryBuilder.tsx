@@ -113,8 +113,9 @@ export default function QueryBuilder({ apiKey }: QueryBuilderProps) {
 
         {/* SQL Editor */}
         <div>
-          <label className="text-sm font-medium mb-2 block">SQL Query</label>
+          <label htmlFor="sql-query-editor" className="text-sm font-medium mb-2 block">SQL Query</label>
           <textarea
+            id="sql-query-editor"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-full h-32 p-3 text-sm font-mono rounded-md border border-border bg-background resize-y focus:outline-none focus:ring-2 focus:ring-ring"

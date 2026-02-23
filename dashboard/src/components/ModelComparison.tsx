@@ -89,7 +89,7 @@ export default function ModelComparison({ apiKey }: ModelComparisonProps) {
         </CardHeader>
         <CardContent>
           <div className="h-80 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <div role="status" aria-label="Loading model comparison" className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         </CardContent>
       </Card>

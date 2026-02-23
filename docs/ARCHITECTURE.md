@@ -140,9 +140,9 @@ sequenceDiagram
     ModelEval-->>Worker: {score: 0.92, reason: "high_seq"}
 
     Worker->>Worker: Apply thresholds
-    alt score >= 0.3
+    alt score >= 0.65
         Worker->>Worker: action = "block"
-    else score >= 0.25
+    else score >= 0.35
         Worker->>Worker: action = "warn"
     else
         Worker->>Worker: action = "allow"
@@ -225,9 +225,9 @@ flowchart LR
     G --> F
     H --> F
 
-    F --> I{Score >= 0.3?}
+    F --> I{Score >= 0.65?}
     I -->|Yes| J[Block]
-    I -->|No| K{Score >= 0.25?}
+    I -->|No| K{Score >= 0.35?}
     K -->|Yes| L[Warn]
     K -->|No| M[Allow]
 
@@ -325,27 +325,25 @@ npm run cli model:train -- --n-trees 100 --upload
 **Database**: `ANALYTICS`
 
 ```sql
--- Main analytics table
-CREATE TABLE ANALYTICS_DATASET (
+-- Main analytics table (see migrations/0001_create_initial_schema.sql for full schema)
+CREATE TABLE validations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT NOT NULL,
-    name TEXT,
-    risk_score REAL,
-    action TEXT,
-    random_forest_score REAL,
-    decision_tree_score REAL,
-    random_forest_version TEXT,
-    decision_tree_version TEXT,
-    reason TEXT,
-    ip_address TEXT,
-    user_agent TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    decision TEXT NOT NULL CHECK(decision IN ('allow', 'warn', 'block')),
+    risk_score REAL NOT NULL CHECK(risk_score >= 0 AND risk_score <= 1),
+    block_reason TEXT,
+    email_local_part TEXT,
+    domain TEXT,
+    tld TEXT,
+    fingerprint_hash TEXT NOT NULL,
+    -- ... pattern, scoring, geo, identity, MX columns
+    latency REAL NOT NULL
 );
 
--- Indexes for query performance
-CREATE INDEX idx_timestamp ON ANALYTICS_DATASET(timestamp);
-CREATE INDEX idx_action ON ANALYTICS_DATASET(action);
-CREATE INDEX idx_risk_score ON ANALYTICS_DATASET(risk_score);
+CREATE INDEX idx_validations_timestamp ON validations(timestamp);
+CREATE INDEX idx_validations_decision ON validations(decision);
+CREATE INDEX idx_validations_fingerprint ON validations(fingerprint_hash);
+CREATE INDEX idx_validations_domain ON validations(domain);
 ```
 
 **Access Pattern**:
@@ -358,17 +356,17 @@ CREATE INDEX idx_risk_score ON ANALYTICS_DATASET(risk_score);
 -- Fraud rate over time
 SELECT DATE(timestamp) as day,
        COUNT(*) as total,
-       SUM(CASE WHEN action='block' THEN 1 ELSE 0 END) as blocked
-FROM ANALYTICS_DATASET
+       SUM(CASE WHEN decision='block' THEN 1 ELSE 0 END) as blocked
+FROM validations
 WHERE timestamp >= datetime('now', '-7 days')
 GROUP BY day;
 
--- Model accuracy comparison
-SELECT random_forest_version,
-       AVG(random_forest_score) as avg_rf_score,
-       AVG(decision_tree_score) as avg_dt_score
-FROM ANALYTICS_DATASET
-GROUP BY random_forest_version;
+-- Score distribution by model version
+SELECT model_version,
+       AVG(risk_score) as avg_score,
+       COUNT(*) as total
+FROM validations
+GROUP BY model_version;
 ```
 
 ## Deployment Architecture
@@ -534,18 +532,18 @@ logger.info({
 ```sql
 -- Real-time fraud rate
 SELECT
-  COUNT(*) FILTER (WHERE action='block') * 100.0 / COUNT(*) as fraud_rate
-FROM ANALYTICS_DATASET
+  COUNT(*) FILTER (WHERE decision='block') * 100.0 / COUNT(*) as fraud_rate
+FROM validations
 WHERE timestamp >= datetime('now', '-1 hour');
 
--- Model performance
+-- Decision distribution
 SELECT
-  action,
-  AVG(random_forest_score) as avg_score,
+  decision,
+  AVG(risk_score) as avg_score,
   COUNT(*) as count
-FROM ANALYTICS_DATASET
+FROM validations
 WHERE timestamp >= datetime('now', '-24 hours')
-GROUP BY action;
+GROUP BY decision;
 ```
 
 ### Alerting

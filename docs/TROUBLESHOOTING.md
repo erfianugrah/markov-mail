@@ -45,7 +45,7 @@ npm run cli test:api test@example.com --debug
 # 4. Check recent error rate
 wrangler d1 execute DB --remote --command="
   SELECT COUNT(*) as errors
-  FROM ANALYTICS_DATASET
+  FROM validations
   WHERE timestamp >= datetime('now', '-1 hour')
     AND error IS NOT NULL
 "
@@ -732,16 +732,16 @@ wrangler d1 execute DB --remote --command="
       ELSE '0.65-1.00'
     END as score_range,
     COUNT(*) as count
-  FROM ANALYTICS_DATASET
+  FROM validations
   WHERE timestamp >= datetime('now', '-24 hours')
   GROUP BY score_range
 "
 
 # Emails near decision boundary
 wrangler d1 execute DB --remote --command="
-  SELECT email, risk_score, action, reason
-  FROM ANALYTICS_DATASET
-  WHERE risk_score BETWEEN 0.3 AND 0.4
+  SELECT email_local_part, domain, risk_score, decision, block_reason
+  FROM validations
+  WHERE risk_score BETWEEN 0.3 AND 0.5
     AND timestamp >= datetime('now', '-1 hour')
   LIMIT 20
 "

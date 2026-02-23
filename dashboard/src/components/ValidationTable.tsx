@@ -156,7 +156,7 @@ export default function ValidationTable({ apiKey, hours = 24 }: ValidationTableP
       <CardContent className="p-0">
         <div className="border border-border rounded-lg overflow-hidden mx-6 mb-6">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-full table-fixed">
+            <table className="w-full min-w-full table-fixed" aria-label="Recent email validations">
               <colgroup>
                 <col className="w-[140px]" />
                 <col className="w-[220px]" />
@@ -205,7 +205,7 @@ export default function ValidationTable({ apiKey, hours = 24 }: ValidationTableP
                   paginatedData.map((validation, idx) => (
                     <tr
                       key={`${validation.timestamp}-${idx}`}
-                      className="border-t border-border hover:bg-muted/40 transition-colors cursor-pointer"
+                      className="border-t border-border hover:bg-muted/40 transition-colors"
                     >
                       <td className="px-3 py-3.5 text-sm text-foreground whitespace-nowrap">
                         {new Date(validation.timestamp).toLocaleDateString(undefined, {

@@ -86,7 +86,7 @@ export default function ModelMetrics({ apiKey }: ModelMetricsProps) {
         </CardHeader>
         <CardContent>
           <div className="h-64 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <div role="status" aria-label="Loading model metrics" className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         </CardContent>
       </Card>

@@ -19,7 +19,6 @@ export {
 export {
   extractPatternFamily,
   analyzePatternFamilies,
-  getPatternRiskScore,
   type PatternType,
   type PatternFamilyResult,
 } from './pattern-family';
