@@ -56,6 +56,14 @@ export interface ValidationSignals {
     ttl?: number | null;
     failure?: string;
   };
+  // Random Forest model signals
+  randomForestVersion?: string;
+  randomForestScore?: number | null;
+  featureVector?: Record<string, number> | null;
+  // Linguistic/structure/statistical detail signals
+  linguisticSignals?: Record<string, number | boolean>;
+  structureSignals?: Record<string, number | boolean>;
+  statisticalSignals?: Record<string, number>;
 }
 
 export interface EmailValidationResult {

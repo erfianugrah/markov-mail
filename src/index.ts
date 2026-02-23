@@ -269,7 +269,7 @@ app.post('/validate', async (c) => {
 
 	const metadata: Record<string, any> = {
 		version: pkg.version,
-		modelVersion: fraud?.signals?.decisionTreeVersion || 'unavailable',
+		modelVersion: fraud?.signals?.randomForestVersion || fraud?.signals?.decisionTreeVersion || 'unavailable',
 	};
 
 	if (fraud?.signals?.experimentId) {

@@ -783,6 +783,9 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 					ttl: mxAnalysis?.ttl ?? null,
 					failure: mxAnalysis?.failure,
 				},
+				randomForestVersion: randomForestVersion,
+				randomForestScore: randomForestResult ? randomForestResult.score : null,
+				featureVector: featureVector ?? null,
 			},
 		});
 

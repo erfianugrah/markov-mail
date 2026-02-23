@@ -16,14 +16,20 @@ export async function generateFingerprint(request: Request): Promise<Fingerprint
   const asnHeader = headers.get('cf-asn');
   const asn = cf.asn ?? (asnHeader ? parseInt(asnHeader, 10) : 0);
   const asOrg = cf.asOrganization ?? headers.get('cf-as-organization') ?? '';
-  // Use ?? (not ||) so that a valid bot score of 0 is preserved instead of being treated as falsy
+  // Cloudflare Bot Management scores range 1 (bot) to 99 (human).
+  // Without the Enterprise Bot Management add-on the score is always 0
+  // ("not computed") or 1 ("automated" per basic Bot Fight Mode, which
+  // flags ALL non-browser traffic including legitimate API consumers).
+  // Scores ≤ 1 are unreliable for fraud heuristics — treat as undefined
+  // so downstream rules skip the check instead of blocking every curl/API call.
   const botScoreHeader = headers.get('cf-bot-score');
   const parsedBotScore = botScoreHeader !== null ? parseInt(botScoreHeader, 10) : NaN;
-  const botScore = Number.isFinite(parsedBotScore) ? parsedBotScore : (cf.botManagement?.score ?? 0);
+  const rawBotScore = Number.isFinite(parsedBotScore) ? parsedBotScore : (cf.botManagement?.score ?? undefined);
+  const botScore = (rawBotScore !== undefined && rawBotScore > 1) ? rawBotScore : undefined;
   const deviceType = headers.get('cf-device-type') ?? cf.deviceType ?? '';
 
-  // Create composite fingerprint string
-  const fingerprintString = `${ip}:${ja4}:${asn}:${deviceType}:${botScore}`;
+  // Create composite fingerprint string (use 0 for undefined botScore to keep hashes stable)
+  const fingerprintString = `${ip}:${ja4}:${asn}:${deviceType}:${botScore ?? 0}`;
 
   // Generate SHA-256 hash
   const hash = await hashString(fingerprintString);
