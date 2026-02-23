@@ -539,7 +539,9 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			applyRules(sequentialConfidence, heuristicsConfig.sequentialConfidence);
 			applyRules(digitRatio, heuristicsConfig.digitRatio);
 			applyRules(plusRisk, heuristicsConfig.plusAddressing);
-			applyRules(fingerprint.botScore, heuristicsConfig.botScore);
+			// Bot score intentionally excluded — this is an API service so every
+			// legitimate consumer (backend servers, curl, CI) gets a low bot score.
+			// Risk scoring is handled entirely by the random forest model.
 
 			if (heuristicsApplied.length > 0) {
 				logger.info({

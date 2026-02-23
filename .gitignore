@@ -182,10 +182,8 @@ data*
 !cli/commands/dataset/
 public/dashboard/
 
-# Auto-generated production models (uploaded to KV, not committed)
+# Auto-generated intermediate model files
 config/production/*.auto.json
-config/production/random-forest*.json
-config/production/decision-tree*.json
 !config/production/*.example.json
 
 # Analysis archives (temporary data from tuning sessions)

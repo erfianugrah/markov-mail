@@ -17,7 +17,6 @@ export interface RiskHeuristicsConfig {
 	sequentialConfidence: HeuristicRule[];
 	digitRatio: HeuristicRule[];
 	plusAddressing: HeuristicRule[];
-	botScore: HeuristicRule[];
 }
 
 const DEFAULT_RISK_HEURISTICS: RiskHeuristicsConfig = {
@@ -39,10 +38,6 @@ const DEFAULT_RISK_HEURISTICS: RiskHeuristicsConfig = {
 	],
 	plusAddressing: [
 		{ threshold: 0.8, decision: 'block', reason: 'heuristic_plus_tag_abuse', minScoreOffset: 0.03 },
-	],
-	botScore: [
-		{ threshold: 30, direction: 'lte', decision: 'block', reason: 'heuristic_bot_score_extreme', minScoreOffset: 0.02 },
-		{ threshold: 40, direction: 'lte', decision: 'warn', reason: 'heuristic_bot_score_high', minScoreOffset: 0.04 },
 	],
 };
 
@@ -79,7 +74,6 @@ function normalizeConfig(raw?: Partial<RiskHeuristicsConfig>): RiskHeuristicsCon
 		sequentialConfidence: normalizeList(raw?.sequentialConfidence ?? DEFAULT_RISK_HEURISTICS.sequentialConfidence),
 		digitRatio: normalizeList(raw?.digitRatio ?? DEFAULT_RISK_HEURISTICS.digitRatio),
 		plusAddressing: normalizeList(raw?.plusAddressing ?? DEFAULT_RISK_HEURISTICS.plusAddressing),
-		botScore: normalizeList(raw?.botScore ?? DEFAULT_RISK_HEURISTICS.botScore),
 	};
 }
 
@@ -96,7 +90,7 @@ function validateHeuristics(raw: any): raw is Partial<RiskHeuristicsConfig> {
 		return false;
 	}
 
-	const lists = ['tldRisk', 'domainReputation', 'sequentialConfidence', 'digitRatio', 'plusAddressing', 'botScore'] as const;
+	const lists = ['tldRisk', 'domainReputation', 'sequentialConfidence', 'digitRatio', 'plusAddressing'] as const;
 	for (const key of lists) {
 		if (raw[key] !== undefined) {
 			if (!Array.isArray(raw[key])) {

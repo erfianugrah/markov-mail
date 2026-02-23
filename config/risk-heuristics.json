@@ -62,21 +62,5 @@
       "reason": "heuristic_plus_tag_abuse",
       "minScoreOffset": 0.03
     }
-  ],
-  "botScore": [
-    {
-      "threshold": 30,
-      "direction": "lte",
-      "decision": "block",
-      "reason": "heuristic_bot_score_extreme",
-      "minScoreOffset": 0.02
-    },
-    {
-      "threshold": 40,
-      "direction": "lte",
-      "decision": "warn",
-      "reason": "heuristic_bot_score_high",
-      "minScoreOffset": 0.04
-    }
   ]
 }
