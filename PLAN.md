@@ -288,6 +288,32 @@ Items are grouped by severity and ordered by recommended fix priority within eac
 
 ---
 
+## Training Pipeline Review – Resolved (2026-02-23, PR #5)
+
+All findings from the comprehensive training pipeline review are now fixed in commit `9ba1e08`.
+
+### Critical (Resolved)
+- **C1. Train/serve identity skew** — Fixed: 40% of both legit and fraud emails now omit name via `NO_NAME_RATIO`.
+- **C2. Feature export row count mismatch** — Fixed: Added row count logging to feature export for sanity checking.
+- **C3. Dated patterns mislabeled** — Fixed: Added `generateDatedLegitEmail()` + reduced fraud dated weight.
+
+### High (Resolved)
+- **H1. Hardcoded model version** — Fixed: Added `--version` CLI flag to `train_forest.py`.
+- **H2. Static conflict zone thresholds** — Fixed: Added `--conflict-entropy-threshold` and `--conflict-reputation-threshold` CLI args.
+- **H3. Platt overfits with --no-split** — Fixed: Uses OOB predictions (`oob_score=True`) for unbiased calibration.
+- **H4. No shuffle in feature export** — Fixed: Added `--shuffle` flag for Fisher-Yates shuffle.
+- **H5. Gibberish generator too pronounceable** — Fixed: Added 5 new realistic gibberish generators.
+
+### Medium (Resolved)
+- **M3. Weak PRNG** — Fixed: Replaced LCG with mulberry32.
+- **M6. 4 decimal rounding** — Fixed: Increased to 6 decimal places.
+
+### Low (Resolved)
+- **L1. Deprecated files** — Fixed: Deleted `train.ts` and `train_forest_wrapper.ts`.
+- **L3. checkFeatureAlignment never called** — Fixed: Called on first evaluation after model load.
+
+---
+
 ## Testing & Validation
 
 After fixes, verify:

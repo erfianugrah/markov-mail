@@ -2,6 +2,59 @@
 
 ## [Unreleased]
 
+### 2026-02-23 - Training Pipeline Fixes (PR #5)
+
+**Critical/High/Medium fixes across the entire training pipeline.**
+
+#### Synthetic Data Generator (`cli/commands/data/synthetic.ts`)
+
+- **C1 – Identity skew fix**: 40% of both legit and fraud emails now omit the `name` field, matching production API reality where callers rarely send display names. Previously all 500K fraud rows had names while production API traffic almost never does.
+- **C3 – Dated pattern fix**: Added `generateDatedLegitEmail()` — name+year on a normal domain (e.g., `sarah.connor1985@gmail.com`) is now also generated as legitimate (8% of legit pool). Reduced fraud dated weight from 10→6. Previously all dated patterns were mislabeled as fraud.
+- **H5 – Realistic gibberish**: Added 5 new fraud generators that produce genuinely machine-looking patterns instead of pronounceable CV alternation:
+  - Alphanumeric gibberish (`a1b2c3d4e5`)
+  - Hex strings (`5f3a2b1c`)
+  - UUID prefixes (`550e8400-e29b`)
+  - Base64-like (`dGVzdA==`)
+  - Consonant clusters (`xkq7mpwz`)
+- **M3 – PRNG replacement**: Replaced weak LCG (`x * 9301 + 49297 % 233280`) with mulberry32 — full-period 2^32 PRNG with proper distribution.
+- CSV output now includes `source` column to match `main.csv` format.
+
+#### Training Script (`cli/commands/model/train_forest.py`)
+
+- **H1 – Version flag**: Added `--version` CLI argument. Auto-generates `YYYYMMDD-forest` if not provided. No more hardcoded `"3.0.0-forest"`.
+- **H2 – Configurable conflict zone**: Added `--conflict-entropy-threshold` (default 3.0) and `--conflict-reputation-threshold` (default 0.6) CLI arguments. Previously hardcoded.
+- **H3 – OOB calibration**: When `--no-split` is used, Platt calibration now uses out-of-bag (OOB) predictions (`oob_score=True`, `bootstrap=True`) instead of training predictions. Prevents overconfident sigmoid that the old approach produced.
+- **M6 – Precision**: Tree threshold and leaf probability rounding increased from 4 to 6 decimal places.
+
+#### Feature Export (`cli/commands/features/export.ts`)
+
+- **H4 – Shuffle flag**: Added `--shuffle` for Fisher-Yates shuffle before processing. Critical when `--limit` is used to avoid skewed samples.
+- Row count logging: Now logs input→output row counts for sanity checking.
+
+#### Runtime (`src/models/random-forest.ts`)
+
+- **L3 – Feature alignment**: `checkFeatureAlignment()` is now called on first evaluation after model load. Logs warnings for mismatched features between the model and the runtime feature vector.
+
+#### Cleanup
+
+- **L1 – Deprecated files deleted**: Removed `cli/commands/model/train.ts` and `cli/commands/model/train_forest_wrapper.ts`. Removed their `tree:train` and `forest:train` CLI entries.
+
+#### Model Metadata
+
+Updated model artifact structure:
+```json
+{
+  "meta": {
+    "version": "4.0.0-forest",
+    "config": {
+      "conflict_entropy_threshold": 3.0,
+      "conflict_reputation_threshold": 0.6,
+      "oob_calibration": true
+    }
+  }
+}
+```
+
 ### 2025-12-08 - Fraud Middleware Hardening
 
 **Improvements**:

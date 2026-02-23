@@ -10,10 +10,10 @@
 | Metric | Value |
 |--------|-------|
 | **Source Files** | 45 TypeScript (src/) |
-| **CLI Files** | 39 TypeScript/Python (cli/) |
+| **CLI Files** | 37 TypeScript/Python (cli/) |
 | **Test Files** | 23 (tests/) |
 | **Source Lines** | ~13,000 (src/) |
-| **Dataset** | 144,637 labeled emails |
+| **Dataset** | 1,000,000 labeled emails (data/main.csv) |
 | **Feature Count** | 45 features across 10 categories |
 
 ---
@@ -114,11 +114,13 @@
 - **Primary**: Random Forest (`random_forest.json` in KV as `random_forest.json`)
 - **Fallback**: Decision Tree (`decision_tree.json` in KV)
 - **Hot-reload**: 60s cache TTL, version tracking via metadata
-- **Training**: Python/scikit-learn via `npm run cli -- model:train`
+- **Training**: Python/scikit-learn via `npm run cli -- model:train` or `npm run pipeline`
+- **Calibration**: OOB-based Platt scaling when `--no-split`, held-out test set otherwise
+- **Feature alignment**: `checkFeatureAlignment()` validates model↔runtime feature consistency on first evaluation
 
 ### Model Files
-- `config/production/random-forest.auto.json` - Production RF model
-- `config/production/decision-tree.example.json` - Example tree structure
+- `config/production/random-forest.json` - Production RF model (committed)
+- `config/production/random-forest.auto.json` - Auto-generated RF model (gitignored)
 - `config/production/config.json` - Production runtime config (thresholds, weights)
 
 ---

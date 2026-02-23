@@ -1,7 +1,7 @@
-# Model Training v3.0 - Unified Random Forest Pipeline
+# Model Training v3.1 - Unified Random Forest Pipeline
 
-**Version**: 3.0.0
-**Date**: 2025-11-30
+**Version**: 3.1.0
+**Date**: 2026-02-23
 **Status**: Production Ready
 
 ## Overview
@@ -21,6 +21,9 @@ npm run cli model:train [options]
 - `--max-depth <n>` - Maximum tree depth (default: 6)
 - `--min-samples-leaf <n>` - Minimum samples per leaf (default: 20)
 - `--conflict-weight <n>` - Weight for conflict zone samples (default: 20.0)
+- `--conflict-entropy-threshold <n>` - Bigram entropy threshold for conflict zone (default: 3.0)
+- `--conflict-reputation-threshold <n>` - Domain reputation threshold for conflict zone (default: 0.6)
+- `--version <string>` - Model version string (default: auto-generated `YYYYMMDD-forest`)
 - `--upload` - Upload to KV after training
 - `--skip-mx` - Skip MX lookups (faster iteration)
 
@@ -41,12 +44,18 @@ The training uses strategic sample weighting to handle **high-entropy fraud patt
 ### Conflict Zone Definition
 
 ```python
+# Thresholds are configurable via CLI (defaults shown)
 conflict_mask = (bigram_entropy > 3.0) & (domain_reputation_score >= 0.6)
 ```
 
+Override with `--conflict-entropy-threshold` and `--conflict-reputation-threshold`:
+```bash
+npm run cli model:train -- --conflict-entropy-threshold 2.5 --conflict-reputation-threshold 0.5
+```
+
 This identifies samples where:
-- **High bigram entropy** (>3.0) - Pronounceable but random-looking local parts
-- **Sketchy domains** (>=0.6) - Free providers with high abuse rates (mail.com, gmx.com, email.com)
+- **High bigram entropy** (>3.0 default) - Pronounceable but random-looking local parts
+- **Sketchy domains** (>=0.6 default) - Free providers with high abuse rates (mail.com, gmx.com, email.com)
 
 ### Weighting Strategy
 
@@ -141,10 +150,13 @@ npm run cli model:train -- --n-trees 20
 
 ```bash
 # Export features with MX lookups (2-4 hours for large datasets)
-npm run cli features:export --input data/main.csv --output data/features/export.csv
+npm run cli features:export -- --input data/main.csv --output data/features/export.csv
 
 # OR: Skip MX for faster iteration (30 seconds)
-npm run cli features:export --skip-mx
+npm run cli features:export -- --skip-mx
+
+# Shuffle rows before processing (important when using --limit for sampling)
+npm run cli features:export -- --shuffle --limit 100000
 ```
 
 **Output**: `data/features/export.csv` (45 features + label column)
@@ -330,19 +342,37 @@ The conflict zone weighting solved the high-entropy fraud detection problem wher
 
 ## Model Versioning
 
-Models include version metadata:
+Models include version metadata. Use `--version` to set explicitly, or let the trainer auto-generate from the date:
+
+```bash
+# Explicit version
+python train_forest.py --version "4.0.0-forest" ...
+
+# Auto-generated (defaults to YYYYMMDD-forest)
+python train_forest.py ...
+```
 
 ```json
 {
   "meta": {
-    "version": "3.0.0-forest",
+    "version": "4.0.0-forest",
     "features": [...],
     "tree_count": 50,
     "config": {
       "n_trees": 50,
       "max_depth": 6,
       "min_samples_leaf": 20,
-      "conflict_weight": 20.0
+      "conflict_weight": 20.0,
+      "conflict_entropy_threshold": 3.0,
+      "conflict_reputation_threshold": 0.6,
+      "no_split": true,
+      "oob_calibration": true
+    },
+    "calibration": {
+      "method": "platt",
+      "intercept": -5.123456,
+      "coef": 12.345678,
+      "samples": 1000000
     }
   },
   "forest": [...]

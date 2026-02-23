@@ -1,8 +1,10 @@
 # Calibration
 
-## Current Status (2025‑11‑30)
+## Current Status (2026‑02‑23)
 
-Random Forest models are now **calibrated with Platt scaling** on a held-out validation split. The training command captures the logistic coefficients and embeds them in the model metadata so the Worker can convert raw forest votes into well-behaved probabilities before applying the warn/block thresholds.
+Random Forest models are now **calibrated with Platt scaling** using unbiased predictions. The training command captures the logistic coefficients and embeds them in the model metadata so the Worker can convert raw forest votes into well-behaved probabilities before applying the warn/block thresholds.
+
+**Key improvement (v3.1)**: When training with `--no-split` (production mode), calibration now uses **out-of-bag (OOB) predictions** instead of training predictions. Each sample's OOB score comes only from trees that did NOT see it during bootstrap, preventing the overconfident sigmoid that Platt-on-training-data produces.
 
 ## Workflow
 
@@ -14,7 +16,8 @@ Random Forest models are now **calibrated with Platt scaling** on a held-out val
      --output config/production/random-forest-balanced.2025-12-01.json
    ```
 
-   - If you skip `--no-split`, the trainer automatically reserves 20% of the data for validation, exports `data/calibration/latest.csv`, and fits a `LogisticRegression` model over the raw scores.
+   - If you skip `--no-split`, the trainer reserves 20% for validation, exports `data/calibration/latest.csv`, and fits Platt scaling on the held-out test scores.
+   - With `--no-split` (production mode), the trainer uses **OOB predictions** (`oob_score=True`, `bootstrap=True`) for unbiased calibration. Each sample's score comes only from trees that didn't see it during training.
    - The resulting intercept/coef plus sample count are stored under `meta.calibration`.
 
 2. **(Optional) Refit / audit calibration**

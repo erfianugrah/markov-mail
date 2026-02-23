@@ -46,8 +46,8 @@ npm run cli model:train -- --n-trees 1 --upload --kv-key decision_tree.json
 ```
 
 Or manually:
-1. Export features: `npm run cli features:export -- --input data/main.csv --output data/features/export.csv`
-2. Train model with CLI (internally uses Python/scikit-learn)
-3. Upload: `npm run cli kv:put -- --binding CONFIG --key <model_key> --file <model_file>`
+1. Export features: `npm run cli features:export -- --input data/main.csv --output data/features/export.csv --shuffle`
+2. Train model: `npm run cli model:train -- --n-trees 50 --version "4.0.0-forest" --upload`
+3. Or use Python directly: `python cli/commands/model/train_forest.py --dataset data/features/export.csv --output config/production/random-forest.json --no-split --version "4.0.0-forest"`
 
 For detailed training instructions, see [MODEL_TRAINING.md](./MODEL_TRAINING.md).

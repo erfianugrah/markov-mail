@@ -82,11 +82,14 @@ The `--search` parameter accepts a JSON array of training configs:
 - `label`: Descriptive name for this run
 - `nTrees`: Number of trees (1=decision tree, 10+=random forest)
 - `maxDepth`: Maximum tree depth (default: 6)
-- `min-samples-leaf`: Minimum samples per leaf (default: 20)
+- `minSamplesLeaf`: Minimum samples per leaf (default: 20)
 - `conflictWeight`: Sample weight for high-entropy conflict zone (default: 20.0)
+- `conflictEntropyThreshold`: Bigram entropy threshold for conflict zone (default: 3.0)
+- `conflictReputationThreshold`: Domain reputation threshold for conflict zone (default: 0.6)
 - `skipMx`: Skip MX lookups for faster iteration (default: false)
 - `noSplit`: Train on 100% of data vs 80/20 split (default: false, use `true` for production)
 - `featureMode`: `full`, `no-mx`, or `quick`
+- `version`: Model version string (default: auto-generated from date)
 
 ### Adaptive Search
 
@@ -316,7 +319,7 @@ The `manifest.json` contains complete run information:
 - Train on 100% of data
 - No test set evaluation
 - Maximum learning from available data
-- **Calibration uses training set (100% of data) ← CRITICAL**
+- **Calibration uses OOB (out-of-bag) predictions for unbiased Platt scaling** ← Each sample's score comes only from trees that didn't see it during bootstrap
 
 ## Calibration System
 
@@ -330,8 +333,9 @@ calibrated_score = sigmoid(intercept + coef * raw_score)
 
 **Key Requirements:**
 1. Use maximum available data for calibration
-2. Production mode must use full training set
+2. Production mode (`--no-split`) uses OOB predictions for unbiased calibration
 3. Minimum 100K samples recommended
+4. OOB accuracy is logged automatically when `--no-split` is used
 
 ### Threshold Optimization
 

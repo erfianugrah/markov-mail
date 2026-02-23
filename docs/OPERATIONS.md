@@ -1,7 +1,7 @@
 # Operations Guide
 
-**Version**: 3.0.1
-**Last Updated**: 2025-12-01
+**Version**: 3.1.0
+**Last Updated**: 2026-02-23
 
 Complete operations guide for the Markov Mail fraud detection system, including training pipelines, deployments, monitoring, and troubleshooting.
 
@@ -74,8 +74,16 @@ npm run pipeline -- --resume latest
 npm run cli -- data:synthetic -- \
   --count 20000 \
   --output data/synthetic-latest.csv \
-  --legit-ratio 0.7
+  --legit-ratio 0.7 \
+  --seed 2025
 ```
+
+The synthetic generator now:
+- Strips names from 40% of emails (matching production API usage patterns)
+- Includes dated-legit patterns (name+year on normal domains labeled as legitimate)
+- Generates realistic gibberish (hex, UUID, base64, consonant clusters) alongside pronounceable patterns
+- Uses mulberry32 PRNG for reproducible, well-distributed output
+- Outputs `email,name,label,source` CSV format
 
 #### Step 4: Local Smoke Test
 
@@ -511,5 +519,5 @@ See output of `npm run cli` for complete command list.
 
 ---
 
-**Last Updated**: 2025-12-01
-**Version**: 3.0.1
+**Last Updated**: 2026-02-23
+**Version**: 3.1.0

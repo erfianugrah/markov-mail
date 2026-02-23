@@ -1,7 +1,7 @@
 # Scoring Engine
 
-**Version**: 3.0.0
-**Last Updated**: 2025-11-30
+**Version**: 3.1.0
+**Last Updated**: 2026-02-23
 
 ## Overview
 
@@ -55,6 +55,8 @@ The system attempts to load models in priority order:
 
 ```typescript
 // 1. Try Random Forest (primary)
+// On first evaluation, checkFeatureAlignment() validates that model features
+// match the runtime feature vector and logs warnings for any mismatches.
 const rfLoaded = await loadRandomForestModel(c.env);
 if (rfLoaded) {
   rfResult = evaluateRandomForest(featureVector);
