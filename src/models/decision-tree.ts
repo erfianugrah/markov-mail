@@ -160,21 +160,29 @@ export function evaluateDecisionTree(
 	};
 }
 
+const MAX_TREE_DEPTH = 50;
+
 function traverseNode(
 	node: DecisionTree,
 	features: Record<string, PrimitiveValue>,
-	path: string[]
+	path: string[],
+	depth: number = 0
 ): number {
 	if (node.t === 'l') {
 		path.push(node.reason || 'leaf');
 		return clampScore(node.v);
 	}
 
+	if (depth >= MAX_TREE_DEPTH) {
+		path.push('max_depth_exceeded');
+		return 0;
+	}
+
 	const featureValue = features[node.f];
 	const conditionMet = evaluateCondition(featureValue, node.v, node.operator);
 	path.push(`${node.f} ${node.operator ?? '<='} ${node.v} :: ${conditionMet ? 'left' : 'right'}`);
 
-	return traverseNode(conditionMet ? node.l : node.r, features, path);
+	return traverseNode(conditionMet ? node.l : node.r, features, path, depth + 1);
 }
 
 function evaluateCondition(
@@ -184,9 +192,10 @@ function evaluateCondition(
 ): boolean {
 	switch (operator) {
 		case '==':
-			return value === threshold;
+			// Use loose equality so numeric '1' matches 1
+			return value == threshold;
 		case '!=':
-			return value !== threshold;
+			return value != threshold;
 		case '>':
 			return typeof value === 'number' && typeof threshold === 'number' && value > threshold;
 		case '>=':

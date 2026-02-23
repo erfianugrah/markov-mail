@@ -32,7 +32,7 @@ import { loadRiskHeuristics, type HeuristicRule } from '../services/risk-heurist
 import { writeValidationMetric } from '../utils/metrics';
 import { getConfig } from '../config';
 import { buildFeatureVector, type FeatureVector } from '../utils/feature-vector';
-import { computeIdentitySignals } from '../utils/identity-signals';
+import { computeIdentitySignals, type IdentitySignals } from '../utils/identity-signals';
 import { computeGeoSignals } from '../utils/geo-signals';
 import { resolveMXRecords, getCachedMXRecords } from '../services/mx-resolver';
 import { getWellKnownMX } from '../utils/known-mx-providers';
@@ -186,7 +186,14 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			clientTimezone: headers.get('sec-ch-ua-timezone') || headers.get('timezone') || headers.get('x-timezone'),
 			edgeTimezone: cf.timezone || headers.get('cf-timezone'),
 		});
-		let identitySignals = computeIdentitySignals(displayName, '');
+		let identitySignals: IdentitySignals = {
+			name: displayName,
+			normalizedName: undefined,
+			tokens: [],
+			similarityScore: 0,
+			tokenOverlap: 0,
+			nameInEmail: false,
+		};
 
 		// Apply active A/B experiment overrides (if any)
 		let config = baseConfig;
@@ -600,7 +607,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 		const shouldAlert =
 			c.env.ALERT_WEBHOOK_URL &&
 			alertReasons.length > 0 &&
-			riskScore >= config.riskThresholds.warn;
+			riskScore > config.riskThresholds.warn;
 
 		if (shouldAlert) {
 			const maskedEmail = email.replace(/^(.{3}).+(@.+)$/, (_: string, start: string, end: string) => `${start}***${end}`);

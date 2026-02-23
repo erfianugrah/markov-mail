@@ -9,6 +9,9 @@
 #   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 X-API-KEY=your-secret-admin-api-key-here
 
+# Webhook URL for anomaly alerts (optional)
+# ALERT_WEBHOOK_URL=https://hooks.slack.com/services/your/webhook/url
+
 # Origin URL (optional - for forwarding requests with fraud headers)
 # Only needed if you want to forward validation requests to another service
 # ORIGIN_URL=https://your-origin-service.com/api/validate

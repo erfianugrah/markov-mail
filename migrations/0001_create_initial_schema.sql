@@ -64,21 +64,9 @@ CREATE TABLE IF NOT EXISTS validations (
     ja4_signals TEXT,
 
     pattern_classification_version TEXT,
-    latency REAL NOT NULL,
-
-    identity_similarity REAL,
-    identity_token_overlap REAL,
-    identity_name_in_email INTEGER,
-    geo_language_mismatch INTEGER,
-    geo_timezone_mismatch INTEGER,
-    geo_anomaly_score REAL,
-    mx_has_records INTEGER,
-    mx_record_count INTEGER,
-    mx_primary_provider TEXT,
-    mx_provider_hits TEXT,
-    mx_lookup_failure TEXT,
-    mx_ttl INTEGER
+    latency REAL NOT NULL
 );
+-- NOTE: identity, geo, and MX columns are added by migration 0002.
 
 CREATE INDEX IF NOT EXISTS idx_validations_timestamp ON validations(timestamp);
 CREATE INDEX IF NOT EXISTS idx_validations_decision ON validations(decision);

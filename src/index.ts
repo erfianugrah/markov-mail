@@ -6,6 +6,7 @@ import { logger } from './logger';
 import type { ValidationResult, FraudDetectionResult } from './types';
 import { updateDisposableDomains } from './services/disposable-domain-updater';
 import adminRoutes from './routes/admin';
+import { requireApiKey } from './middleware/auth';
 import { fraudDetectionMiddleware } from './middleware/fraud-detection';
 import pkg from '../package.json';
 
@@ -36,8 +37,12 @@ type AppContext = Context<{ Bindings: Env; Variables: ContextVariables }>;
 
 const app = new Hono<{ Bindings: Env; Variables: ContextVariables }>();
 
-// Enable CORS for all routes
-app.use('/*', cors());
+// Enable CORS with origin restriction
+app.use('/*', cors({
+	origin: ['https://fraud.erfi.dev'],
+	allowMethods: ['GET', 'POST', 'OPTIONS'],
+	allowHeaders: ['Content-Type', 'X-API-Key', 'Authorization'],
+}));
 
 // 🆕 GLOBAL FRAUD DETECTION - Runs on ALL POST routes by default!
 // Routes can opt-out by setting: c.set('skipFraudDetection', true)
@@ -87,8 +92,8 @@ Monitoring Mode: Set "actionOverride": "allow" in config.json
 `);
 });
 
-// Debug endpoint - Show all available fingerprinting signals
-app.get('/debug', async (c) => {
+// Debug endpoint - Show all available fingerprinting signals (requires auth)
+app.get('/debug', requireApiKey, async (c) => {
 	const signals = extractAllSignals(c.req.raw);
 	const fingerprint = await generateFingerprint(c.req.raw);
 
@@ -166,7 +171,7 @@ app.post('/signup', async (c) => {
 	return c.json({
 		success: true,
 		message: 'User account created',
-		userId: 'user_' + Math.random().toString(36).substr(2, 9),
+		userId: 'user_' + Math.random().toString(36).substring(2, 11),
 		riskScore: fraud?.riskScore,
 		decision: fraud?.decision,
 	});
@@ -196,36 +201,7 @@ app.post('/login', async (c) => {
 	});
 });
 
-/**
- * RPC Entrypoint for Service Bindings
- * RPC Entrypoint for Service Bindings
- *
- * Allows other Workers to call fraud detection directly without HTTP overhead.
- *
- * Example usage from another worker:
- *
- * // wrangler.jsonc of consuming worker:
- * {
- *   "services": [{
- *     "binding": "FRAUD_DETECTOR",
- *     "service": "markov-mail",
- *     "entrypoint": "FraudDetectionService"
- *   }]
- * }
- *
- * // In consuming worker code:
- * const result = await env.FRAUD_DETECTOR.validate({
- *   email: "user123@gmail.com",
- *   consumer: "MY_APP",
- *   flow: "SIGNUP_EMAIL_VERIFY"
- * });
- *
- * if (result.decision === 'block') {
- *   return new Response('Email rejected', { status: 400 });
- * }
- */
-
-// 🆕 CATCH-ALL ROUTE - Handle ANY POST request with email field
+// CATCH-ALL ROUTE - Handle ANY POST request with email field
 // MUST be LAST to not interfere with specific routes above
 // This ensures fraud detection runs on ALL endpoints, even undefined ones
 app.post('/*', async (c) => {

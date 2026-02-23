@@ -363,11 +363,13 @@ function classifyChar(char: string, prev?: string, next?: string): CharacterFlag
   }
 
   if (char === DIPHTHONG_HELPER) {
-    const nextIsVowel = next ? BASE_VOWELS.has(next) : false;
+    // 'w' acts as a vowel (glide) in diphthongs when preceded by a vowel:
+    // "aw", "ew", "ow" → vowel.  Otherwise it's a consonant: "wa", "we", "wi".
+    const prevIsVowel = prev ? BASE_VOWELS.has(prev) : false;
     return {
       isLetter: true,
-      isVowel: nextIsVowel,
-      isConsonant: !nextIsVowel,
+      isVowel: prevIsVowel,
+      isConsonant: !prevIsVowel,
       isDigit: false,
       isSymbol: false,
     };

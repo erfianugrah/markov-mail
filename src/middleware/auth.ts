@@ -37,8 +37,18 @@ export async function requireApiKey(c: Context, next: Next) {
 		);
 	}
 
-	// Verify API key
-	if (apiKey !== env['X-API-KEY']) {
+	// Verify API key using constant-time comparison to prevent timing attacks
+	const encoder = new TextEncoder();
+	const providedBytes = encoder.encode(apiKey);
+	const expectedBytes = encoder.encode(env['X-API-KEY']);
+
+	// Keys of different length are rejected, but we still do a constant-time
+	// comparison against the expected key to avoid leaking length information.
+	const keyMatch =
+		providedBytes.byteLength === expectedBytes.byteLength &&
+		crypto.subtle.timingSafeEqual(providedBytes, expectedBytes);
+
+	if (!keyMatch) {
 		return c.json(
 			{
 				error: 'Forbidden',

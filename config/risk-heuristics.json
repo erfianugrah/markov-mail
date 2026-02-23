@@ -45,13 +45,13 @@
     {
       "threshold": 0.9,
       "decision": "block",
-      "reason": "heuristic_sequence_numeric_extreme",
+      "reason": "heuristic_digit_ratio_extreme",
       "minScoreOffset": 0.05
     },
     {
       "threshold": 0.8,
       "decision": "warn",
-      "reason": "heuristic_sequence_numeric_high",
+      "reason": "heuristic_digit_ratio_high",
       "minScoreOffset": 0.05
     }
   ],

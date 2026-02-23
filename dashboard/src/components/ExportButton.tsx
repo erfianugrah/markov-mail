@@ -29,9 +29,13 @@ export default function ExportButton({
         ...data.map((row) =>
           headers.map((header) => {
             const value = row[header];
-            // Escape quotes and wrap in quotes if contains comma
-            const stringValue = String(value ?? '');
-            return stringValue.includes(',') || stringValue.includes('"')
+            let stringValue = String(value ?? '');
+            // Prevent CSV formula injection: prefix dangerous leading chars
+            if (/^[=+\-@\t\r]/.test(stringValue)) {
+              stringValue = `'${stringValue}`;
+            }
+            // Escape quotes and wrap in quotes if contains comma, quote, or newline
+            return stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')
               ? `"${stringValue.replace(/"/g, '""')}"`
               : stringValue;
           }).join(',')

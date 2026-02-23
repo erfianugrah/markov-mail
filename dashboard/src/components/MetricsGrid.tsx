@@ -5,6 +5,7 @@ import { getMetricsSummary } from '../lib/api';
 interface Metrics {
   totalValidations: number;
   blockRate: number;
+  warnRate: number;
   avgLatency: number;
   errorRate: number;
 }
@@ -18,6 +19,7 @@ export default function MetricsGrid({ apiKey, hours = 24 }: MetricsGridProps) {
   const [metrics, setMetrics] = useState<Metrics>({
     totalValidations: 0,
     blockRate: 0,
+    warnRate: 0,
     avgLatency: 0,
     errorRate: 0,
   });
@@ -34,11 +36,15 @@ export default function MetricsGrid({ apiKey, hours = 24 }: MetricsGridProps) {
         setError(null);
         const summary = await getMetricsSummary(hours, apiKey);
 
+        const warnRate = summary.totalValidations > 0
+          ? (summary.warnCount / summary.totalValidations * 100)
+          : 0;
         setMetrics({
           totalValidations: summary.totalValidations,
           blockRate: summary.totalValidations > 0
             ? (summary.blockCount / summary.totalValidations * 100)
             : 0,
+          warnRate,
           avgLatency: summary.avgLatency,
           errorRate: summary.errorRate,
         });
@@ -77,7 +83,7 @@ export default function MetricsGrid({ apiKey, hours = 24 }: MetricsGridProps) {
   // Calculate status colors
   const blockRateStatus = getBlockRateStatus(metrics.blockRate);
   const latencyStatus = getLatencyStatus(metrics.avgLatency);
-  const allowRate = 100 - metrics.blockRate;
+  const allowRate = 100 - metrics.blockRate - metrics.warnRate;
   const allowRateStatus = getAllowRateStatus(allowRate);
 
   return (

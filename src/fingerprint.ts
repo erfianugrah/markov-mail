@@ -8,15 +8,19 @@ export async function generateFingerprint(request: Request): Promise<Fingerprint
   const cf = (request as any).cf || {};
 
   // Extract key signals
-  const ip = headers.get('cf-connecting-ip') || '';
-  const ja4 = headers.get('cf-ja4') || cf.botManagement?.ja4 || '';
-  const ja3 = headers.get('cf-ja3-hash') || cf.botManagement?.ja3Hash || '';
-  const userAgent = headers.get('user-agent') || '';
-  const country = headers.get('cf-ipcountry') || cf.country || '';
-  const asn = cf.asn || (headers.get('cf-asn') ? parseInt(headers.get('cf-asn')!) : 0);
-  const asOrg = cf.asOrganization || headers.get('cf-as-organization') || '';
-  const botScore = parseInt(headers.get('cf-bot-score') || '0') || cf.botManagement?.score || 0;
-  const deviceType = headers.get('cf-device-type') || cf.deviceType || '';
+  const ip = headers.get('cf-connecting-ip') ?? '';
+  const ja4 = headers.get('cf-ja4') ?? cf.botManagement?.ja4 ?? '';
+  const ja3 = headers.get('cf-ja3-hash') ?? cf.botManagement?.ja3Hash ?? '';
+  const userAgent = headers.get('user-agent') ?? '';
+  const country = headers.get('cf-ipcountry') ?? cf.country ?? '';
+  const asnHeader = headers.get('cf-asn');
+  const asn = cf.asn ?? (asnHeader ? parseInt(asnHeader, 10) : 0);
+  const asOrg = cf.asOrganization ?? headers.get('cf-as-organization') ?? '';
+  // Use ?? (not ||) so that a valid bot score of 0 is preserved instead of being treated as falsy
+  const botScoreHeader = headers.get('cf-bot-score');
+  const parsedBotScore = botScoreHeader !== null ? parseInt(botScoreHeader, 10) : NaN;
+  const botScore = Number.isFinite(parsedBotScore) ? parsedBotScore : (cf.botManagement?.score ?? 0);
+  const deviceType = headers.get('cf-device-type') ?? cf.deviceType ?? '';
 
   // Create composite fingerprint string
   const fingerprintString = `${ip}:${ja4}:${asn}:${deviceType}:${botScore}`;

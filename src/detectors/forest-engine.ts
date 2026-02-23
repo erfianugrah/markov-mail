@@ -42,6 +42,9 @@ export interface ForestModel {
 	forest: CompactTreeNode[];
 }
 
+// Absolute upper bound on tree depth to prevent runaway traversal
+const ABSOLUTE_MAX_DEPTH = 50;
+
 /**
  * Predicts fraud probability using a Random Forest.
  * Runs input through all trees and returns the average probability.
@@ -56,12 +59,15 @@ export function predictForestScore(model: ForestModel, features: Record<string, 
 		return 0;
 	}
 
+	// Use model's configured max_depth if available, with an absolute safety cap
+	const maxDepth = Math.min(model.meta.config?.max_depth ?? 20, ABSOLUTE_MAX_DEPTH);
+
 	let totalScore = 0;
 	const treeCount = model.forest.length;
 
 	// Run input through every tree and accumulate scores
 	for (let i = 0; i < treeCount; i++) {
-		totalScore += traverseTree(model.forest[i], features);
+		totalScore += traverseTree(model.forest[i], features, maxDepth);
 	}
 
 	// Return average probability across all trees
@@ -76,13 +82,12 @@ export function predictForestScore(model: ForestModel, features: Record<string, 
  * @param features - Feature vector
  * @returns Fraud probability from leaf node (0.0 - 1.0)
  */
-function traverseTree(node: CompactTreeNode, features: Record<string, number>): number {
+function traverseTree(node: CompactTreeNode, features: Record<string, number>, maxDepth: number = 20): number {
 	let current = node;
 	let depth = 0;
-	const MAX_DEPTH = 20; // Safety limit
 
 	// Traverse tree iteratively
-	while (current.t === 'n' && depth < MAX_DEPTH) {
+	while (current.t === 'n' && depth < maxDepth) {
 		// Get feature value, default to 0 if missing
 		const featureValue = features[current.f] ?? 0;
 
@@ -137,6 +142,30 @@ export function predictForestScoreDetailed(
 		score: totalScore / model.forest.length,
 		treeScores,
 	};
+}
+
+/**
+ * Check that the model's expected features align with what the code provides.
+ * Logs warnings for mismatched features but does not reject the model (the
+ * engine defaults missing features to 0, which is lossy but non-fatal).
+ */
+export function checkFeatureAlignment(model: ForestModel, featureVector: Record<string, number>): void {
+	const modelFeatures = new Set(model.meta.features);
+	const vectorKeys = new Set(Object.keys(featureVector));
+
+	const missingInVector = model.meta.features.filter(f => !vectorKeys.has(f));
+	const extraInVector = Object.keys(featureVector).filter(k => !modelFeatures.has(k));
+
+	if (missingInVector.length > 0) {
+		console.warn(
+			`[forest-engine] Model expects ${missingInVector.length} features not in feature vector (will default to 0): ${missingInVector.join(', ')}`
+		);
+	}
+	if (extraInVector.length > 0) {
+		console.warn(
+			`[forest-engine] Feature vector has ${extraInVector.length} features not in model (unused): ${extraInVector.join(', ')}`
+		);
+	}
 }
 
 /**

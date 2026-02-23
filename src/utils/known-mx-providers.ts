@@ -157,7 +157,7 @@ export const WELL_KNOWN_MX_PROVIDERS: Record<string, MXAnalysis> = {
 	},
 	'aol.com': {
 		hasRecords: true,
-		recordCount: 2,
+		recordCount: 1,
 		records: [
 			{ preference: 10, exchange: 'mx-aol.mail.gm0.yahoodns.net' },
 		],

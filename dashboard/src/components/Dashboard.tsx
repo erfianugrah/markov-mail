@@ -40,7 +40,10 @@ export default function Dashboard() {
         setAutoRefresh(true);
       }
       if (storedInterval) {
-        setRefreshInterval(parseInt(storedInterval, 10));
+        const parsed = parseInt(storedInterval, 10);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          setRefreshInterval(parsed);
+        }
       }
     }
   }, []);

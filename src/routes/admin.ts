@@ -48,17 +48,22 @@ function deepMergeConfigs<T extends Record<string, any>>(target: T, source: Part
 
 /**
  * Validate D1 SQL query for security
- * Only allows safe SELECT queries on the validations table
+ * Only allows safe SELECT queries on the allowed tables.
+ *
+ * Uses word-boundary matching for dangerous keywords to avoid false positives
+ * on column names like "last_updated". Also blocks SQLite-specific attack
+ * vectors (ATTACH, PRAGMA, LOAD_EXTENSION).
  */
 function validateD1Query(sql: string): { valid: boolean; error?: string } {
-	const trimmed = sql.trim().toUpperCase();
+	const trimmed = sql.trim();
+	const upper = trimmed.toUpperCase();
 
-	// Must start with SELECT
-	if (!trimmed.startsWith('SELECT')) {
-		return { valid: false, error: 'Query must start with SELECT' };
+	// Must start with SELECT (or WITH for CTEs)
+	if (!upper.startsWith('SELECT') && !upper.startsWith('WITH')) {
+		return { valid: false, error: 'Query must start with SELECT or WITH' };
 	}
 
-	// No semicolons (prevent multi-statement)
+	// No semicolons (prevent multi-statement injection)
 	if (sql.includes(';')) {
 		return { valid: false, error: 'Multiple statements not allowed (no semicolons)' };
 	}
@@ -68,21 +73,27 @@ function validateD1Query(sql: string): { valid: boolean; error?: string } {
 		return { valid: false, error: 'SQL comments not allowed' };
 	}
 
-	// Dangerous keywords not allowed
-	const dangerous = ['DROP', 'DELETE', 'UPDATE', 'INSERT', 'ALTER', 'CREATE', 'TRUNCATE', 'EXEC', 'EXECUTE'];
+	// Dangerous keywords checked with word boundaries to avoid false positives
+	// on column names (e.g. "last_updated" should NOT match "UPDATE")
+	const dangerous = [
+		'DROP', 'DELETE', 'UPDATE', 'INSERT', 'ALTER', 'CREATE', 'TRUNCATE',
+		'EXEC', 'EXECUTE', 'ATTACH', 'DETACH', 'PRAGMA', 'LOAD_EXTENSION',
+		'REPLACE', 'VACUUM', 'REINDEX',
+	];
 	for (const keyword of dangerous) {
-		if (trimmed.includes(keyword)) {
+		// Match keyword at word boundaries: preceded and followed by non-word chars or string edges
+		const pattern = new RegExp(`(?<![A-Z0-9_])${keyword}(?![A-Z0-9_])`);
+		if (pattern.test(upper)) {
 			return { valid: false, error: `Keyword '${keyword}' not allowed` };
 		}
 	}
 
-	// Must query from one of the allowed tables
+	// Must query from one of the allowed tables (word-boundary matching)
 	const allowedTables = ['VALIDATIONS', 'TRAINING_METRICS', 'AB_TEST_METRICS', 'ADMIN_METRICS'];
-	const hasValidTable = allowedTables.some(table =>
-		trimmed.includes(`FROM ${table}`) ||
-		trimmed.includes(`FROM\n${table}`) ||
-		trimmed.includes(`FROM\t${table}`)
-	);
+	const hasValidTable = allowedTables.some(table => {
+		const pattern = new RegExp(`FROM\\s+${table}(?![A-Z0-9_])`, 'i');
+		return pattern.test(trimmed);
+	});
 
 	if (!hasValidTable) {
 		return { valid: false, error: 'Query must be FROM one of: validations, training_metrics, ab_test_metrics, admin_metrics' };
