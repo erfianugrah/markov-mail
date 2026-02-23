@@ -34,9 +34,12 @@ def parse_args() -> argparse.Namespace:
     args.add_argument("--max-depth", type=int, default=6, help="Maximum tree depth (default: 6)")
     args.add_argument("--min-samples-leaf", type=int, default=20, help="Minimum samples per leaf (default: 20)")
     args.add_argument("--conflict-weight", type=float, default=20.0, help="Weight for conflict zone samples (default: 20.0)")
+    args.add_argument("--conflict-entropy-threshold", type=float, default=3.0, help="Bigram entropy threshold for conflict zone (default: 3.0)")
+    args.add_argument("--conflict-reputation-threshold", type=float, default=0.6, help="Domain reputation threshold for conflict zone (default: 0.6)")
     args.add_argument("--no-split", action="store_true", help="Train on 100%% of data (no train/test split for production)")
     args.add_argument("--calibration-output", default="data/calibration/latest.csv", help="CSV path for holdout scores/labels")
     args.add_argument("--run-id", type=str, default=None, help="Training run ID for tracking (default: timestamp)")
+    args.add_argument("--version", type=str, default=None, help="Model version string (default: auto-generated from timestamp)")
     return args.parse_args()
 
 
@@ -54,7 +57,7 @@ def tree_to_json(tree_estimator, feature_names):
             return {
                 "t": "n",  # type: node
                 "f": feature_name[node],  # feature
-                "v": round(tree_.threshold[node], 4),  # threshold value
+                "v": round(tree_.threshold[node], 6),  # threshold value
                 "l": recurse(tree_.children_left[node]),  # left child
                 "r": recurse(tree_.children_right[node]),  # right child
             }
@@ -63,12 +66,18 @@ def tree_to_json(tree_estimator, feature_names):
             value = tree_.value[node][0]
             total = value.sum()
             proba = float(value[1] / total) if total else 0.0
-            return {"t": "l", "v": round(proba, 4)}  # type: leaf, value: fraud probability
+            return {"t": "l", "v": round(proba, 6)}  # type: leaf, value: fraud probability
 
     return recurse(0)
 
 
-def calculate_sample_weights(df: pd.DataFrame, X: pd.DataFrame, conflict_weight: float = 20.0) -> np.ndarray:
+def calculate_sample_weights(
+    df: pd.DataFrame,
+    X: pd.DataFrame,
+    conflict_weight: float = 20.0,
+    entropy_threshold: float = 3.0,
+    reputation_threshold: float = 0.6,
+) -> np.ndarray:
     """
     Calculate strategic sample weights targeting the "conflict zone":
     High entropy + Sketchy domain region where certain fraud patterns and legit users overlap
@@ -78,10 +87,11 @@ def calculate_sample_weights(df: pd.DataFrame, X: pd.DataFrame, conflict_weight:
     # Identify conflict zone: high bigram_entropy + sketchy domain
     # This forces the forest to learn deeper patterns (like avg_segment_length)
     if 'bigram_entropy' in X.columns and 'domain_reputation_score' in X.columns:
-        conflict_mask = (X['bigram_entropy'] > 3.0) & (X['domain_reputation_score'] >= 0.6)
+        conflict_mask = (X['bigram_entropy'] > entropy_threshold) & (X['domain_reputation_score'] >= reputation_threshold)
 
-        print(f"  Conflict zone samples: {conflict_mask.sum():,} ({conflict_mask.sum()/len(df)*100:.1f}%)")
-        print(f"  Applying {conflict_weight}x weight to conflict zone")
+        print(f"  Conflict zone (entropy>{entropy_threshold}, reputation>={reputation_threshold}):")
+        print(f"    Samples: {conflict_mask.sum():,} ({conflict_mask.sum()/len(df)*100:.1f}%)")
+        print(f"    Applying {conflict_weight}x weight")
 
         weights[conflict_mask] = conflict_weight
     else:
@@ -127,7 +137,12 @@ def main():
 
     # Calculate strategic sample weights
     print(f"\nCalculating strategic sample weights...")
-    sample_weights = calculate_sample_weights(df, X, args.conflict_weight)
+    sample_weights = calculate_sample_weights(
+        df, X,
+        conflict_weight=args.conflict_weight,
+        entropy_threshold=args.conflict_entropy_threshold,
+        reputation_threshold=args.conflict_reputation_threshold,
+    )
 
     # Split data (or use full dataset for production)
     if args.no_split:
@@ -149,11 +164,17 @@ def main():
     print(f"  Max Depth: {args.max_depth}")
     print(f"  Min Samples/Leaf: {args.min_samples_leaf}")
 
+    # H3: Enable OOB scoring when --no-split so Platt calibration uses unbiased
+    # out-of-bag predictions instead of overfitting on training predictions.
+    use_oob = args.no_split
+
     clf = RandomForestClassifier(
         n_estimators=args.n_trees,
         max_depth=args.max_depth,
         min_samples_leaf=args.min_samples_leaf,
         random_state=42,
+        bootstrap=True,
+        oob_score=use_oob,
         n_jobs=-1,
         verbose=1
     )
@@ -185,9 +206,9 @@ def main():
         print(f"  TN: {cm[0,0]:,}  FP: {cm[0,1]:,}")
         print(f"  FN: {cm[1,0]:,}  TP: {cm[1,1]:,}")
 
-        # Conflict zone performance
+        # Conflict zone performance (using same thresholds as training)
         if 'bigram_entropy' in X_test.columns and 'domain_reputation_score' in X_test.columns:
-            conflict_test_mask = (X_test['bigram_entropy'] > 3.0) & (X_test['domain_reputation_score'] >= 0.6)
+            conflict_test_mask = (X_test['bigram_entropy'] > args.conflict_entropy_threshold) & (X_test['domain_reputation_score'] >= args.conflict_reputation_threshold)
 
             print(f"\nConflict Zone Performance (Test Set):")
             print(f"  Samples in zone: {conflict_test_mask.sum():,}")
@@ -219,17 +240,27 @@ def main():
     calibration_path = Path(args.calibration_output)
     calibration_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Use test set if available, otherwise use training set
+    # Use test set if available, otherwise use OOB predictions (H3 fix)
     if not args.no_split:
         # Development mode: use held-out test set for calibration
         calibration_scores = y_score_test
         calibration_labels = y_test
         calibration_mode = "test set (held-out 20%)"
     else:
-        # Production mode: use training set for calibration
-        calibration_scores = clf.predict_proba(X_train)[:, 1]
-        calibration_labels = y_train
-        calibration_mode = "training set (100% of data)"
+        # Production mode: use OOB (out-of-bag) predictions for unbiased calibration.
+        # Each sample's OOB score comes only from trees that did NOT see it during
+        # training, avoiding the overconfident sigmoid that Platt-on-training produces.
+        if hasattr(clf, 'oob_decision_function_'):
+            calibration_scores = clf.oob_decision_function_[:, 1]
+            calibration_labels = y_train
+            calibration_mode = "OOB predictions (unbiased, from bootstrap)"
+            print(f"  OOB accuracy: {clf.oob_score_:.4f}")
+        else:
+            # Fallback if OOB wasn't available (shouldn't happen with bootstrap=True)
+            calibration_scores = clf.predict_proba(X_train)[:, 1]
+            calibration_labels = y_train
+            calibration_mode = "training set (OOB unavailable — fallback)"
+            print(f"  ⚠️  OOB not available, falling back to training predictions")
 
     print(f"\nCalibration dataset: {calibration_mode}")
     print(f"  Samples: {len(calibration_labels):,}")
@@ -298,9 +329,15 @@ def main():
         import time
         run_id = str(int(time.time() * 1000))
 
+    # H1: Use --version CLI arg or auto-generate from timestamp
+    model_version = args.version
+    if not model_version:
+        import time
+        model_version = f"{time.strftime('%Y%m%d')}-forest"
+
     artifact = {
         "meta": {
-            "version": "3.0.0-forest",
+            "version": model_version,
             "runId": run_id,
             "nTrees": args.n_trees,
             "maxDepth": args.max_depth,
@@ -312,7 +349,10 @@ def main():
                 "max_depth": args.max_depth,
                 "min_samples_leaf": args.min_samples_leaf,
                 "conflict_weight": args.conflict_weight,
-                "no_split": args.no_split
+                "conflict_entropy_threshold": args.conflict_entropy_threshold,
+                "conflict_reputation_threshold": args.conflict_reputation_threshold,
+                "no_split": args.no_split,
+                "oob_calibration": use_oob,
             },
         },
         "forest": forest_json

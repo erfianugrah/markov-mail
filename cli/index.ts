@@ -217,17 +217,6 @@ const COMMANDS = {
 		file: 'commands/model/analyze_model.ts',
 		usage: 'model:analyze <path-to-model.json>',
 	},
-	'tree:train': {
-		description: '[DEPRECATED] Use model:train --n-trees 1',
-		file: 'commands/model/train.ts',
-		usage: 'tree:train [--max-depth <n>] [--min-samples-leaf <n>] [--skip-mx] [--upload]',
-	},
-	'forest:train': {
-		description: '[DEPRECATED] Use model:train --n-trees 10',
-		file: 'commands/model/train_forest_wrapper.ts',
-		usage: 'forest:train [--n-trees <n>] [--max-depth <n>] [--min-samples-leaf <n>] [--conflict-weight <n>] [--skip-mx] [--upload]',
-	},
-
 	// A/B Testing commands
 	'ab:create': {
 		description: 'Create new A/B test experiment',

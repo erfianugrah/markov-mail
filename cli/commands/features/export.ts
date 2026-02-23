@@ -50,10 +50,11 @@ OPTIONS
   --country-column <name> Column containing IP country   (default: ip_country)
   --language-column <name>Column containing Accept-Language (default: accept_language)
   --timezone-column <name>Column containing client timezone (default: timezone)
-  --skip-mx               Skip DNS MX lookups (faster, but omits MX features)
-  --include-email         Keep original email column in output
-  --limit <n>             Only process the first n rows (for sampling)
-  --help, -h              Show this help message
+   --skip-mx               Skip DNS MX lookups (faster, but omits MX features)
+   --include-email         Keep original email column in output
+   --limit <n>             Only process the first n rows (for sampling)
+   --shuffle               Shuffle rows before processing (important when --limit is used)
+   --help, -h              Show this help message
 
 Input labels may be 'fraud'/'legit', 0/1, or any string convertible to numbers.
 `);
@@ -209,6 +210,7 @@ export default async function exportFeatures(args: string[]) {
 	const limit = getOption(parsed, 'limit') ? Number(getOption(parsed, 'limit')) : undefined;
 	const includeEmail = hasFlag(parsed, 'include-email');
 	const skipMX = hasFlag(parsed, 'skip-mx');
+	const shuffle = hasFlag(parsed, 'shuffle');
 	const columnHints: ColumnHints = { nameColumn, countryColumn, languageColumn, timezoneColumn };
 	const mxCache = new Map<string, Promise<MXAnalysis>>();
 
@@ -217,10 +219,19 @@ export default async function exportFeatures(args: string[]) {
 	logger.info(`Output: ${outputPath}`);
 
 	const raw = readFileSync(inputPath, 'utf8');
-	const rows = parse(raw, {
+	let rows = parse(raw, {
 		columns: true,
 		skip_empty_lines: true,
 	}) as DatasetRow[];
+
+	// H4: Shuffle rows before processing so --limit produces a representative sample
+	if (shuffle) {
+		logger.info(`Shuffling ${rows.length.toLocaleString()} rows (Fisher-Yates)...`);
+		for (let i = rows.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[rows[i], rows[j]] = [rows[j], rows[i]];
+		}
+	}
 
 	if (rows.length === 0) {
 		logger.warn('No rows found in dataset.');
@@ -353,5 +364,14 @@ export default async function exportFeatures(args: string[]) {
 
 	writeFileSync(outputPath, csv, 'utf8');
 
-	logger.success(`Exported ${processed.length.toLocaleString()} rows to ${outputPath}`);
+	// Log expected vs actual row counts for sanity checking (C2 prevention)
+	const inputRowCount = rows.length;
+	const outputRowCount = processed.length;
+	const skippedCount = inputRowCount - outputRowCount;
+	if (limit !== undefined) {
+		logger.info(`Input: ${inputRowCount.toLocaleString()} rows, limit: ${limit.toLocaleString()}, output: ${outputRowCount.toLocaleString()} rows`);
+	} else if (skippedCount > 0) {
+		logger.warn(`Skipped ${skippedCount.toLocaleString()} rows (${inputRowCount.toLocaleString()} input → ${outputRowCount.toLocaleString()} output)`);
+	}
+	logger.success(`Exported ${outputRowCount.toLocaleString()} rows to ${outputPath}`);
 }

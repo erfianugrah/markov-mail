@@ -9,6 +9,7 @@ import { logger } from '../logger';
 import {
 	predictForestScore,
 	validateForestModel,
+	checkFeatureAlignment,
 	type ForestModel,
 	type ForestCalibrationMeta,
 } from '../detectors/forest-engine';
@@ -28,6 +29,7 @@ let cachedForest: ForestModel | null = null;
 let cachedForestVersion = 'unavailable';
 let lastLoadedAt = 0;
 let loadingPromise: Promise<boolean> | null = null;
+let alignmentChecked = false;
 
 /**
  * Loads the Random Forest model from KV.
@@ -133,6 +135,7 @@ export function clearRandomForestCache(): void {
 	cachedForestVersion = 'unavailable';
 	lastLoadedAt = 0;
 	loadingPromise = null;
+	alignmentChecked = false;
 }
 
 /**
@@ -163,6 +166,12 @@ export function evaluateRandomForest(
 			// Null/undefined default to 0
 			numericFeatures[key] = 0;
 		}
+	}
+
+	// L3: Check feature alignment once after model load
+	if (!alignmentChecked) {
+		checkFeatureAlignment(cachedForest, numericFeatures);
+		alignmentChecked = true;
 	}
 
 	try {

@@ -280,6 +280,10 @@ const nearMissTags = ["verify", "account", "profile", "secure", "support", "upda
 
 const NEAR_MISS_LEGIT_RATIO = 0.2;
 
+// Percentage of generated emails (both legit and fraud) that omit the name
+// field, mirroring real API usage where callers rarely send a display name.
+const NO_NAME_RATIO = 0.4;
+
 const homoglyphMap: Record<string, string[]> = {
   a: ['a', '@', '4'],
   e: ['e', '3'],
@@ -666,6 +670,128 @@ function generateAIGibberishFraud(_culture: string): { email: string; name: stri
   return { email, name: 'Synthetic Agent' };
 }
 
+// Realistic gibberish generators (H5) — patterns that look machine-generated,
+// not pronounceable CV alternation like "bafoge"
+function generateAlphanumericGibberishFraud(culture: string): { email: string; name: string } {
+  const names = namesByCulture[culture];
+  const domains = cultureDomains[culture];
+  const first = randomChoice(names.first);
+  const last = randomChoice(names.last);
+  const domain = randomChoice(domains);
+
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const length = Math.floor(Math.random() * 8) + 6; // 6-13 chars
+  let local = '';
+  for (let i = 0; i < length; i++) {
+    local += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return { email: `${local}@${domain}`, name: `${first} ${last}` };
+}
+
+function generateHexStringFraud(culture: string): { email: string; name: string } {
+  const names = namesByCulture[culture];
+  const domains = cultureDomains[culture];
+  const first = randomChoice(names.first);
+  const last = randomChoice(names.last);
+  const domain = randomChoice(domains);
+
+  const hexChars = '0123456789abcdef';
+  const length = Math.floor(Math.random() * 12) + 8; // 8-19 hex chars
+  let local = '';
+  for (let i = 0; i < length; i++) {
+    local += hexChars[Math.floor(Math.random() * hexChars.length)];
+  }
+  return { email: `${local}@${domain}`, name: `${first} ${last}` };
+}
+
+function generateUUIDPrefixFraud(culture: string): { email: string; name: string } {
+  const names = namesByCulture[culture];
+  const domains = cultureDomains[culture];
+  const first = randomChoice(names.first);
+  const last = randomChoice(names.last);
+  const domain = randomChoice(domains);
+
+  const hexChars = '0123456789abcdef';
+  const seg = (n: number) => {
+    let s = '';
+    for (let i = 0; i < n; i++) s += hexChars[Math.floor(Math.random() * 16)];
+    return s;
+  };
+  // UUID-like: 8-4-4-4 or truncated variants
+  const patterns = [
+    () => `${seg(8)}-${seg(4)}-${seg(4)}-${seg(4)}`,
+    () => `${seg(8)}-${seg(4)}`,
+    () => `${seg(8)}-${seg(4)}-${seg(4)}`,
+    () => `user-${seg(8)}`,
+  ];
+  const local = randomChoice(patterns)();
+  return { email: `${local}@${domain}`, name: `${first} ${last}` };
+}
+
+function generateBase64LikeFraud(culture: string): { email: string; name: string } {
+  const names = namesByCulture[culture];
+  const domains = cultureDomains[culture];
+  const first = randomChoice(names.first);
+  const last = randomChoice(names.last);
+  const domain = randomChoice(domains);
+
+  const b64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const length = Math.floor(Math.random() * 8) + 8; // 8-15 chars
+  let local = '';
+  for (let i = 0; i < length; i++) {
+    local += b64Chars[Math.floor(Math.random() * b64Chars.length)];
+  }
+  // Optionally append == padding (some abuse patterns look like b64)
+  if (Math.random() < 0.3) local += '==';
+  else if (Math.random() < 0.3) local += '=';
+  return { email: `${local}@${domain}`, name: `${first} ${last}` };
+}
+
+// C3 fix: Dated pattern that is LEGIT — real users use name+year all the time
+function generateDatedLegitEmail(culture: string): { email: string; name: string } {
+  const names = namesByCulture[culture];
+  const domains = cultureDomains[culture];
+
+  const first = randomChoice(names.first);
+  const last = randomChoice(names.last);
+  const domain = randomChoice(domains);
+
+  const year = Math.floor(Math.random() * 51) + 1960; // 1960-2010
+
+  const patterns = [
+    (f: string, l: string, y: number) => `${removeAccents(f.toLowerCase())}.${removeAccents(l.toLowerCase())}${y}`,
+    (f: string, l: string, y: number) => `${removeAccents(f.toLowerCase())}${removeAccents(l.toLowerCase())}${y}`,
+    (f: string, l: string, y: number) => `${removeAccents(f.toLowerCase())}_${removeAccents(l.toLowerCase())}${y}`,
+    (f: string, l: string, y: number) => `${removeAccents(l.toLowerCase())}.${removeAccents(f.toLowerCase())}${y}`,
+    (f: string, l: string, y: number) => `${removeAccents(f.toLowerCase())}${y}`,
+    (f: string, l: string, y: number) => `${removeAccents(l.toLowerCase())}${y}`,
+  ];
+
+  const local = randomChoice(patterns)(first, last, year);
+  const email = `${local}@${domain}`;
+  const name = `${first} ${last}`;
+
+  return { email, name };
+}
+
+function generateConsonantClusterFraud(culture: string): { email: string; name: string } {
+  const names = namesByCulture[culture];
+  const domains = cultureDomains[culture];
+  const first = randomChoice(names.first);
+  const last = randomChoice(names.last);
+  const domain = randomChoice(domains);
+
+  // Harsh consonant clusters that no real name has
+  const clusters = ['xkq', 'zpw', 'bvg', 'jwf', 'qzx', 'mpwz', 'kcv', 'gxn', 'zvb', 'pfk'];
+  const length = Math.floor(Math.random() * 3) + 2; // 2-4 clusters
+  let local = '';
+  for (let i = 0; i < length; i++) {
+    local += randomChoice(clusters);
+    if (Math.random() < 0.4) local += String(Math.floor(Math.random() * 10));
+  }
+  return { email: `${local}@${domain}`, name: `${first} ${last}` };
+}
+
 function generateNearMissLegitEmail(culture: string): { email: string; name: string } {
   const names = namesByCulture[culture];
   const first = randomChoice(names.first);
@@ -692,12 +818,14 @@ async function execute(args: ParsedArgs) {
   const seed = parseInt(getOption(args, 'seed') || String(Date.now()));
   const append = hasFlag(args, 'append');
 
-  // Set random seed
+  // Set random seed (mulberry32 — full-period 2^32 PRNG with good distribution)
   Math.random = (() => {
-    let x = seed;
+    let s = seed | 0;
     return () => {
-      x = (x * 9301 + 49297) % 233280;
-      return x / 233280;
+      s = (s + 0x6D2B79F5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
   })();
 
@@ -717,6 +845,9 @@ async function execute(args: ParsedArgs) {
   const cultures = Object.keys(namesByCulture);
   const emails: Array<{ email: string; name: string; label: string; source: string }> = [];
 
+  // Ratio of dated-pattern emails in the legit pool (C3 fix)
+  const DATED_LEGIT_RATIO = 0.08;
+
   // Generate legitimate emails
   logger.info(`Generating ${legitCount.toLocaleString()} legitimate emails...`);
   for (let i = 0; i < legitCount; i++) {
@@ -724,33 +855,52 @@ async function execute(args: ParsedArgs) {
       logger.info(`  Generated ${(i + 1).toLocaleString()}/${legitCount.toLocaleString()} legitimate emails`);
     }
     const culture = randomChoice(cultures);
-    const useNearMiss = Math.random() < NEAR_MISS_LEGIT_RATIO;
-    const { email, name } = useNearMiss ? generateNearMissLegitEmail(culture) : generateLegitEmail(culture);
-    emails.push({
-      email,
-      name,
-      label: 'legitimate',
-      source: useNearMiss ? 'synthetic_near_legit' : 'synthetic_legit',
-    });
+    const roll = Math.random();
+    let email: string, name: string, source: string;
+
+    if (roll < NEAR_MISS_LEGIT_RATIO) {
+      ({ email, name } = generateNearMissLegitEmail(culture));
+      source = 'synthetic_near_legit';
+    } else if (roll < NEAR_MISS_LEGIT_RATIO + DATED_LEGIT_RATIO) {
+      // C3: Dated patterns that are legitimate (name+year on normal domain)
+      ({ email, name } = generateDatedLegitEmail(culture));
+      source = 'synthetic_dated_legit';
+    } else {
+      ({ email, name } = generateLegitEmail(culture));
+      source = 'synthetic_legit';
+    }
+
+    // C1: Strip name for NO_NAME_RATIO of legit emails to match production reality
+    if (Math.random() < NO_NAME_RATIO) {
+      name = '';
+    }
+
+    emails.push({ email, name, label: 'legitimate', source });
   }
 
   // Generate fraud emails with weighted distribution to ensure typosquatting is well-represented
   logger.info(`Generating ${fraudCount.toLocaleString()} fraud emails...`);
 
   // Weighted fraud generators (typosquatting and homoglyphs get 3x weight due to their importance)
+  // H5: Added realistic gibberish generators — alphanumeric, hex, UUID, base64, consonant clusters
   const fraudGenerators = [
     { generator: generateSequentialFraud, weight: 10 },
-    { generator: generateGibberishFraud, weight: 10 },
-    { generator: generateDatedFraud, weight: 10 },
+    { generator: generateGibberishFraud, weight: 6 },               // reduced — too pronounceable
+    { generator: generateAlphanumericGibberishFraud, weight: 6 },    // H5: a1b2c3d4e5 style
+    { generator: generateHexStringFraud, weight: 5 },                // H5: 5f3a2b1c style
+    { generator: generateUUIDPrefixFraud, weight: 5 },               // H5: 550e8400-e29b style
+    { generator: generateBase64LikeFraud, weight: 4 },               // H5: dGVzdA== style
+    { generator: generateConsonantClusterFraud, weight: 4 },         // H5: xkq7mpwz style
+    { generator: generateDatedFraud, weight: 6 },                    // C3: reduced — some are legit
     { generator: generateDisposableFraud, weight: 12 },
     { generator: generatePlusAddressingFraud, weight: 10 },
     { generator: generateKeyboardWalkFraud, weight: 8 },
     { generator: generateRepeatedCharFraud, weight: 8 },
     { generator: generateMixedCaseFraud, weight: 6 },
     { generator: generateHeavyNumberFraud, weight: 10 },
-    { generator: generateTyposquattedDomainFraud, weight: 30 }, // 3x weight - critical pattern
+    { generator: generateTyposquattedDomainFraud, weight: 30 },      // 3x weight - critical pattern
     { generator: generateVpnProxyFraud, weight: 8 },
-    { generator: generateHomoglyphFraud, weight: 30 }, // 3x weight - critical pattern
+    { generator: generateHomoglyphFraud, weight: 30 },               // 3x weight - critical pattern
     { generator: generateAIGibberishFraud, weight: 8 },
   ];
 
@@ -776,7 +926,13 @@ async function execute(args: ParsedArgs) {
     }
 
     const culture = randomChoice(cultures);
-    const { email, name } = selectedGenerator(culture);
+    let { email, name } = selectedGenerator(culture);
+
+    // C1: Strip name for NO_NAME_RATIO of fraud emails to match production reality
+    if (Math.random() < NO_NAME_RATIO) {
+      name = '';
+    }
+
     emails.push({ email, name, label: 'fraud', source: 'synthetic_fraud' });
   }
 
@@ -804,11 +960,11 @@ async function execute(args: ParsedArgs) {
     logger.info(`  Appending to existing ${existingData.length} rows`);
   }
 
-  // Write CSV
+  // Write CSV (include source column to match main.csv format)
   const csvLines = [
-    'email,name,label',
+    'email,name,label,source',
     ...existingData,
-    ...emails.map(e => `${e.email},${e.name},${e.label}`)
+    ...emails.map(e => `${e.email},${e.name},${e.label},${e.source}`)
   ];
 
   fs.writeFileSync(output, csvLines.join('\n'), 'utf-8');
