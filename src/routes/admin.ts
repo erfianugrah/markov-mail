@@ -9,6 +9,7 @@ import { requireApiKey } from '../middleware/auth';
 import { getConfig, saveConfig, clearConfigCache, DEFAULT_CONFIG, validateConfig } from '../config';
 import type { FraudDetectionConfig } from '../config';
 import { logger } from '../logger';
+import { handleError } from '../errors';
 import { updateDisposableDomains, getDisposableDomainMetadata, clearDomainCache } from '../services/disposable-domain-updater';
 import { updateTLDRiskProfiles, getTLDRiskMetadata, clearTLDCache, getTLDRiskProfile, updateSingleTLDProfile } from '../services/tld-risk-updater';
 import { getAllTLDProfiles, getTLDStats } from '../detectors/tld-risk';
@@ -129,13 +130,7 @@ admin.get('/config', async (c) => {
 			},
 		});
 	} catch (error) {
-		return c.json(
-			{
-				error: 'Failed to load configuration',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			500
-		);
+		return handleError(error, c);
 	}
 });
 
@@ -194,13 +189,7 @@ admin.put('/config', async (c) => {
 			config: body,
 		});
 	} catch (error) {
-		return c.json(
-			{
-				error: 'Invalid request body',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			400
-		);
+		return handleError(error, c);
 	}
 });
 
@@ -258,13 +247,7 @@ admin.patch('/config', async (c) => {
 			config: mergedConfig,
 		});
 	} catch (error) {
-		return c.json(
-			{
-				error: 'Invalid request body',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			400
-		);
+		return handleError(error, c);
 	}
 });
 
@@ -291,13 +274,7 @@ admin.post('/config/reset', async (c) => {
 			defaults: DEFAULT_CONFIG,
 		});
 	} catch (error) {
-		return c.json(
-			{
-				error: 'Failed to reset configuration',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			500
-		);
+		return handleError(error, c);
 	}
 });
 
@@ -332,13 +309,7 @@ admin.post('/config/validate', async (c) => {
 			);
 		}
 	} catch (error) {
-		return c.json(
-			{
-				error: 'Invalid request body',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			400
-		);
+		return handleError(error, c);
 	}
 });
 
@@ -527,13 +498,7 @@ admin.get('/analytics', async (c) => {
 			results,
 		});
 	} catch (error) {
-		return c.json(
-			{
-				error: 'Analytics query failed',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			500
-		);
+		return handleError(error, c);
 	}
 });
 
@@ -594,13 +559,7 @@ admin.post('/analytics', async (c) => {
 			results,
 		});
 	} catch (error) {
-		return c.json(
-			{
-				error: 'Analytics query failed',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			500
-		);
+		return handleError(error, c);
 	}
 });
 
@@ -671,13 +630,7 @@ admin.post('/analytics/truncate', async (c) => {
 			hoursKept: hours,
 		});
 	} catch (error) {
-		return c.json(
-			{
-				error: 'Delete failed',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			500
-		);
+		return handleError(error, c);
 	}
 });
 
@@ -713,13 +666,7 @@ admin.delete('/analytics/test-data', async (c) => {
 			],
 		});
 	} catch (error) {
-		return c.json(
-			{
-				error: 'Delete failed',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			500
-		);
+		return handleError(error, c);
 	}
 });
 
@@ -846,13 +793,7 @@ admin.get('/disposable-domains/metadata', async (c) => {
 			metadata,
 		});
 	} catch (error) {
-		return c.json(
-			{
-				error: 'Failed to get disposable domain metadata',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			500
-		);
+		return handleError(error, c);
 	}
 });
 
@@ -916,13 +857,7 @@ admin.post('/disposable-domains/update', async (c) => {
 			} : String(error),
 		}, 'Disposable domain update failed');
 
-		return c.json(
-			{
-				error: 'Update failed',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			500
-		);
+		return handleError(error, c);
 	}
 });
 
@@ -983,13 +918,7 @@ admin.get('/tld-profiles/metadata', async (c) => {
 			stats,
 		});
 	} catch (error) {
-		return c.json(
-			{
-				error: 'Failed to get TLD profile metadata',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			500
-		);
+		return handleError(error, c);
 	}
 });
 
@@ -1053,13 +982,7 @@ admin.post('/tld-profiles/sync', async (c) => {
 			} : String(error),
 		}, 'TLD profiles sync failed');
 
-		return c.json(
-			{
-				error: 'Sync failed',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			500
-		);
+		return handleError(error, c);
 	}
 });
 
@@ -1096,13 +1019,7 @@ admin.get('/tld-profiles/:tld', async (c) => {
 			profile,
 		});
 	} catch (error) {
-		return c.json(
-			{
-				error: 'Failed to get TLD profile',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			500
-		);
+		return handleError(error, c);
 	}
 });
 
@@ -1164,13 +1081,7 @@ admin.put('/tld-profiles/:tld', async (c) => {
 			} : String(error),
 		}, 'TLD profile update failed');
 
-		return c.json(
-			{
-				error: 'Update failed',
-				message: error instanceof Error ? error.message : 'Unknown error',
-			},
-			500
-		);
+		return handleError(error, c);
 	}
 });
 

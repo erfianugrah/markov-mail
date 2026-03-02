@@ -139,10 +139,10 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			return next();
 		}
 
+		logger.warn({ event: 'body_parse_failed', parseError: parsedBody.error }, 'Request body parse failed');
 		return c.json({
-			error: 'Unable to parse request body. Expected JSON or form data with an email field.',
-			code: 'invalid_request_body',
-			message: parsedBody.error,
+			error: 'ValidationError',
+			message: 'Unable to parse request body. Expected JSON or form data with an email field.',
 		}, 400);
 	}
 
@@ -811,16 +811,15 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 		const isValidateEndpoint = path === '/validate';
 
 		if (decision === 'block' && !isValidateEndpoint) {
-			const response = new Response('Forbidden', { status: 403 });
-			response.headers.set('X-Fraud-Decision', decision);
-			response.headers.set('X-Fraud-Reason', blockReason);
-			response.headers.set('X-Fraud-Risk-Score', riskScore.toFixed(2));
-			response.headers.set('X-Fraud-Fingerprint', fingerprint.hash.substring(0, 16));
+			c.header('X-Fraud-Decision', decision);
+			c.header('X-Fraud-Reason', blockReason);
+			c.header('X-Fraud-Risk-Score', riskScore.toFixed(2));
+			c.header('X-Fraud-Fingerprint', fingerprint.hash.substring(0, 16));
 			if (abAssignment) {
-				response.headers.set('X-Experiment-Id', abAssignment.experimentId);
-				response.headers.set('X-Experiment-Variant', abAssignment.variant);
+				c.header('X-Experiment-Id', abAssignment.experimentId);
+				c.header('X-Experiment-Variant', abAssignment.variant);
 			}
-			return response;
+			return c.json({ error: 'Forbidden', message: 'Request blocked by fraud detection.' }, 403);
 		}
 
 		c.header('X-Fraud-Decision', decision);
@@ -838,11 +837,18 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 				message: error.message,
 				stack: error.stack,
 			} : String(error),
-		}, 'Fraud detection middleware failed');
+		}, 'Fraud detection middleware failed — failing open with elevated risk headers');
 
-		return c.json({
-			error: 'Fraud detection failed',
-			message: error instanceof Error ? error.message : 'Unknown error',
-		}, 500);
+		// Fail-open with elevated risk: rather than returning HTTP 500 (which blocks
+		// all traffic including legitimate users), allow the request through with
+		// degraded-mode headers. The caller (forminator) can inspect these headers
+		// and decide how to handle the degraded signal.
+		c.header('X-Fraud-Risk', 'degraded');
+		c.header('X-Fraud-Score', '0');
+		c.header('X-Fraud-Decision', 'warn');
+		c.header('X-Fraud-Reason', 'middleware_error');
+		c.header('X-Fraud-Degraded', 'true');
+
+		return next();
 	}
 }

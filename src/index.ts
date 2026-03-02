@@ -264,7 +264,7 @@ app.post('/validate', async (c) => {
 
 	// If no fraud detection ran (no email in body), return error
 	if (!fraud) {
-		return c.json({ error: 'Email is required' }, 400);
+		return c.json({ error: 'ValidationError', message: 'Email is required in the request body.' }, 400);
 	}
 
 	const metadata: Record<string, any> = {
