@@ -129,11 +129,14 @@ export function predictForestScoreDetailed(
 		return { score: 0, treeScores: [] };
 	}
 
+	// Use model's configured max_depth if available, with an absolute safety cap
+	const maxDepth = Math.min(model.meta.config?.max_depth ?? 20, ABSOLUTE_MAX_DEPTH);
+
 	const treeScores: number[] = [];
 	let totalScore = 0;
 
 	for (let i = 0; i < model.forest.length; i++) {
-		const score = traverseTree(model.forest[i], features);
+		const score = traverseTree(model.forest[i], features, maxDepth);
 		treeScores.push(score);
 		totalScore += score;
 	}

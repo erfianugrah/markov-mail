@@ -71,9 +71,9 @@ async function signSession(apiKey: string, secret: string): Promise<string> {
 		'raw', encoder.encode(secret),
 		{ name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
 	);
-	const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(apiKey));
 	const expires = Date.now() + SESSION_MAX_AGE * 1000;
 	const payload = btoa(String(expires));
+	const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(payload));
 	const sigHex = [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('');
 	return `${payload}.${sigHex}`;
 }
@@ -90,8 +90,8 @@ async function verifySession(cookie: string, secret: string): Promise<boolean> {
 			{ name: 'HMAC', hash: 'SHA-256' }, false, ['verify']
 		);
 		const sigBytes = new Uint8Array(sigHex.match(/.{2}/g)!.map(h => parseInt(h, 16)));
-		// Verify against the API key (secret is the API key itself)
-		return await crypto.subtle.verify('HMAC', key, sigBytes, encoder.encode(secret));
+		// Verify HMAC over the expiry payload to ensure it hasn't been tampered with
+		return await crypto.subtle.verify('HMAC', key, sigBytes, encoder.encode(payload));
 	} catch {
 		return false;
 	}
