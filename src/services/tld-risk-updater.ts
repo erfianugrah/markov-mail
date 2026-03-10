@@ -38,9 +38,13 @@ export async function loadTLDRiskProfiles(
 	}
 
 	try {
-		const profilesJson = await kv.get('tld_risk_profiles', 'json') as TLDRiskProfile[] | null;
+		const profilesJson = await kv.get('tld_risk_profiles', 'json');
 
-		if (profilesJson && Array.isArray(profilesJson)) {
+		// S11 fix: validate KV data at runtime instead of blind type cast.
+		// Corrupted or tampered KV data could cause unexpected behavior.
+		if (profilesJson && Array.isArray(profilesJson) && profilesJson.every(
+			(p: any) => p && typeof p === 'object' && typeof p.tld === 'string'
+		)) {
 			// Convert array to Map for fast lookup
 			cachedProfiles = new Map(
 				profilesJson.map(profile => [profile.tld, profile])

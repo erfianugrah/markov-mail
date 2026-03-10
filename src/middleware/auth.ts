@@ -37,16 +37,15 @@ export async function requireApiKey(c: Context, next: Next) {
 		);
 	}
 
-	// Verify API key using constant-time comparison to prevent timing attacks
+	// S5 fix: Hash both keys to fixed-length SHA-256 digests before comparing.
+	// This prevents leaking key length via timing differences — the old code
+	// short-circuited on byteLength before calling timingSafeEqual.
 	const encoder = new TextEncoder();
-	const providedBytes = encoder.encode(apiKey);
-	const expectedBytes = encoder.encode(env['X-API-KEY']);
-
-	// Keys of different length are rejected, but we still do a constant-time
-	// comparison against the expected key to avoid leaking length information.
-	const keyMatch =
-		providedBytes.byteLength === expectedBytes.byteLength &&
-		crypto.subtle.timingSafeEqual(providedBytes, expectedBytes);
+	const [providedHash, expectedHash] = await Promise.all([
+		crypto.subtle.digest('SHA-256', encoder.encode(apiKey)),
+		crypto.subtle.digest('SHA-256', encoder.encode(env['X-API-KEY'])),
+	]);
+	const keyMatch = crypto.subtle.timingSafeEqual(providedHash, expectedHash);
 
 	if (!keyMatch) {
 		return c.json(

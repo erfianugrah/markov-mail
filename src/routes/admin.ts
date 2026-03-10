@@ -80,6 +80,8 @@ function validateD1Query(sql: string): { valid: boolean; error?: string } {
 		'DROP', 'DELETE', 'UPDATE', 'INSERT', 'ALTER', 'CREATE', 'TRUNCATE',
 		'EXEC', 'EXECUTE', 'ATTACH', 'DETACH', 'PRAGMA', 'LOAD_EXTENSION',
 		'REPLACE', 'VACUUM', 'REINDEX',
+		// S1 fix: block set operations and INTO to prevent schema exfiltration
+		'UNION', 'EXCEPT', 'INTERSECT', 'INTO',
 	];
 	for (const keyword of dangerous) {
 		// Match keyword at word boundaries: preceded and followed by non-word chars or string edges
@@ -89,15 +91,27 @@ function validateD1Query(sql: string): { valid: boolean; error?: string } {
 		}
 	}
 
-	// Must query from one of the allowed tables (word-boundary matching)
+	// S1 fix: validate that ALL FROM/JOIN clauses reference allowed tables, not just one.
+	// This prevents queries like: SELECT * FROM validations JOIN sqlite_master ...
 	const allowedTables = ['VALIDATIONS', 'TRAINING_METRICS', 'AB_TEST_METRICS', 'ADMIN_METRICS'];
-	const hasValidTable = allowedTables.some(table => {
-		const pattern = new RegExp(`FROM\\s+${table}(?![A-Z0-9_])`, 'i');
-		return pattern.test(trimmed);
-	});
+	const allowedSet = new Set(allowedTables);
 
-	if (!hasValidTable) {
+	// Extract every table name referenced by FROM or JOIN
+	const tableRefPattern = /(?:FROM|JOIN)\s+([A-Z_][A-Z0-9_]*)/gi;
+	const referencedTables: string[] = [];
+	let tableMatch;
+	while ((tableMatch = tableRefPattern.exec(trimmed)) !== null) {
+		referencedTables.push(tableMatch[1].toUpperCase());
+	}
+
+	if (referencedTables.length === 0) {
 		return { valid: false, error: 'Query must be FROM one of: validations, training_metrics, ab_test_metrics, admin_metrics' };
+	}
+
+	for (const table of referencedTables) {
+		if (!allowedSet.has(table)) {
+			return { valid: false, error: `Table '${table}' is not allowed. Allowed tables: ${allowedTables.join(', ')}` };
+		}
 	}
 
 	return { valid: true };
@@ -490,10 +504,10 @@ admin.get('/analytics', async (c) => {
 		// Execute query on D1
 		const results = await executeD1Query(c.env.DB, query);
 
+		// S13 fix: omit raw SQL from response to avoid leaking schema details
 		return c.json({
 			success: true,
 			mode,
-			query,
 			hours,
 			results,
 		});
@@ -551,10 +565,10 @@ admin.post('/analytics', async (c) => {
 		// Execute query on D1
 		const results = await executeD1Query(c.env.DB, query);
 
+		// S13 fix: omit raw SQL from response to avoid leaking schema details
 		return c.json({
 			success: true,
 			mode: 'custom',
-			query,
 			hours,
 			results,
 		});
@@ -1047,6 +1061,19 @@ admin.put('/tld-profiles/:tld', async (c) => {
 
 		const tld = c.req.param('tld').toLowerCase();
 		const updates = await c.req.json();
+
+		// S10 fix: validate TLD profile update body has expected shape
+		if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+			return c.json({ error: 'Invalid body', message: 'Expected a JSON object' }, 400);
+		}
+		const allowedFields = new Set(['riskScore', 'riskTier', 'category', 'notes', 'registrationVolume', 'abuseRate']);
+		const unknownFields = Object.keys(updates).filter(k => !allowedFields.has(k));
+		if (unknownFields.length > 0) {
+			return c.json({ error: 'Invalid fields', message: `Unknown fields: ${unknownFields.join(', ')}. Allowed: ${[...allowedFields].join(', ')}` }, 400);
+		}
+		if ('riskScore' in updates && (typeof updates.riskScore !== 'number' || updates.riskScore < 0 || updates.riskScore > 1)) {
+			return c.json({ error: 'Invalid riskScore', message: 'riskScore must be a number between 0 and 1' }, 400);
+		}
 
 		logger.info({
 			event: 'tld_profile_update_triggered',

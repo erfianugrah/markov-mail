@@ -34,7 +34,7 @@
     "plusAddressing": 0.7
   },
   "rateLimiting": {
-    "enabled": false,
+    "enabled": true,
     "maxValidationsPerMinute": 60,
     "maxValidationsPerHour": 1000
   },

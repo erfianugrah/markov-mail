@@ -43,8 +43,24 @@ const CF_DOH_ENDPOINT = 'https://cloudflare-dns.com/dns-query';
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const MAX_FETCH_DURATION_MS = 500;
 
+// S4 fix: bounded cache with LRU eviction to prevent memory exhaustion.
+// An unbounded Map allows an attacker to grow memory indefinitely by sending
+// requests with many unique domains.
+const MAX_MX_CACHE_SIZE = 10_000;
 const MX_CACHE = new Map<string, { timestamp: number; result: MXAnalysis }>();
 const MX_INFLIGHT = new Map<string, Promise<MXAnalysis>>();
+
+function evictOldestCacheEntries(): void {
+	if (MX_CACHE.size <= MAX_MX_CACHE_SIZE) return;
+	// Map iteration order is insertion order — delete oldest entries first
+	const toDelete = MX_CACHE.size - MAX_MX_CACHE_SIZE;
+	let deleted = 0;
+	for (const key of MX_CACHE.keys()) {
+		if (deleted >= toDelete) break;
+		MX_CACHE.delete(key);
+		deleted++;
+	}
+}
 
 const PROVIDER_MATCHERS: Record<MXProvider, RegExp[]> = {
 	google: [/\.googlemail\.com\.?$/i, /\.l\.google\.com\.?$/i],
@@ -216,6 +232,7 @@ export async function resolveMXRecords(domain: string): Promise<MXAnalysis> {
     try {
       const result = await fetchMXRecords(key);
       MX_CACHE.set(key, { timestamp: Date.now(), result });
+      evictOldestCacheEntries();
       return result;
     } finally {
       MX_INFLIGHT.delete(key);

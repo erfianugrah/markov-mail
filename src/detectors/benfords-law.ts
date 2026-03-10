@@ -115,15 +115,41 @@ function chiSquareTest(observed: number[], expected: number[], n: number): numbe
 }
 
 /**
- * Convert chi-square to approximate p-value
- * Using simplified approximation for df=8
+ * Convert chi-square to approximate p-value using Wilson-Hilferty approximation.
+ *
+ * M9 fix: the old 4-step function returned only 4 discrete values (0.10, 0.05,
+ * 0.01, 0.001), discarding almost all statistical information. This continuous
+ * approximation preserves the full signal for downstream scoring.
+ *
+ * Uses the Wilson-Hilferty normal approximation to the chi-squared CDF:
+ *   z = ((x/df)^(1/3) - (1 - 2/(9*df))) / sqrt(2/(9*df))
+ * then converts z to a p-value using a rational approximation to erfc.
  */
 function chiSquareToPValue(chiSquare: number, df: number = 8): number {
-  // Simplified p-value estimation
-  if (chiSquare < CHI_SQUARE_CRITICAL_VALUES['0.10']) return 0.10;
-  if (chiSquare < CHI_SQUARE_CRITICAL_VALUES['0.05']) return 0.05;
-  if (chiSquare < CHI_SQUARE_CRITICAL_VALUES['0.01']) return 0.01;
-  return 0.001;
+  if (chiSquare <= 0) return 1.0;
+  if (df <= 0) return 0;
+
+  // Wilson-Hilferty transformation to standard normal
+  const k = df;
+  const cube = Math.pow(chiSquare / k, 1 / 3);
+  const mu = 1 - 2 / (9 * k);
+  const sigma = Math.sqrt(2 / (9 * k));
+
+  if (sigma === 0) return chiSquare > df ? 0 : 1;
+
+  const z = (cube - mu) / sigma;
+
+  // Approximate upper-tail probability P(Z > z) using Abramowitz & Stegun 26.2.17
+  // Accurate to ~1.5e-7 for all z
+  if (z < -8) return 1.0;
+  if (z > 8) return 0.0;
+
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989422804014327; // 1/sqrt(2*pi)
+  const poly = t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  const phi = d * Math.exp(-0.5 * z * z) * poly;
+
+  return z >= 0 ? phi : 1 - phi;
 }
 
 /**

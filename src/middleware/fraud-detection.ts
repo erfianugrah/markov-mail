@@ -118,13 +118,15 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 	  	return next();
 	}
 
+	// S7 fix: use exact paths or trailing-slash prefixes to avoid matching
+	// unintended paths like /admin-fake or /assets-evil
 	const path = c.req.path;
 	if (
-		path.startsWith('/admin') ||
+		path === '/admin' || path.startsWith('/admin/') ||
 		path === '/debug' ||
 		path === '/' ||
-		path.startsWith('/dashboard') ||
-		path.startsWith('/assets') ||
+		path === '/dashboard' || path.startsWith('/dashboard/') ||
+		path.startsWith('/assets/') ||
 		c.req.method !== 'POST'
 	) {
 		return next();
@@ -628,6 +630,11 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 
 		const [localPart, domain] = email.split('@');
 		const tld = domain ? domain.split('.').pop() : undefined;
+		// S8: WARNING — this write includes PII (email local part, client IP,
+		// user agent, city, postal code, lat/long). Ensure a data retention
+		// policy is enforced operationally (e.g., scheduled TRUNCATE via cron
+		// or the admin /truncate endpoint). GDPR requires a legal basis for
+		// storing and a defined retention period for EU user data.
 		c.executionCtx.waitUntil(writeValidationMetric(c.env.DB, {
 			decision,
 			riskScore,
@@ -835,16 +842,16 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			event: 'fraud_detection_error',
 			error: error instanceof Error ? {
 				message: error.message,
-				stack: error.stack,
+				// Omit stack trace from logs to reduce internal state leakage
 			} : String(error),
 		}, 'Fraud detection middleware failed — failing open with elevated risk headers');
 
-		// Fail-open with elevated risk: rather than returning HTTP 500 (which blocks
-		// all traffic including legitimate users), allow the request through with
-		// degraded-mode headers. The caller (forminator) can inspect these headers
-		// and decide how to handle the degraded signal.
+		// S3 fix: fail-open but with a non-zero degraded score (0.5 = warn zone)
+		// so that consumers treat degraded signals with caution rather than as clean.
+		// The old score of 0 effectively told callers the request was perfectly safe,
+		// which an attacker could exploit by triggering middleware errors.
 		c.header('X-Fraud-Risk', 'degraded');
-		c.header('X-Fraud-Score', '0');
+		c.header('X-Fraud-Score', '0.5');
 		c.header('X-Fraud-Decision', 'warn');
 		c.header('X-Fraud-Reason', 'middleware_error');
 		c.header('X-Fraud-Degraded', 'true');

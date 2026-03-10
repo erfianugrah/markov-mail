@@ -256,11 +256,14 @@ def main():
             calibration_mode = "OOB predictions (unbiased, from bootstrap)"
             print(f"  OOB accuracy: {clf.oob_score_:.4f}")
         else:
-            # Fallback if OOB wasn't available (shouldn't happen with bootstrap=True)
-            calibration_scores = clf.predict_proba(X_train)[:, 1]
-            calibration_labels = y_train
-            calibration_mode = "training set (OOB unavailable — fallback)"
-            print(f"  ⚠️  OOB not available, falling back to training predictions")
+            # M2 fix: the old fallback used model.predict_proba(X_train) which
+            # produces severely overfit calibration coefficients (in-sample Platt
+            # scaling). Instead, abort and require OOB or a held-out split.
+            raise SystemExit(
+                "ERROR: OOB predictions unavailable (bootstrap=True should guarantee them). "
+                "Cannot calibrate without out-of-bag scores. "
+                "Re-run without --no-split to use a held-out calibration set."
+            )
 
     print(f"\nCalibration dataset: {calibration_mode}")
     print(f"  Samples: {len(calibration_labels):,}")

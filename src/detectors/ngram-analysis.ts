@@ -80,10 +80,21 @@ export interface NGramAnalysisResult {
 
 /**
  * Extract n-grams from text
+ *
+ * M8 fix: the old [a-z]-only regex stripped diacritics entirely, destroying
+ * base characters like e/a/o from accented forms (e, a, u). This crippled
+ * n-gram detection for French, German, Portuguese, Turkish, etc.
+ * Now uses NFD normalization to strip combining marks while preserving base
+ * Latin characters (e.g., "rene" from "rene", "muller" from "muller").
  */
 function extractNGrams(text: string, n: number): string[] {
   const ngrams: string[] = [];
-  const cleaned = text.toLowerCase().replace(/[^a-z]/g, ''); // Letters only
+  // NFD decompose -> strip combining diacritical marks -> lowercase -> keep only letters
+  const cleaned = text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z]/g, '');
 
   for (let i = 0; i <= cleaned.length - n; i++) {
     ngrams.push(cleaned.slice(i, i + n));

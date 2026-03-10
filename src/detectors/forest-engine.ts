@@ -46,12 +46,28 @@ export interface ForestModel {
 const ABSOLUTE_MAX_DEPTH = 50;
 
 /**
+ * Apply Platt scaling calibration to a raw forest score.
+ * Transforms the raw tree-vote average into a calibrated probability
+ * using the logistic sigmoid: P(fraud) = 1 / (1 + exp(-(coef * score + intercept)))
+ *
+ * M1 fix: calibration coefficients were computed during training but never
+ * applied at inference time, making the entire calibration pipeline dead code.
+ */
+function applyCalibration(rawScore: number, calibration: ForestCalibrationMeta): number {
+	const logit = calibration.coef * rawScore + calibration.intercept;
+	// Clamp to prevent exp() overflow (|logit| > 500 is effectively 0 or 1)
+	const clampedLogit = Math.max(-500, Math.min(500, logit));
+	return 1 / (1 + Math.exp(-clampedLogit));
+}
+
+/**
  * Predicts fraud probability using a Random Forest.
  * Runs input through all trees and returns the average probability.
+ * Applies Platt scaling calibration when available.
  *
  * @param model - The trained forest model loaded from KV
  * @param features - Feature vector as key-value pairs
- * @returns Fraud probability (0.0 - 1.0)
+ * @returns Calibrated fraud probability (0.0 - 1.0)
  */
 export function predictForestScore(model: ForestModel, features: Record<string, number>): number {
 	if (!model || !model.forest || model.forest.length === 0) {
@@ -70,13 +86,24 @@ export function predictForestScore(model: ForestModel, features: Record<string, 
 		totalScore += traverseTree(model.forest[i], features, maxDepth);
 	}
 
-	// Return average probability across all trees
-	return totalScore / treeCount;
+	// Raw average probability across all trees
+	const rawScore = totalScore / treeCount;
+
+	// M1 fix: apply Platt scaling calibration if available
+	if (model.meta.calibration && typeof model.meta.calibration.coef === 'number' && typeof model.meta.calibration.intercept === 'number') {
+		return applyCalibration(rawScore, model.meta.calibration);
+	}
+
+	return rawScore;
 }
 
 /**
  * Traverse a single decision tree iteratively.
  * Uses iterative approach instead of recursive to avoid stack overflow.
+ *
+ * M4 fix: NaN feature values now go LEFT (scikit-learn convention for missing values).
+ * M5 fix: Missing features (undefined) are distinguished from zero-valued features
+ *   by also routing them left, matching scikit-learn's default missing-value behavior.
  *
  * @param node - Root node of the tree
  * @param features - Feature vector
@@ -88,11 +115,15 @@ function traverseTree(node: CompactTreeNode, features: Record<string, number>, m
 
 	// Traverse tree iteratively
 	while (current.t === 'n' && depth < maxDepth) {
-		// Get feature value, default to 0 if missing
-		const featureValue = features[current.f] ?? 0;
+		const featureValue = features[current.f];
 
-		// Scikit-learn convention: if feature <= threshold, go LEFT
-		if (featureValue <= current.v) {
+		// M4+M5 fix: treat missing (undefined) and NaN as "go left" to match
+		// scikit-learn's convention for missing values. Previously, missing features
+		// defaulted to 0 (indistinguishable from valid zero), and NaN always went
+		// right (since NaN <= threshold is false in IEEE 754), corrupting predictions.
+		if (featureValue === undefined || featureValue === null || Number.isNaN(featureValue)) {
+			current = current.l;
+		} else if (featureValue <= current.v) {
 			current = current.l;
 		} else {
 			current = current.r;
@@ -147,21 +178,32 @@ export function predictForestScoreDetailed(
 	};
 }
 
+export interface FeatureAlignmentResult {
+	aligned: boolean;
+	missingInVector: string[];
+	extraInVector: string[];
+	/** Fraction of model features missing from the vector (0-1) */
+	missingRatio: number;
+}
+
 /**
  * Check that the model's expected features align with what the code provides.
- * Logs warnings for mismatched features but does not reject the model (the
- * engine defaults missing features to 0, which is lossy but non-fatal).
+ *
+ * M6 fix: returns a structured result and throws on critical mismatches
+ * (>20% of model features missing). Previously, mismatches were silently
+ * logged and predictions proceeded with zeroed-out features.
  */
-export function checkFeatureAlignment(model: ForestModel, featureVector: Record<string, number>): void {
+export function checkFeatureAlignment(model: ForestModel, featureVector: Record<string, number>): FeatureAlignmentResult {
 	const modelFeatures = new Set(model.meta.features);
 	const vectorKeys = new Set(Object.keys(featureVector));
 
 	const missingInVector = model.meta.features.filter(f => !vectorKeys.has(f));
 	const extraInVector = Object.keys(featureVector).filter(k => !modelFeatures.has(k));
+	const missingRatio = model.meta.features.length > 0 ? missingInVector.length / model.meta.features.length : 0;
 
 	if (missingInVector.length > 0) {
 		console.warn(
-			`[forest-engine] Model expects ${missingInVector.length} features not in feature vector (will default to 0): ${missingInVector.join(', ')}`
+			`[forest-engine] Model expects ${missingInVector.length} features not in feature vector: ${missingInVector.join(', ')}`
 		);
 	}
 	if (extraInVector.length > 0) {
@@ -169,6 +211,24 @@ export function checkFeatureAlignment(model: ForestModel, featureVector: Record<
 			`[forest-engine] Feature vector has ${extraInVector.length} features not in model (unused): ${extraInVector.join(', ')}`
 		);
 	}
+
+	// Critical: if more than 20% of model features are missing, the prediction
+	// is unreliable. Throw so callers can degrade gracefully rather than serve
+	// silently corrupted scores.
+	if (missingRatio > 0.2) {
+		throw new Error(
+			`[forest-engine] Critical feature alignment failure: ${missingInVector.length}/${model.meta.features.length} ` +
+			`(${(missingRatio * 100).toFixed(0)}%) model features missing from vector. ` +
+			`Missing: ${missingInVector.slice(0, 10).join(', ')}${missingInVector.length > 10 ? '...' : ''}`
+		);
+	}
+
+	return {
+		aligned: missingInVector.length === 0 && extraInVector.length === 0,
+		missingInVector,
+		extraInVector,
+		missingRatio,
+	};
 }
 
 /**

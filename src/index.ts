@@ -65,6 +65,33 @@ app.route('/admin', adminRoutes);
 const DASHBOARD_COOKIE = '__dashboard_session';
 const SESSION_MAX_AGE = 60 * 60 * 24; // 24 hours
 
+// S6 fix: in-memory rate limiter for dashboard login brute-force protection
+const LOGIN_ATTEMPTS = new Map<string, { count: number; resetAt: number }>();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 60_000; // 1 minute
+
+function checkLoginRateLimit(ip: string): boolean {
+	const now = Date.now();
+	const entry = LOGIN_ATTEMPTS.get(ip);
+	if (!entry || now > entry.resetAt) {
+		LOGIN_ATTEMPTS.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+		return true; // allowed
+	}
+	entry.count++;
+	if (entry.count > MAX_LOGIN_ATTEMPTS) {
+		return false; // rate-limited
+	}
+	return true;
+}
+
+// S9 fix: derive a separate HMAC signing key from the API key so the raw
+// credential is never used directly as cryptographic key material
+async function deriveSigningKey(apiKey: string): Promise<string> {
+	const encoder = new TextEncoder();
+	const hash = await crypto.subtle.digest('SHA-256', encoder.encode('dashboard-session-key:' + apiKey));
+	return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 async function signSession(apiKey: string, secret: string): Promise<string> {
 	const encoder = new TextEncoder();
 	const key = await crypto.subtle.importKey(
@@ -148,6 +175,12 @@ app.post('/dashboard/auth', async (c) => {
 	const secret = c.env['X-API-KEY'];
 	if (!secret) return loginPage('Dashboard authentication not configured');
 
+	// S6 fix: rate-limit login attempts per IP
+	const clientIp = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
+	if (!checkLoginRateLimit(clientIp)) {
+		return loginPage('Too many login attempts. Please try again in a minute.');
+	}
+
 	let key = '';
 	const contentType = c.req.header('content-type') || '';
 	if (contentType.includes('application/x-www-form-urlencoded')) {
@@ -160,16 +193,18 @@ app.post('/dashboard/auth', async (c) => {
 
 	if (!key) return loginPage('API key is required');
 
-	// Timing-safe comparison
+	// S5 fix: hash both keys to fixed-length digests to avoid leaking key length
 	const encoder = new TextEncoder();
-	const a = encoder.encode(key);
-	const b = encoder.encode(secret);
-	if (a.byteLength !== b.byteLength) return loginPage('Invalid API key');
-
-	const match = await crypto.subtle.timingSafeEqual(a, b);
+	const [aHash, bHash] = await Promise.all([
+		crypto.subtle.digest('SHA-256', encoder.encode(key)),
+		crypto.subtle.digest('SHA-256', encoder.encode(secret)),
+	]);
+	const match = crypto.subtle.timingSafeEqual(aHash, bHash);
 	if (!match) return loginPage('Invalid API key');
 
-	const session = await signSession(secret, secret);
+	// S9 fix: derive signing key from API key instead of using it directly
+	const signingKey = await deriveSigningKey(secret);
+	const session = await signSession(secret, signingKey);
 	const cookie = `${DASHBOARD_COOKIE}=${encodeURIComponent(session)}; Path=/dashboard; HttpOnly; Secure; SameSite=Strict; Max-Age=${SESSION_MAX_AGE}`;
 
 	return new Response(null, {
@@ -195,7 +230,9 @@ async function dashboardAuth(c: AppContext): Promise<Response | undefined> {
 	const secret = c.env['X-API-KEY'];
 	if (!secret) return loginPage('Dashboard not configured');
 	const session = getCookie(c.req.raw, DASHBOARD_COOKIE);
-	if (!session || !(await verifySession(session, secret))) {
+	// S9 fix: verify with derived signing key
+	const signingKey = await deriveSigningKey(secret);
+	if (!session || !(await verifySession(session, signingKey))) {
 		return loginPage();
 	}
 	return undefined; // authenticated
