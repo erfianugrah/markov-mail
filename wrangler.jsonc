@@ -68,8 +68,8 @@
 	"d1_databases": [
 		{
 			"binding": "DB",
-			"database_name": "ANALYTICS",
-			"database_id": "584052c2-5eb6-492b-bb84-4b38a4e99abb",
+			"database_name": "markov-db",
+			"database_id": "1a2ed3c6-6b91-4f47-9db3-c73596d0f8fa",
 			"remote": true
 		}
 	]
