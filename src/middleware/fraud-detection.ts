@@ -377,6 +377,24 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 
 			identitySignals = computeIdentitySignals(displayName, providerLocalPart);
 
+			// Compute name+digits disambiguation features
+			const yearSuffixMatch = providerLocalPart.match(/(\d{4})$/);
+			const hasYearSuffix = yearSuffixMatch
+				? (() => { const y = parseInt(yearSuffixMatch[1], 10); return y >= 1940 && y <= 2025; })()
+				: false;
+
+			// Extract the alpha portion before trailing digits and measure its naturalness
+			const alphaPrefix = providerLocalPart.replace(/[\d._-]+$/, '').replace(/[^a-z]/gi, '');
+			const alphaPrefixNaturalness = alphaPrefix.length >= 2
+				? analyzeNGramNaturalness(alphaPrefix).overallScore
+				: 0;
+
+			// Where digits are positioned: 0 = start, 1 = end
+			const firstDigitIdx = providerLocalPart.search(/\d/);
+			const digitPositionRatio = firstDigitIdx >= 0 && providerLocalPart.length > 0
+				? firstDigitIdx / providerLocalPart.length
+				: 0.5;
+
 			const providerHits = mxAnalysis?.providerHits;
 
 			featureVector = buildFeatureVector({
@@ -384,6 +402,9 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 				plusRisk,
 				localPartLength,
 				digitRatio,
+				hasYearSuffix,
+				alphaPrefixNaturalness,
+				digitPositionRatio,
 				nameSimilarityScore: identitySignals.similarityScore,
 				nameTokenOverlap: identitySignals.tokenOverlap,
 				nameInEmail: identitySignals.nameInEmail,

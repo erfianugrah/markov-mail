@@ -350,15 +350,27 @@ function generateLegitEmail(culture: string): { email: string; name: string } {
   const last = randomChoice(names.last);
   const domain = randomChoice(domains);
 
-  // Various legitimate formats
+  // Various legitimate formats — heavily weighted toward name+digits patterns
+  // since the model's primary FP source is blocking legit name+number emails
   const formats = [
+    // No-digit patterns
     (f: string, l: string) => `${removeAccents(f.toLowerCase())}.${removeAccents(l.toLowerCase())}`,
-    (f: string, l: string) => `${removeAccents(f.toLowerCase())}${removeAccents(l.toLowerCase())[0]}`,
+    (f: string, l: string) => `${removeAccents(f.toLowerCase())}${removeAccents(l.toLowerCase())}`,
     (f: string, l: string) => `${removeAccents(f.toLowerCase())}_${removeAccents(l.toLowerCase())}`,
-    (f: string, l: string) => `${removeAccents(f.toLowerCase())}${Math.floor(Math.random() * 100)}`,
     (f: string, l: string) => `${removeAccents(f.toLowerCase()[0])}${removeAccents(l.toLowerCase())}`,
     (f: string, l: string) => `${removeAccents(l.toLowerCase())}.${removeAccents(f.toLowerCase())}`,
-    (f: string, l: string) => `${removeAccents(f.toLowerCase())}${removeAccents(l.toLowerCase())}`,
+    // Name + small digits (very common in real world)
+    (f: string, l: string) => `${removeAccents(f.toLowerCase())}${Math.floor(Math.random() * 100)}`,
+    (f: string, l: string) => `${removeAccents(f.toLowerCase())}.${removeAccents(l.toLowerCase())}${Math.floor(Math.random() * 100)}`,
+    (f: string, l: string) => `${removeAccents(f.toLowerCase())}${removeAccents(l.toLowerCase())}${Math.floor(Math.random() * 100)}`,
+    (f: string, l: string) => `${removeAccents(f.toLowerCase())}_${removeAccents(l.toLowerCase())}${Math.floor(Math.random() * 10)}`,
+    // Name + 3 digits (office numbers, extensions)
+    (f: string, l: string) => `${removeAccents(f.toLowerCase())}${Math.floor(Math.random() * 900) + 100}`,
+    (f: string, l: string) => `${removeAccents(f.toLowerCase())}.${removeAccents(l.toLowerCase())}${Math.floor(Math.random() * 900) + 100}`,
+    // Name + 4-digit year (extremely common)
+    (f: string, l: string) => `${removeAccents(f.toLowerCase())}${1960 + Math.floor(Math.random() * 50)}`,
+    (f: string, l: string) => `${removeAccents(f.toLowerCase())}.${removeAccents(l.toLowerCase())}${1960 + Math.floor(Math.random() * 50)}`,
+    (f: string, l: string) => `${removeAccents(f.toLowerCase())}${removeAccents(l.toLowerCase())}${1970 + Math.floor(Math.random() * 40)}`,
   ];
 
   const local = randomChoice(formats)(first, last);
@@ -846,7 +858,7 @@ async function execute(args: ParsedArgs) {
   const emails: Array<{ email: string; name: string; label: string; source: string }> = [];
 
   // Ratio of dated-pattern emails in the legit pool (C3 fix)
-  const DATED_LEGIT_RATIO = 0.08;
+  const DATED_LEGIT_RATIO = 0.15; // increased from 0.08 to reduce name+year FPs
 
   // Generate legitimate emails
   logger.info(`Generating ${legitCount.toLocaleString()} legitimate emails...`);

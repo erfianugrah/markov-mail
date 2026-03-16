@@ -134,11 +134,28 @@ async function computeFeatures(email: string, row: DatasetRow, columns: ColumnHi
 			mxAnalysis = null;
 		}
 	}
+	// Compute name+digits disambiguation features
+	const yearSuffixMatch = localPart.match(/(\d{4})$/);
+	const hasYearSuffix = yearSuffixMatch
+		? (() => { const y = parseInt(yearSuffixMatch[1], 10); return y >= 1940 && y <= 2025; })()
+		: false;
+	const alphaPrefix = localPart.replace(/[\d._-]+$/, '').replace(/[^a-z]/gi, '');
+	const alphaPrefixNaturalness = alphaPrefix.length >= 2
+		? analyzeNGramNaturalness(alphaPrefix).overallScore
+		: 0;
+	const firstDigitIdx = localPart.search(/\d/);
+	const digitPositionRatio = firstDigitIdx >= 0 && localPart.length > 0
+		? firstDigitIdx / localPart.length
+		: 0.5;
+
 	const featureVector = buildFeatureVector({
 		sequentialConfidence: sequential.confidence,
 		plusRisk,
 		localPartLength: localFeatures.statistical.length,
 		digitRatio: localFeatures.statistical.digitRatio,
+		hasYearSuffix,
+		alphaPrefixNaturalness,
+		digitPositionRatio,
 		nameSimilarityScore: identitySignals.similarityScore,
 		nameTokenOverlap: identitySignals.tokenOverlap,
 		nameInEmail: identitySignals.nameInEmail,

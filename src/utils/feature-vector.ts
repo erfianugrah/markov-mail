@@ -7,6 +7,10 @@ export interface FeatureVectorInput {
 	plusRisk?: number;
 	localPartLength?: number;
 	digitRatio?: number;
+	// New features for reducing name+digits false positives
+	hasYearSuffix?: boolean;
+	alphaPrefixNaturalness?: number;
+	digitPositionRatio?: number;
 	nameSimilarityScore?: number;
 	nameTokenOverlap?: number;
 	nameInEmail?: boolean;
@@ -100,6 +104,15 @@ export function buildFeatureVector(input: FeatureVectorInput): FeatureVector {
 		tld_risk_score: sanitize(input.tldRisk, 0, { min: 0, max: 1 }),
 		domain_reputation_score: sanitize(input.domainReputationScore, 0, { min: 0, max: 1 }),
 		entropy_score: sanitize(input.entropyScore, 0, { min: 0, max: 16 }),
+
+		// New features: name+digits disambiguation
+		// has_year_suffix: trailing 4 digits in 1940-2025 range → strong legit signal
+		has_year_suffix: input.hasYearSuffix ? 1 : 0,
+		// alpha_prefix_naturalness: n-gram naturalness of the alpha-only prefix (0=gibberish, 1=natural name)
+		alpha_prefix_naturalness: sanitize(input.alphaPrefixNaturalness, 0, { min: 0, max: 1 }),
+		// digit_position_ratio: fraction of local part length where first digit appears (0=digits at start, 1=digits at end)
+		// legit emails tend to have digits at the end (name+year), fraud tends to have them scattered
+		digit_position_ratio: sanitize(input.digitPositionRatio, 0.5, { min: 0, max: 1 }),
 	};
 
 	if (input.linguistic) {
