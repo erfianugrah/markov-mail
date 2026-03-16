@@ -13,6 +13,7 @@ const TimeSeriesChart = lazy(() => import('./TimeSeriesChart'));
 const ModelMetrics = lazy(() => import('./ModelMetrics'));
 const ModelComparison = lazy(() => import('./ModelComparison'));
 const QueryBuilder = lazy(() => import('./QueryBuilder'));
+const TrainingPanel = lazy(() => import('./TrainingPanel'));
 
 const AUTO_REFRESH_KEY = 'fraud-detection-auto-refresh';
 
@@ -131,6 +132,12 @@ export default function Dashboard() {
               </Suspense>
             </ErrorBoundary>
           </div>
+
+          <ErrorBoundary>
+            <Suspense fallback={<CardSkeleton />}>
+              <TrainingPanel apiKey={apiKey} key={`training-${refreshKey}`} />
+            </Suspense>
+          </ErrorBoundary>
 
           <ErrorBoundary>
             <Suspense fallback={<CardSkeleton />}>

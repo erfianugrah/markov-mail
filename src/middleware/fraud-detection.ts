@@ -347,6 +347,8 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 		let decisionTreeVersion = 'unavailable';
 		let randomForestResult: RandomForestEvaluation | null = null;
 		let randomForestVersion = 'unavailable';
+		let ngramAnalysis: ReturnType<typeof analyzeNGramNaturalness> | null = null;
+		let alphaPrefixNaturalness = 0;
 
 		let riskScore = 0;
 		let blockReason = '';
@@ -372,7 +374,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			digitRatio = localPartFeatures.statistical.digitRatio;
 			sequentialConfidence = sequentialResult?.confidence ?? 0;
 			plusRisk = normalizedEmailResult ? getPlusAddressingRiskScore(email) : 0;
-			const ngramAnalysis = analyzeNGramNaturalness(providerLocalPart);
+			ngramAnalysis = analyzeNGramNaturalness(providerLocalPart);
 			const ngramRiskScore = getNGramRiskScore(providerLocalPart);
 
 			identitySignals = computeIdentitySignals(displayName, providerLocalPart);
@@ -385,7 +387,7 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 
 			// Extract the alpha portion before trailing digits and measure its naturalness
 			const alphaPrefix = providerLocalPart.replace(/[\d._-]+$/, '').replace(/[^a-z]/gi, '');
-			const alphaPrefixNaturalness = alphaPrefix.length >= 2
+			alphaPrefixNaturalness = alphaPrefix.length >= 2
 				? analyzeNGramNaturalness(alphaPrefix).overallScore
 				: 0;
 
@@ -575,6 +577,35 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 					adjustedScore: Math.round(riskScore * 100) / 100,
 				}, 'Applied heuristic risk adjustments');
 			}
+		}
+
+		// Post-model FP reduction: if the local part looks like a natural name
+		// (high n-gram score) and the domain is non-free with MX records, reduce
+		// inflated scores. The model over-penalizes short/simple local parts on
+		// corporate domains because synthetic training data underrepresents them.
+		if (
+			heuristicsEligible &&
+			riskScore > warnThreshold &&
+			ngramAnalysis &&
+			ngramAnalysis.isNatural &&
+			alphaPrefixNaturalness > 0.4 &&
+			mxAnalysis?.hasRecords &&
+			!domainValidation?.isFreeProvider &&
+			!domainValidation?.isDisposable
+		) {
+			const reductionFactor = config.adjustments?.professionalEmailFactor ?? 0.5;
+			const reducedScore = riskScore * reductionFactor;
+			logger.info({
+				event: 'professional_email_score_reduction',
+				originalScore: Math.round(riskScore * 100) / 100,
+				reducedScore: Math.round(reducedScore * 100) / 100,
+				factor: reductionFactor,
+				alphaPrefixNaturalness: Math.round(alphaPrefixNaturalness * 100) / 100,
+				ngramNatural: ngramAnalysis.isNatural,
+				mxProvider: mxAnalysis?.primaryProvider,
+			}, 'Reduced score for natural-name email on professional domain');
+			riskScore = reducedScore;
+			heuristicsApplied.push('professional_email_reduction');
 		}
 
 		let decision: 'allow' | 'warn' | 'block' =

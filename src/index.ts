@@ -745,7 +745,7 @@ export default {
 			cron_schedule: event.cron,
 		}, 'Cron trigger fired');
 
-		// Task 1: Update disposable domain list from external sources
+		// Task 1: Update disposable domain list from external sources (every 6h)
 		if (env.DISPOSABLE_DOMAINS_LIST) {
 			logger.info({
 				event: 'disposable_domains_update_started',
@@ -757,8 +757,30 @@ export default {
 			logger.warn('DISPOSABLE_DOMAINS_LIST KV namespace not configured, skipping update');
 		}
 
-		// Task 2: Weekly model retraining via container
-		// Cron "0 3 * * 0" = Sunday 3AM UTC
+		// Task 2: Data retention — prune old validation data (every 6h)
+		// Keeps 30 days of validation data; PII (email local parts, IPs, geolocation)
+		// must not be stored indefinitely per GDPR best practices.
+		if (env.DB) {
+			ctx.waitUntil((async () => {
+				try {
+					const result = await env.DB!.prepare(
+						`DELETE FROM validations WHERE timestamp < datetime('now', '-30 days')`
+					).run();
+					const deleted = result.meta?.changes ?? 0;
+					if (deleted > 0) {
+						logger.info({ event: 'validation_data_pruned', deleted }, `Pruned ${deleted} validation records older than 30 days`);
+					}
+				} catch (error) {
+					logger.error({
+						event: 'validation_data_prune_error',
+						error: error instanceof Error ? error.message : String(error),
+					}, 'Failed to prune old validation data');
+				}
+			})());
+		}
+
+		// Task 3: Weekly model retraining via container
+		// Cron "0 3 * * SUN" = Sunday 3AM UTC
 		if (event.cron === '0 3 * * SUN') {
 			if (env.TRAINER) {
 				logger.info({
@@ -778,7 +800,7 @@ export default {
 								workerUrl: 'https://fraud.erfi.dev',
 								apiKey: env['X-API-KEY'],
 								config: {
-									nTrees: 10,
+									nTrees: 20,
 									maxDepth: 6,
 									minSamplesLeaf: 20,
 									conflictWeight: 20,
