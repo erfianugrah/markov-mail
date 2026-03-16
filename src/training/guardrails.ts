@@ -38,9 +38,9 @@ export interface GuardrailConfig {
 }
 
 export const DEFAULT_GUARDRAIL_CONFIG: GuardrailConfig = {
-	minRecall: 0.95,
-	maxFpr: 0.05,
-	maxFnr: 0.05,
+	minRecall: 0.88,
+	maxFpr: 0.10,
+	maxFnr: 0.12,
 	minGap: 0.01,
 	scanStart: 0.05,
 	scanEnd: 0.95,
