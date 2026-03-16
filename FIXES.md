@@ -146,3 +146,65 @@
 - **Issue:** Query string included in response, exposing schema.
 - **Fix:** Only echo query in non-production or when explicitly requested.
 - **Status:** FIXED
+
+---
+
+## MODEL QUALITY — Training & Algorithm Summary
+
+### Current Architecture
+
+The fraud detection model is a **Random Forest** classifier trained in Python (scikit-learn) and served as a compact JSON artifact on Cloudflare Workers.
+
+**Training pipeline:**
+1. **Synthetic data generation** (`cli/commands/data/synthetic.ts`) — produces labeled emails from ~17 fraud templates and ~14 legit templates across 31 culture pools.
+2. **Feature export** (`cli/commands/features/export.ts`) — extracts a 45-feature vector (linguistic, structural, statistical, n-gram, identity, geo, MX, TLD, domain reputation).
+3. **Model training** (`cli/commands/model/train_forest.py`) — scikit-learn `RandomForestClassifier` with conflict-zone sample weighting (20x weight on high-entropy + borderline-reputation samples).
+4. **Platt calibration** — logistic regression on OOB predictions (or held-out test set) to map raw tree votes to calibrated probabilities.
+5. **Threshold selection** (`cli/commands/model/thresholds.ts`) — scan for warn/block cutoffs meeting precision/recall constraints.
+6. **Deployment** — JSON model uploaded to KV, hot-swapped without redeployment (60s cache TTL).
+
+**Inference path:**
+`Request → Feature Extraction (buildFeatureVector) → Random Forest traversal (forest-engine.ts) → Platt calibration sigmoid → Threshold comparison → Decision (allow/warn/block)`
+
+### Production Default Hyperparameters
+- `n_estimators`: 10 (production default; 50 for high-accuracy runs)
+- `max_depth`: 6
+- `min_samples_leaf`: 20
+- `conflict_weight`: 20.0
+- `bootstrap`: True, `oob_score`: True (for calibration in `--no-split` mode)
+
+### Bulk Test Results (2026-03-16, 10k emails)
+
+| Metric | Legit (5k) | Fraud (5k) |
+|--------|-----------|-----------|
+| Allow | 3,500 (70.0%) | 89 (1.8%) |
+| Warn | 359 (7.2%) | 82 (1.6%) |
+| Block | 1,141 (22.8%) | 4,829 (96.6%) |
+| Avg Score | 0.265 | 0.972 |
+| P50 Latency | 20ms | 20ms |
+
+### Identified Model Quality Issues
+
+#### MQ1. High False Positive Rate (22.8% of legit emails blocked)
+- **Root cause:** The model aggressively scores `name+number@provider.com` patterns (e.g., `olivia1981@gmail.com` → 1.0, `michael.white65@gmail.com` → 0.94). These are common legitimate email formats (birth years, office numbers) that the synthetic training data partially mislabels as fraud.
+- **Contributing factor:** Platt calibration was dead code until the M1 fix in this branch. Now that calibration is applied, the sigmoid pushes borderline raw scores into the block zone more aggressively. Thresholds (warn=0.35, block=0.65) were tuned against uncalibrated scores.
+- **Fix needed:** Retrain with recalibrated thresholds, or lower the block threshold. Consider adding more `name+year` patterns to the legit pool in synthetic data generation.
+- **Status:** OPEN — requires model retraining
+
+#### MQ2. False Negatives on Pronounceable Gibberish (1.8%)
+- **Root cause:** Emails like `hudiptha@mail.ru` (score 0.01) and `lopftagxy@yandex.ru` (score 0.05) have consonant-vowel patterns that pass n-gram naturalness checks. The n-gram model sees them as plausible language-like strings.
+- **Contributing factor:** The domain-based features (mail.ru, yandex.ru, qq.com, 163.com) don't carry enough weight relative to the n-gram scores to push these into the warn/block zone.
+- **Fix needed:** Add TLD/domain reputation data for high-abuse international providers. Consider adding character-level entropy features that distinguish natural CV alternation from random CV alternation.
+- **Status:** OPEN — requires feature engineering + retraining
+
+#### MQ3. Threshold Recalibration Needed After M1 Fix
+- **Issue:** The warn (0.35) and block (0.65) thresholds were selected against **uncalibrated** raw forest scores. Now that Platt scaling is applied at inference time (M1 fix), the score distribution has shifted — the sigmoid compresses mid-range scores and stretches extremes.
+- **Fix needed:** Re-run `npm run cli model:thresholds` against calibrated scores and update `config/production/config.json`.
+- **Status:** OPEN — requires threshold scan on current model + calibration
+
+### Recommended Next Steps (Priority Order)
+
+1. **Recalibrate thresholds** — re-run the threshold scan pipeline against the current model with Platt scaling enabled. This is the fastest fix for the FP rate.
+2. **Improve synthetic legit pool** — add more `name+year`, `name+number`, and `initial+name+number` patterns to the legit generator to reduce the `name+digits` false positives.
+3. **Add domain abuse features** — incorporate reputation signals for mail.ru, yandex.ru, qq.com, 163.com to catch pronounceable gibberish on high-abuse domains.
+4. **Collect real-world data** — the model is trained entirely on synthetic data. Even a small sample of real production traffic with ground-truth labels would dramatically improve generalization.
