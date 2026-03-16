@@ -14,6 +14,7 @@ const ModelMetrics = lazy(() => import('./ModelMetrics'));
 const ModelComparison = lazy(() => import('./ModelComparison'));
 const QueryBuilder = lazy(() => import('./QueryBuilder'));
 const TrainingPanel = lazy(() => import('./TrainingPanel'));
+const ThresholdTuner = lazy(() => import('./ThresholdTuner'));
 
 const AUTO_REFRESH_KEY = 'fraud-detection-auto-refresh';
 
@@ -133,11 +134,19 @@ export default function Dashboard() {
             </ErrorBoundary>
           </div>
 
-          <ErrorBoundary>
-            <Suspense fallback={<CardSkeleton />}>
-              <TrainingPanel apiKey={apiKey} key={`training-${refreshKey}`} />
-            </Suspense>
-          </ErrorBoundary>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+            <ErrorBoundary>
+              <Suspense fallback={<CardSkeleton />}>
+                <TrainingPanel apiKey={apiKey} key={`training-${refreshKey}`} />
+              </Suspense>
+            </ErrorBoundary>
+
+            <ErrorBoundary>
+              <Suspense fallback={<CardSkeleton />}>
+                <ThresholdTuner apiKey={apiKey} key={`thresholds-${refreshKey}`} />
+              </Suspense>
+            </ErrorBoundary>
+          </div>
 
           <ErrorBoundary>
             <Suspense fallback={<CardSkeleton />}>

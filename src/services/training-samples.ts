@@ -94,15 +94,16 @@ export async function buildTrainingDataset(
 	db: D1Database,
 	limit?: number,
 ): Promise<TrainingDatasetJSON> {
+	// Include label_source so we can priority-weight manual corrections
 	const query = limit
-		? `SELECT feature_vector, label FROM training_samples ORDER BY timestamp DESC LIMIT ?`
-		: `SELECT feature_vector, label FROM training_samples ORDER BY timestamp DESC`;
+		? `SELECT feature_vector, label, label_source FROM training_samples WHERE feature_vector != '{}' ORDER BY timestamp DESC LIMIT ?`
+		: `SELECT feature_vector, label, label_source FROM training_samples WHERE feature_vector != '{}' ORDER BY timestamp DESC`;
 
 	const result = limit
 		? await db.prepare(query).bind(limit).all()
 		: await db.prepare(query).all();
 
-	const rawRows = (result.results ?? []) as { feature_vector: string; label: number }[];
+	const rawRows = (result.results ?? []) as { feature_vector: string; label: number; label_source: string }[];
 
 	if (rawRows.length === 0) {
 		return {
@@ -118,11 +119,16 @@ export async function buildTrainingDataset(
 	const firstVector = JSON.parse(rawRows[0].feature_vector) as Record<string, number>;
 	const featureNames = Object.keys(firstVector).sort();
 
+	// Manual labels get 5x weight in training to break the feedback loop
+	// where the model trains on its own mistakes
+	const MANUAL_WEIGHT = 5;
+
 	const rows = rawRows.map(row => {
 		const vec = JSON.parse(row.feature_vector) as Record<string, number>;
 		return {
 			features: featureNames.map(f => vec[f] ?? 0),
 			label: (row.label === 1 ? 1 : 0) as 0 | 1,
+			weight: row.label_source === 'manual' ? MANUAL_WEIGHT : 1,
 		};
 	});
 

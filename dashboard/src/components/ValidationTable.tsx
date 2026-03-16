@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronRight as ChevronExpand, AlertCircle, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronRight as ChevronExpand, AlertCircle, X, ThumbsUp, ThumbsDown, Check } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
+import { correctLabel } from '../lib/api';
 
 interface Validation {
   timestamp: string;
@@ -112,6 +113,60 @@ function DetailField({ label, value }: { label: string; value?: string | null })
       <div className="font-mono text-xs text-foreground mt-0.5 truncate" title={value || ''}>
         {value || '—'}
       </div>
+    </div>
+  );
+}
+
+// --- Label correction inline component ---
+function LabelCorrection({ email, decision, apiKey }: { email: string; decision: string; apiKey: string }) {
+  const [status, setStatus] = useState<'idle' | 'saving' | 'done'>('idle');
+  const [result, setResult] = useState<string | null>(null);
+
+  const handleCorrect = async (label: 0 | 1) => {
+    setStatus('saving');
+    try {
+      const res = await correctLabel(email, label, apiKey);
+      setResult(res.message || 'Saved');
+      setStatus('done');
+    } catch (e) {
+      setResult(e instanceof Error ? e.message : 'Failed');
+      setStatus('idle');
+    }
+  };
+
+  if (status === 'done') {
+    return (
+      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/30 text-xs text-green-400">
+        <Check size={12} />
+        <span>{result}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/30">
+      <span className="text-[11px] text-muted-foreground">Wrong decision?</span>
+      {decision === 'block' || decision === 'warn' ? (
+        <Button
+          variant="ghost" size="sm"
+          className="h-6 px-2 text-[11px] gap-1 text-green-400 hover:text-green-300 hover:bg-green-500/10"
+          onClick={(e) => { e.stopPropagation(); handleCorrect(0); }}
+          disabled={status === 'saving'}
+        >
+          <ThumbsUp size={11} />
+          Actually legit
+        </Button>
+      ) : (
+        <Button
+          variant="ghost" size="sm"
+          className="h-6 px-2 text-[11px] gap-1 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+          onClick={(e) => { e.stopPropagation(); handleCorrect(1); }}
+          disabled={status === 'saving'}
+        >
+          <ThumbsDown size={11} />
+          Actually fraud
+        </Button>
+      )}
     </div>
   );
 }
@@ -356,6 +411,8 @@ export default function ValidationTable({ apiKey, hours = 24 }: ValidationTableP
                                 <DetailField label="Fingerprint" value={validation.fingerprint_hash?.slice(0, 12)} />
                                 <DetailField label="Client IP" value={validation.client_ip} />
                               </div>
+                              {/* Label correction buttons */}
+                              <LabelCorrection email={validation.email} decision={validation.decision} apiKey={apiKey} />
                             </td>
                           </tr>
                         )}

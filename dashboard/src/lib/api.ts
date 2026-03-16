@@ -206,6 +206,64 @@ export async function getBlockReasons(
 }
 
 /**
+ * Correct a training label (mark FP/FN)
+ */
+export async function correctLabel(
+  email: string,
+  label: 0 | 1,
+  apiKey: string
+): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${API_BASE}/admin/training/correct-label`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+    body: JSON.stringify({ email, label }),
+  });
+  if (!response.ok) throw new Error(`Label correction failed: ${response.status}`);
+  return response.json();
+}
+
+/**
+ * Preview threshold changes against recent validations
+ */
+export async function previewThresholds(
+  warn: number,
+  block: number,
+  hours: number,
+  apiKey: string
+): Promise<{
+  totalValidations: number;
+  proposed: { warn: number; block: number };
+  current: { allow: number; warn: number; block: number };
+  projected: { allow: number; warn: number; block: number };
+  changes: { total: number; toAllow: number; toWarn: number; toBlock: number };
+}> {
+  const response = await fetch(`${API_BASE}/admin/config/threshold-preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+    body: JSON.stringify({ warn, block, hours }),
+  });
+  if (!response.ok) throw new Error(`Preview failed: ${response.status}`);
+  return response.json();
+}
+
+/**
+ * Apply new thresholds to live config
+ */
+export async function applyThresholds(
+  warn: number,
+  block: number,
+  apiKey: string
+): Promise<{ success: boolean }> {
+  const response = await fetch(`${API_BASE}/admin/config`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+    body: JSON.stringify({ riskThresholds: { warn, block } }),
+  });
+  if (!response.ok) throw new Error(`Apply failed: ${response.status}`);
+  return response.json();
+}
+
+/**
  * Get time series data for validations
  * SECURITY: Validates hours parameter before use
  */

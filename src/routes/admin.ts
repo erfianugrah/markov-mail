@@ -1411,4 +1411,211 @@ admin.post('/training/model', async (c) => {
 	}
 });
 
+// =============================================================================
+// Label Correction & Threshold Tuning Endpoints
+// =============================================================================
+
+/**
+ * POST /admin/training/correct-label
+ * Correct a training sample's label (mark FP or FN). Inserts or updates the
+ * training_samples row with source='manual' and the corrected label.
+ * Manual labels get priority weighting during training.
+ *
+ * Body: { email: string, label: 0 | 1 }
+ *   label=0 → "this email is actually legit" (fixes a false positive)
+ *   label=1 → "this email is actually fraud" (fixes a false negative)
+ */
+admin.post('/training/correct-label', async (c) => {
+	try {
+		if (!c.env.DB) {
+			return c.json({ success: false, error: 'D1 database not configured' }, 503);
+		}
+
+		const body = await c.req.json() as { email?: string; label?: number };
+
+		if (!body.email || typeof body.email !== 'string') {
+			return c.json({ success: false, error: 'Missing or invalid email field' }, 400);
+		}
+		if (body.label !== 0 && body.label !== 1) {
+			return c.json({ success: false, error: 'Label must be 0 (legit) or 1 (fraud)' }, 400);
+		}
+
+		const email = body.email.toLowerCase().trim();
+		const emailBytes = new TextEncoder().encode(email);
+		const digest = await crypto.subtle.digest('SHA-256', emailBytes);
+		const emailHash = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+
+		// Check if there's an existing training sample for this email
+		const existing = await c.env.DB.prepare(
+			'SELECT id, label, label_source FROM training_samples WHERE email_hash = ?'
+		).bind(emailHash).first();
+
+		if (existing) {
+			// Update existing sample
+			await c.env.DB.prepare(
+				'UPDATE training_samples SET label = ?, label_source = ?, timestamp = CURRENT_TIMESTAMP WHERE email_hash = ?'
+			).bind(body.label, 'manual', emailHash).run();
+
+			logger.info({
+				event: 'label_corrected',
+				emailHash: emailHash.slice(0, 12),
+				oldLabel: existing.label,
+				newLabel: body.label,
+				oldSource: existing.label_source,
+			}, `Label corrected: ${existing.label} → ${body.label}`);
+
+			return c.json({
+				success: true,
+				message: `Label updated from ${existing.label} to ${body.label}`,
+				previousLabel: existing.label,
+				previousSource: existing.label_source,
+				newLabel: body.label,
+				source: 'manual',
+			});
+		} else {
+			// Insert new sample with manual label (no feature vector — will be populated on next validation)
+			await c.env.DB.prepare(
+				`INSERT INTO training_samples (email_hash, feature_vector, label, label_source, risk_score, decision)
+				 VALUES (?, '{}', ?, 'manual', NULL, NULL)`
+			).bind(emailHash, body.label).run();
+
+			logger.info({
+				event: 'manual_label_added',
+				emailHash: emailHash.slice(0, 12),
+				label: body.label,
+			}, `Manual label added: ${body.label}`);
+
+			return c.json({
+				success: true,
+				message: `Manual label ${body.label} added for new email`,
+				newLabel: body.label,
+				source: 'manual',
+			});
+		}
+	} catch (error) {
+		logger.error({
+			event: 'label_correction_error',
+			error: error instanceof Error ? error.message : String(error),
+		}, 'Failed to correct label');
+		return handleError(error, c);
+	}
+});
+
+/**
+ * GET /admin/training/label-stats
+ * Returns counts of manual vs auto labels, recent corrections, etc.
+ */
+admin.get('/training/label-stats', async (c) => {
+	try {
+		if (!c.env.DB) {
+			return c.json({ success: false, error: 'D1 database not configured' }, 503);
+		}
+
+		const stats = await c.env.DB.prepare(`
+			SELECT
+				label_source,
+				label,
+				COUNT(*) as count
+			FROM training_samples
+			GROUP BY label_source, label
+			ORDER BY label_source, label
+		`).all();
+
+		const recent = await c.env.DB.prepare(`
+			SELECT email_hash, label, label_source, timestamp
+			FROM training_samples
+			WHERE label_source = 'manual'
+			ORDER BY timestamp DESC
+			LIMIT 20
+		`).all();
+
+		return c.json({
+			success: true,
+			breakdown: stats.results || [],
+			recentCorrections: recent.results || [],
+			totalManual: (recent.results || []).length,
+		});
+	} catch (error) {
+		return handleError(error, c);
+	}
+});
+
+/**
+ * POST /admin/config/threshold-preview
+ * Preview the impact of threshold changes on recent validations WITHOUT applying them.
+ *
+ * Body: { warn: number, block: number, hours?: number }
+ * Returns: counts of how many recent validations would change decision
+ */
+admin.post('/config/threshold-preview', async (c) => {
+	try {
+		if (!c.env.DB) {
+			return c.json({ success: false, error: 'D1 database not configured' }, 503);
+		}
+
+		const body = await c.req.json() as { warn?: number; block?: number; hours?: number };
+		const warn = typeof body.warn === 'number' ? body.warn : 0.56;
+		const block = typeof body.block === 'number' ? body.block : 0.88;
+		const hours = typeof body.hours === 'number' ? Math.min(Math.max(body.hours, 1), 168) : 24;
+
+		if (warn < 0 || warn > 1 || block < 0 || block > 1) {
+			return c.json({ success: false, error: 'Thresholds must be between 0 and 1' }, 400);
+		}
+		if (warn >= block) {
+			return c.json({ success: false, error: 'Warn threshold must be less than block threshold' }, 400);
+		}
+
+		const result = await c.env.DB.prepare(`
+			SELECT
+				risk_score,
+				decision as current_decision
+			FROM validations
+			WHERE timestamp >= datetime('now', '-${hours} hours')
+			  AND risk_score IS NOT NULL
+		`).all();
+
+		const rows = result.results || [];
+		let currentAllow = 0, currentWarn = 0, currentBlock = 0;
+		let newAllow = 0, newWarn = 0, newBlock = 0;
+		let changedToAllow = 0, changedToWarn = 0, changedToBlock = 0;
+
+		for (const row of rows) {
+			const score = row.risk_score as number;
+			const currentDec = row.current_decision as string;
+
+			if (currentDec === 'allow') currentAllow++;
+			else if (currentDec === 'warn') currentWarn++;
+			else if (currentDec === 'block') currentBlock++;
+
+			const newDec = score >= block ? 'block' : score >= warn ? 'warn' : 'allow';
+			if (newDec === 'allow') newAllow++;
+			else if (newDec === 'warn') newWarn++;
+			else if (newDec === 'block') newBlock++;
+
+			if (newDec !== currentDec) {
+				if (newDec === 'allow') changedToAllow++;
+				else if (newDec === 'warn') changedToWarn++;
+				else changedToBlock++;
+			}
+		}
+
+		return c.json({
+			success: true,
+			hours,
+			totalValidations: rows.length,
+			proposed: { warn, block },
+			current: { allow: currentAllow, warn: currentWarn, block: currentBlock },
+			projected: { allow: newAllow, warn: newWarn, block: newBlock },
+			changes: {
+				total: changedToAllow + changedToWarn + changedToBlock,
+				toAllow: changedToAllow,
+				toWarn: changedToWarn,
+				toBlock: changedToBlock,
+			},
+		});
+	} catch (error) {
+		return handleError(error, c);
+	}
+});
+
 export default admin;
