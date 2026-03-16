@@ -583,6 +583,8 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 		// (high n-gram score) and the domain is non-free with MX records, reduce
 		// inflated scores. The model over-penalizes short/simple local parts on
 		// corporate domains because synthetic training data underrepresents them.
+		// Guards: exclude sequential patterns (user123, test456) and high digit ratios
+		// to prevent fraud emails on providers with MX records from getting reduced.
 		if (
 			heuristicsEligible &&
 			riskScore > warnThreshold &&
@@ -591,7 +593,9 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			alphaPrefixNaturalness > 0.4 &&
 			mxAnalysis?.hasRecords &&
 			!domainValidation?.isFreeProvider &&
-			!domainValidation?.isDisposable
+			!domainValidation?.isDisposable &&
+			sequentialConfidence < 0.3 &&
+			digitRatio < 0.5
 		) {
 			const reductionFactor = config.adjustments?.professionalEmailFactor ?? 0.5;
 			const reducedScore = riskScore * reductionFactor;
