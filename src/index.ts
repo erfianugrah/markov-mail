@@ -5,6 +5,7 @@ import { generateFingerprint, extractAllSignals } from './fingerprint';
 import { logger } from './logger';
 import type { ValidationResult, FraudDetectionResult } from './types';
 import { updateDisposableDomains } from './services/disposable-domain-updater';
+import { pruneTrainingSamples } from './services/training-samples';
 import adminRoutes from './routes/admin';
 import { requireApiKey } from './middleware/auth';
 import { fraudDetectionMiddleware } from './middleware/fraud-detection';
@@ -254,31 +255,156 @@ app.get('/analytics', async (c) => {
 	return serveAsset(c, '/analytics.html');
 });
 
-// Root endpoint - Welcome message
+// Root endpoint - Styled landing page
 app.get('/', (c) => {
-	return c.text(`Bogus Email Pattern Recognition API
+	const host = c.req.header('host') || 'fraud.erfi.dev';
+	const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Markov Mail - Email Fraud Detection API</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#12131a;color:#c8c8d0;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;-webkit-font-smoothing:antialiased}
+.glow{position:fixed;inset:0;background:radial-gradient(ellipse 700px 500px at 50% 20%,rgba(99,102,241,0.07) 0%,transparent 70%);pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;max-width:720px;width:100%;padding:3rem 1.5rem}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.badge-green{background:rgba(74,222,128,0.12);color:#4ade80;border:1px solid rgba(74,222,128,0.2)}
+.badge-blue{background:rgba(96,165,250,0.12);color:#60a5fa;border:1px solid rgba(96,165,250,0.2)}
+h1{font-size:1.75rem;font-weight:700;color:#f0f0f5;margin:1rem 0 .25rem;letter-spacing:-.02em}
+.sub{color:#8b8b9e;font-size:.9rem;margin-bottom:2rem}
+.card{background:#1a1b25;border:1px solid #2a2b3a;border-radius:12px;overflow:hidden;margin-bottom:1.25rem}
+.card-head{padding:14px 20px;border-bottom:1px solid #2a2b3a;display:flex;align-items:center;gap:8px}
+.card-head h2{font-size:.8rem;font-weight:600;color:#e0e0e8;text-transform:uppercase;letter-spacing:.06em}
+.card-body{padding:16px 20px}
+.endpoint{display:flex;align-items:baseline;gap:10px;padding:10px 0;border-bottom:1px solid #22232f}
+.endpoint:last-child{border-bottom:none}
+.method{font-family:'SF Mono',Monaco,'Cascadia Code',monospace;font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;flex-shrink:0}
+.method-post{background:rgba(74,222,128,0.12);color:#4ade80}
+.method-get{background:rgba(96,165,250,0.12);color:#60a5fa}
+.path{font-family:'SF Mono',Monaco,'Cascadia Code',monospace;font-size:13px;color:#e0e0e8}
+.desc{font-size:12px;color:#6b6b80;margin-left:auto;text-align:right;flex-shrink:0}
+pre{background:#0f1017;border:1px solid #2a2b3a;border-radius:8px;padding:14px 18px;overflow-x:auto;font-family:'SF Mono',Monaco,'Cascadia Code',monospace;font-size:12.5px;line-height:1.7;color:#c8c8d0;tab-size:2}
+pre .cm{color:#5a5a6e}
+pre .str{color:#a5d6ff}
+pre .key{color:#c4a7e7}
+.try-it{margin-top:2rem;text-align:center}
+.try-it a{display:inline-flex;align-items:center;gap:8px;padding:10px 24px;border-radius:8px;background:rgba(99,102,241,0.15);color:#818cf8;border:1px solid rgba(99,102,241,0.25);font-size:13px;font-weight:600;text-decoration:none;transition:all .2s}
+.try-it a:hover{background:rgba(99,102,241,0.25);border-color:rgba(99,102,241,0.4)}
+.footer{margin-top:1rem;padding:1.5rem 0;text-align:center;font-size:11px;color:#4a4a5e}
+.footer a{color:#6366f1;text-decoration:none}
+.footer a:hover{text-decoration:underline}
+@media(max-width:600px){.desc{display:none}.endpoint{gap:8px}}
+</style>
+</head>
+<body>
+<div class="glow"></div>
+<div class="wrap">
 
-🔒 Fraud Detection Status: ACTIVE on all POST routes with 'email' field
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:.5rem">
+  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.6" stroke-linejoin="round">
+    <path d="M12 2 L3 6.5 L3 12 C3 18.5 6.8 23 12 24.5 C17.2 23 21 18.5 21 12 L21 6.5 Z"/>
+    <circle cx="12" cy="11" r="2.5" fill="#6366f1"/>
+    <rect x="11" y="13" width="2" height="4" rx="0.8" fill="#6366f1"/>
+  </svg>
+  <span class="badge badge-green">
+    <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="currentColor"/></svg>
+    Active
+  </span>
+</div>
 
-Endpoints:
-- POST /* (any route with email field gets validated automatically!)
-- POST /validate { "email": "test@example.com" } (backward compatible)
-- GET /debug (shows all request signals)
-- /admin/* (requires X-API-Key header)
+<h1>Markov Mail</h1>
+<p class="sub">Email fraud detection API powered by Random Forest classification at the edge</p>
 
-Examples:
-# Legacy endpoint (still works)
-curl -X POST https://your-worker.dev/validate \\
-  -H "Content-Type: application/json" \\
-  -d '{"email":"test@example.com"}'
+<div class="card">
+  <div class="card-head">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b6b80" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    <h2>Endpoints</h2>
+  </div>
+  <div class="card-body">
+    <div class="endpoint">
+      <span class="method method-post">POST</span>
+      <span class="path">/validate</span>
+      <span class="desc">Score an email address</span>
+    </div>
+    <div class="endpoint">
+      <span class="method method-post">POST</span>
+      <span class="path">/*</span>
+      <span class="desc">Auto-validates any POST with email field</span>
+    </div>
+    <div class="endpoint">
+      <span class="method method-get">GET</span>
+      <span class="path">/dashboard</span>
+      <span class="desc">Analytics dashboard</span>
+    </div>
+    <div class="endpoint">
+      <span class="method method-get">GET</span>
+      <span class="path">/debug</span>
+      <span class="desc">Request signals &amp; fingerprint</span>
+    </div>
+    <div class="endpoint">
+      <span class="method method-get">GET</span>
+      <span class="path">/admin/*</span>
+      <span class="desc">Config, analytics, model management</span>
+    </div>
+  </div>
+</div>
 
-# New: Any POST endpoint with email gets validated
-curl -X POST https://your-worker.dev/signup \\
-  -H "Content-Type: application/json" \\
-  -d '{"email":"user@example.com","password":"<your-password>"}'
+<div class="card">
+  <div class="card-head">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b6b80" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+    <h2>Quick Start</h2>
+  </div>
+  <div class="card-body" style="padding:0">
+    <pre><span class="cm"># Validate an email</span>
+curl -s -X POST https://${host}/validate \\
+  -H <span class="str">"Content-Type: application/json"</span> \\
+  -d <span class="str">'{"email":"test@example.com"}'</span> | jq
 
-Monitoring Mode: Set "actionOverride": "allow" in config.json
-`);
+<span class="cm"># Response</span>
+{
+  <span class="key">"valid"</span>: true,
+  <span class="key">"riskScore"</span>: 0.12,
+  <span class="key">"decision"</span>: <span class="str">"allow"</span>,
+  <span class="key">"signals"</span>: { ... }
+}</pre>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b6b80" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+    <h2>How It Works</h2>
+  </div>
+  <div class="card-body" style="font-size:13px;line-height:1.8;color:#9b9bae">
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;align-items:baseline">
+      <span style="color:#6366f1;font-weight:600;font-size:12px">1.</span><span>Extract <strong style="color:#e0e0e8">45 features</strong> — linguistic, structural, n-gram, identity, geo, MX, TLD</span>
+      <span style="color:#6366f1;font-weight:600;font-size:12px">2.</span><span>Evaluate with <strong style="color:#e0e0e8">Random Forest</strong> — trained on labeled email patterns</span>
+      <span style="color:#6366f1;font-weight:600;font-size:12px">3.</span><span>Apply <strong style="color:#e0e0e8">Platt calibration</strong> — convert tree votes to calibrated probabilities</span>
+      <span style="color:#6366f1;font-weight:600;font-size:12px">4.</span><span>Return <strong style="color:#e0e0e8">decision</strong> — allow, warn, or block with full signal breakdown</span>
+    </div>
+  </div>
+</div>
+
+<div class="try-it">
+  <a href="/dashboard">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+    Open Dashboard
+  </a>
+</div>
+
+<div class="footer">
+  Markov Mail v${pkg.version} &middot; Cloudflare Workers &middot; <a href="https://github.com/erfianugrah/markov-mail">GitHub</a>
+</div>
+
+</div>
+</body>
+</html>`;
+	return new Response(html, {
+		headers: { 'Content-Type': 'text/html; charset=utf-8' },
+	});
 });
 
 // Debug endpoint - Show all available fingerprinting signals (requires auth)
@@ -526,8 +652,65 @@ export default {
 			logger.warn('DISPOSABLE_DOMAINS_LIST KV namespace not configured, skipping update');
 		}
 
-		// Future work: trigger decision-tree dataset exports or analytics snapshots here.
+		// Task 2: Weekly model retraining via container
+		// Cron "0 3 * * 0" = Sunday 3AM UTC
+		if (event.cron === '0 3 * * SUN') {
+			if (env.TRAINER) {
+				logger.info({
+					event: 'training_cron_triggered',
+					cron: event.cron,
+				}, 'Weekly model retraining cron triggered');
+
+				ctx.waitUntil((async () => {
+					try {
+						const id = env.TRAINER!.idFromName('trainer');
+						const stub = env.TRAINER!.get(id);
+
+						const res = await stub.fetch('http://container/train', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								workerUrl: 'https://fraud.erfi.dev',
+								apiKey: env['X-API-KEY'],
+								config: {
+									nTrees: 10,
+									maxDepth: 6,
+									minSamplesLeaf: 20,
+									conflictWeight: 20,
+								},
+							}),
+						});
+
+						const result = await res.json() as { success?: boolean };
+						logger.info({
+							event: 'training_cron_completed',
+							result,
+						}, 'Weekly model retraining completed');
+
+						// Prune old training samples after successful training
+						if (result.success && env.DB) {
+							const pruned = await pruneTrainingSamples(env.DB, 14);
+							logger.info({
+								event: 'training_data_pruned',
+								pruned,
+							}, `Pruned ${pruned} old training samples`);
+						}
+					} catch (error) {
+						logger.error({
+							event: 'training_cron_error',
+							error: error instanceof Error ? error.message : String(error),
+						}, 'Weekly model retraining failed');
+					}
+				})());
+			} else {
+				logger.warn(
+					'TRAINER container binding not configured, skipping weekly retraining'
+				);
+			}
+		}
 	}
 };
 
+// Export TrainerContainer class for Durable Object binding
+export { TrainerContainer } from './container/trainer';
 export { FraudDetectionService };
