@@ -96,6 +96,23 @@ $WRANGLER kv key put config.json --path config/production/config.json \
 $WRANGLER kv key put random_forest.json --path config/production/random-forest.json \
     --namespace-id "$CONFIG_ID" --remote 2>&1 && echo "  Uploaded random_forest.json" || echo "  WARNING: model upload failed"
 
+# 7. Optional: set up Python venv for offline training
+echo ""
+echo "[6/6] Setting up Python environment (optional)..."
+if command -v python3 &> /dev/null; then
+    if [ ! -d "venv" ]; then
+        python3 -m venv venv 2>/dev/null && \
+        source venv/bin/activate 2>/dev/null && \
+        pip install -q -r requirements.txt 2>/dev/null && \
+        echo "  Python venv created and dependencies installed" || \
+        echo "  WARNING: Python venv setup failed (optional — only needed for offline training)"
+    else
+        echo "  Python venv already exists"
+    fi
+else
+    echo "  Python not found (optional — container pipeline uses TypeScript instead)"
+fi
+
 echo ""
 echo "=== Setup complete! ==="
 echo ""
@@ -105,3 +122,6 @@ echo "  2. Set custom domain:   Edit 'routes' in wrangler.jsonc (or remove for *
 echo "  3. Build dashboard:     npm run build:dashboard"
 echo "  4. Deploy:              npm run deploy"
 echo "  5. Test:                curl -X POST https://your-worker.dev/validate -H 'Content-Type: application/json' -d '{\"email\":\"test@example.com\"}'"
+echo ""
+echo "After deploying, open the dashboard and read docs/TUNING.md to learn"
+echo "how to improve accuracy by correcting labels and adjusting thresholds."

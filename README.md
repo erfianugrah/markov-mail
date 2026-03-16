@@ -104,6 +104,7 @@ See [docs/MODEL_TRAINING.md](docs/MODEL_TRAINING.md) for the full reference.
 ## Documentation
 
 - **[Setup Guide](docs/SETUP.md)** — First-time deployment
+- **[Tuning Guide](docs/TUNING.md)** — Improve accuracy by correcting labels and adjusting thresholds
 - **[Architecture](docs/ARCHITECTURE.md)** — System design and data flow
 - **[Configuration](docs/CONFIGURATION.md)** — Runtime config, thresholds, feature flags
 - **[Model Training](docs/MODEL_TRAINING.md)** — Training pipeline reference

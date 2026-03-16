@@ -73,10 +73,27 @@ export default function TrainingPanel({ apiKey }: TrainingPanelProps) {
         body: JSON.stringify({ nTrees: 20, maxDepth: 6, minSamplesLeaf: 20 }),
       });
       const data = await res.json() as any;
-      if (data.containerResponse?.guardrails?.passed) {
-        setTrainResult(`Model ${data.containerResponse?.modelVersion || 'unknown'} trained and deployed`);
-      } else if (data.containerResponse?.guardrails?.failures?.length) {
-        setTrainResult(`Guardrails failed: ${data.containerResponse.guardrails.failures[0]}`);
+      const cr = data.containerResponse;
+      if (cr?.guardrails?.passed) {
+        const rec = cr.guardrails.recommendation;
+        setTrainResult(
+          `deployed:Model ${cr.modelVersion || 'unknown'} trained and deployed successfully. ` +
+          `${cr.stats?.totalSamples || 0} samples, ${(cr.stats?.meanOobAccuracy * 100 || 0).toFixed(1)}% OOB accuracy.` +
+          (rec ? ` Thresholds: warn=${rec.warnThreshold}, block=${rec.blockThreshold}.` : '')
+        );
+      } else if (cr?.guardrails?.failures?.length) {
+        const failure = cr.guardrails.failures[0];
+        let advice = '';
+        if (failure.includes('threshold pair')) {
+          advice = ' Try: correct more labels in the Review Queue to improve training data quality, or lower guardrail constraints in src/training/guardrails.ts.';
+        } else if (failure.includes('calibration')) {
+          advice = ' The model needs more diverse training data. Correct labels for both FPs and FNs to improve class balance.';
+        } else if (failure.includes('size')) {
+          advice = ' Reduce nTrees or maxDepth to shrink the model.';
+        }
+        setTrainResult(`failed:Guardrails rejected the model: ${failure}.${advice}`);
+      } else if (cr?.error) {
+        setTrainResult(`failed:${cr.error}`);
       } else {
         setTrainResult(data.message || 'Training completed');
       }
@@ -147,19 +164,22 @@ export default function TrainingPanel({ apiKey }: TrainingPanelProps) {
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Training result banner */}
-        {trainResult && (
-          <div className={cn(
-            'flex items-center gap-2 px-3 py-2 rounded-lg text-xs',
-            trainResult.includes('deployed')
-              ? 'bg-green-500/10 text-green-400 border border-green-500/20'
-              : trainResult.includes('Error') || trainResult.includes('failed')
-                ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+        {trainResult && (() => {
+          const isSuccess = trainResult.startsWith('deployed:');
+          const isFail = trainResult.startsWith('failed:');
+          const text = trainResult.replace(/^(deployed|failed):/, '');
+          return (
+            <div className={cn(
+              'flex items-start gap-2 px-3 py-2 rounded-lg text-xs leading-relaxed',
+              isSuccess ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+                : isFail ? 'bg-red-500/10 text-red-400 border border-red-500/20'
                 : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20',
-          )}>
-            {trainResult.includes('deployed') ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
-            {trainResult}
-          </div>
-        )}
+            )}>
+              {isSuccess ? <CheckCircle size={14} className="flex-shrink-0 mt-0.5" /> : <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />}
+              <span>{text}</span>
+            </div>
+          );
+        })()}
 
         {/* Dataset stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

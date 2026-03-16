@@ -1618,4 +1618,116 @@ admin.post('/config/threshold-preview', async (c) => {
 	}
 });
 
+/**
+ * GET /admin/review-queue
+ * Surfaces likely misclassifications for human review. Finds:
+ * 1. Blocked/warned emails with high n-gram naturalness (likely FPs)
+ * 2. Allowed emails with high entropy + suspicious patterns (likely FNs)
+ * 3. Emails near the decision boundary (most uncertain predictions)
+ *
+ * Query params:
+ *   hours (default: 24) — lookback window
+ *   limit (default: 30) — max items per category
+ */
+admin.get('/review-queue', async (c) => {
+	try {
+		if (!c.env.DB) {
+			return c.json({ success: false, error: 'D1 database not configured' }, 503);
+		}
+
+		const hours = Math.min(Math.max(parseInt(c.req.query('hours') || '24', 10) || 24, 1), 168);
+		const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '30', 10) || 30, 1), 100);
+
+		// 1. Likely false positives: blocked/warned but on non-disposable domains with low entropy
+		const likelyFPs = await c.env.DB.prepare(`
+			SELECT
+				email_local_part || '@' || domain as email,
+				risk_score, decision, block_reason, entropy_score,
+				domain_reputation_score, pattern_type, model_version,
+				timestamp, is_free_provider, country
+			FROM validations
+			WHERE timestamp >= datetime('now', '-${hours} hours')
+				AND decision IN ('block', 'warn')
+				AND is_disposable = 0
+				AND entropy_score < 0.6
+				AND domain_reputation_score < 0.5
+			ORDER BY risk_score ASC
+			LIMIT ?
+		`).bind(limit).all();
+
+		// 2. Likely false negatives: allowed but with suspicious signals
+		const likelyFNs = await c.env.DB.prepare(`
+			SELECT
+				email_local_part || '@' || domain as email,
+				risk_score, decision, entropy_score,
+				domain_reputation_score, pattern_type, model_version,
+				timestamp, is_free_provider, country
+			FROM validations
+			WHERE timestamp >= datetime('now', '-${hours} hours')
+				AND decision = 'allow'
+				AND (entropy_score > 0.55 OR domain_reputation_score > 0.7)
+			ORDER BY risk_score DESC
+			LIMIT ?
+		`).bind(limit).all();
+
+		// 3. Boundary cases: scores near the warn/block thresholds (most uncertain)
+		const boundary = await c.env.DB.prepare(`
+			SELECT
+				email_local_part || '@' || domain as email,
+				risk_score, decision, entropy_score,
+				domain_reputation_score, pattern_type, model_version,
+				timestamp, is_free_provider, country
+			FROM validations
+			WHERE timestamp >= datetime('now', '-${hours} hours')
+				AND risk_score BETWEEN 0.40 AND 0.95
+			ORDER BY ABS(risk_score - 0.72) ASC
+			LIMIT ?
+		`).bind(limit).all();
+
+		// 4. Model health: score distribution for drift detection
+		const health = await c.env.DB.prepare(`
+			SELECT
+				CASE
+					WHEN risk_score < 0.2 THEN 'low (0-0.2)'
+					WHEN risk_score < 0.4 THEN 'medium-low (0.2-0.4)'
+					WHEN risk_score < 0.6 THEN 'medium (0.4-0.6)'
+					WHEN risk_score < 0.8 THEN 'medium-high (0.6-0.8)'
+					ELSE 'high (0.8-1.0)'
+				END as bucket,
+				COUNT(*) as count,
+				AVG(risk_score) as avg_score,
+				AVG(entropy_score) as avg_entropy
+			FROM validations
+			WHERE timestamp >= datetime('now', '-${hours} hours')
+			GROUP BY bucket
+			ORDER BY avg_score ASC
+		`).all();
+
+		// 5. Summary stats for drift detection
+		const summary = await c.env.DB.prepare(`
+			SELECT
+				COUNT(*) as total,
+				AVG(risk_score) as avg_score,
+				SUM(CASE WHEN decision = 'block' THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as block_rate,
+				SUM(CASE WHEN decision = 'warn' THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as warn_rate,
+				SUM(CASE WHEN decision = 'allow' THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as allow_rate,
+				AVG(latency) as avg_latency
+			FROM validations
+			WHERE timestamp >= datetime('now', '-${hours} hours')
+		`).first();
+
+		return c.json({
+			success: true,
+			hours,
+			likelyFalsePositives: likelyFPs.results || [],
+			likelyFalseNegatives: likelyFNs.results || [],
+			boundaryCases: boundary.results || [],
+			scoreDistribution: health.results || [],
+			summary: summary || {},
+		});
+	} catch (error) {
+		return handleError(error, c);
+	}
+});
+
 export default admin;

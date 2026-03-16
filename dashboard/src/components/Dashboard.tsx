@@ -15,6 +15,7 @@ const ModelComparison = lazy(() => import('./ModelComparison'));
 const QueryBuilder = lazy(() => import('./QueryBuilder'));
 const TrainingPanel = lazy(() => import('./TrainingPanel'));
 const ThresholdTuner = lazy(() => import('./ThresholdTuner'));
+const ReviewQueue = lazy(() => import('./ReviewQueue'));
 
 const AUTO_REFRESH_KEY = 'fraud-detection-auto-refresh';
 
@@ -103,6 +104,12 @@ export default function Dashboard() {
           <ErrorBoundary>
             <Suspense fallback={<CardSkeleton />}>
               <ValidationTable apiKey={apiKey} key={`validations-${refreshKey}`} />
+            </Suspense>
+          </ErrorBoundary>
+
+          <ErrorBoundary>
+            <Suspense fallback={<CardSkeleton />}>
+              <ReviewQueue apiKey={apiKey} key={`review-${refreshKey}`} />
             </Suspense>
           </ErrorBoundary>
 
