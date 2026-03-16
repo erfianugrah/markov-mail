@@ -2,70 +2,77 @@
 
 Everything in this directory is safe to upload directly to Cloudflare KV. It represents the exact configuration and model bundle the Worker expects.
 
----
-
 ## Files
 
-| File | Description |
-|------|-------------|
-| `config.json` | Runtime configuration (risk thresholds, feature toggles, logging) |
-| `random-forest-*.json` | Exported Random Forest models (primary runtime scorer) |
-| `decision-tree.example.json` | Sample JSON model illustrating the required schema |
+| File | KV Key | Description |
+|------|--------|-------------|
+| `config.json` | `config.json` | Runtime configuration (thresholds, feature flags, logging) |
+| `random-forest.json` | `random_forest.json` | Pre-trained 48-feature Random Forest model (v5.0.0) |
+| `decision-tree.example.json` | `decision_tree.json` | Example schema for the legacy decision tree format |
 
-### `config.json`
+## First-Time Upload
 
-Key sections:
-
-* `riskThresholds`: `warn` / `block` cutoffs (current: warn ≥ 0.60, block ≥ 0.85 after calibration).
-* `baseRiskScores`: deterministic blockers (invalid format, disposable domains, high entropy).
-* `features`: toggles for disposable domain checks, pattern detection, and TLD risk profiling.
-* `logging`: log level + block logging flags.
-* `headers`: whether the worker adds fraud headers to downstream responses.
-* `actionOverride`: set to `allow`, `warn`, or `block` when you need a kill switch/monitoring mode.
-
-Upload with:
+After creating your KV namespace (see [SETUP.md](../../docs/SETUP.md)):
 
 ```bash
-npm run cli config:upload -- config/production/config.json
+NAMESPACE_ID="<your CONFIG KV namespace ID>"
+
+# Upload config
+npx wrangler kv key put config.json \
+  --path config/production/config.json \
+  --namespace-id "$NAMESPACE_ID" --remote
+
+# Upload model
+npx wrangler kv key put random_forest.json \
+  --path config/production/random-forest.json \
+  --namespace-id "$NAMESPACE_ID" --remote
 ```
 
-### `random-forest-balanced.2025-12-01.json`
+Or use the automated setup: `bash scripts/setup.sh`
 
-Latest calibrated Random Forest bundle:
+## Current Model (v5.0.0-48feat)
 
-* 267 trees (`max_depth=14`, `min_samples_leaf=11`, conflict weight 50)
-* Embedded feature-importance map for CLI introspection (`model:analyze`)
-* `meta.calibration` contains Platt-scaling coefficients so the worker can convert raw forest votes into calibrated probabilities before applying the new thresholds.
+- **Type:** Random Forest, 20 trees, max depth 6
+- **Features:** 48 (including `has_year_suffix`, `alpha_prefix_naturalness`, `digit_position_ratio`)
+- **Calibration:** Platt scaling (intercept: -4.56, coef: 8.97, trained on 50k samples)
+- **Size:** ~54 KB
+- **Performance:**
+  - Fraud blocked: 98.6%
+  - False negatives: 0.4%
+  - P50 latency: <20ms
 
-Upload it to KV as the active scorer:
+## Current Thresholds
+
+| Decision | Score Range | Description |
+|----------|-------------|-------------|
+| `allow` | < 0.56 | Low risk — legitimate user |
+| `warn` | 0.56 – 0.87 | Moderate risk — flag for review |
+| `block` | >= 0.88 | High risk — reject submission |
+
+## Updating
+
+### Config changes
+
+Edit `config.json` and re-upload, or use the admin API:
 
 ```bash
-npm run cli -- kv:put random_forest.json \
-  --binding CONFIG \
-  --file config/production/random-forest-balanced.2025-12-01.json
+curl -X PATCH https://your-worker.dev/admin/config \
+  -H "X-API-Key: KEY" -H "Content-Type: application/json" \
+  -d '{"riskThresholds":{"block":0.90,"warn":0.60}}'
 ```
 
-(Older `random-forest-balanced.*.json` files can be deleted once the new model is live.)
+### Model updates
 
-### `decision-tree.example.json`
-
-A tiny tree that demonstrates the JSON format used by `src/models/decision-tree.ts`. Real models should be generated via the offline pipeline (see [`docs/DECISION_TREE.md`](../../docs/DECISION_TREE.md)) and uploaded as `decision_tree.json` in the `CONFIG` KV namespace:
+Train a new model via the container pipeline or offline tools, then upload:
 
 ```bash
-npm run cli kv:put -- \
-  --binding CONFIG \
-  decision_tree.json \
-  --file config/production/decision-tree.example.json
+npx wrangler kv key put random_forest.json \
+  --path config/production/random-forest.json \
+  --namespace-id "$NAMESPACE_ID" --remote
+
+# Clear model cache to force reload
+curl -X DELETE https://your-worker.dev/admin/cache/models \
+  -H "X-API-Key: KEY"
 ```
 
-Each leaf should include a human-readable `reason`. The worker logs the reason + traversal path to D1 so you can inspect why a request was blocked.
-
----
-
-## Promotion checklist
-
-1. Train/export a new tree (`ml/export_tree.py`).
-2. Upload it to `CONFIG` KV as `decision_tree.json`.
-3. Update `config.json` if thresholds or feature flags changed.
-4. Record the change in `CHANGELOG.md` and `INVENTORY.md`.
-5. (Optional) run an A/B test using the `ab:*` CLI commands before rolling out globally.
+Always update `CHANGELOG.md` when shipping new models or threshold changes.

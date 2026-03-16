@@ -1,0 +1,7 @@
+# Python dependencies for the offline training pipeline (cli/commands/model/)
+# Install: pip install -r requirements.txt
+# Only needed if using train_forest.py directly; the container pipeline uses TypeScript instead.
+numpy>=1.24
+pandas>=2.0
+scikit-learn>=1.3
+scipy>=1.11

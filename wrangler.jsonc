@@ -10,6 +10,7 @@
 	"observability": {
 		"enabled": true
 	},
+	// SETUP: Replace with your custom domain, or remove for *.workers.dev
 	"routes": [
 		{
 			"pattern": "fraud.erfi.dev",
@@ -21,20 +22,22 @@
 	 * Configuration is stored in KV under the "config.json" key
 	 * https://developers.cloudflare.com/kv/
 	 */
+	// SETUP: Run `bash scripts/setup.sh` to create these and fill in IDs automatically,
+	// or create manually with `npx wrangler kv namespace create <NAME>` and paste IDs below.
 	"kv_namespaces": [
 		{
 			"binding": "CONFIG",
-			"id": "e24fcc002bc64157a1940650c348d335",
+			"id": "CONFIG_KV_NAMESPACE_ID",
 			"remote": true
 		},
 		{
 			"binding": "DISPOSABLE_DOMAINS_LIST",
-			"id": "6bb73f48f9804c888f5ce9406d3bf3d6",
+			"id": "DISPOSABLE_DOMAINS_KV_NAMESPACE_ID",
 			"remote": true
 		},
 		{
 			"binding": "TLD_LIST",
-			"id": "30a4c2d7396c44d5aab003b05fd95742",
+			"id": "TLD_LIST_KV_NAMESPACE_ID",
 			"remote": true
 		},
 	],
@@ -97,7 +100,7 @@
 		{
 			"binding": "DB",
 			"database_name": "markov-db",
-			"database_id": "1a2ed3c6-6b91-4f47-9db3-c73596d0f8fa",
+			"database_id": "D1_DATABASE_ID",
 			"remote": true
 		}
 	]

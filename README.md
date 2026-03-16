@@ -1,72 +1,118 @@
 # Markov Mail
 
-Email fraud detection system powered by a Random Forest classifier running on Cloudflare Workers. Features a 45-dimension feature vector, Platt-calibrated scoring, and a real-time analytics dashboard.
+Email fraud detection API running on Cloudflare Workers. Scores email addresses in real-time using a 48-feature Random Forest classifier with Platt-calibrated probabilities.
 
-## What exists
+## Quick Start
 
-| Component | Status |
-|-----------|--------|
-| Worker runtime (`src/`) | Production — RF + DT model evaluation, 45-feature extraction (identity/geo/MX/n-gram) |
-| Dashboard (`dashboard/`) | Production — Astro + React analytics UI at `fraud.erfi.dev/dashboard` |
-| CLI tooling (`cli/`) | Production — training pipeline, calibration, deployment, dataset management |
-| D1 schema & migrations | Single consolidated migration |
+```bash
+git clone https://github.com/erfianugrah/markov-mail.git
+cd markov-mail
+npm install && cd dashboard && npm install && cd ..
+
+# Automated setup: creates KV, D1, uploads config + model
+bash scripts/setup.sh
+
+# Set your admin API key
+npx wrangler secret put X-API-KEY
+
+# Deploy
+npm run deploy
+```
+
+Test it:
+
+```bash
+curl -s -X POST https://your-worker.workers.dev/validate \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com"}' | jq
+```
+
+See [docs/SETUP.md](docs/SETUP.md) for the full step-by-step guide.
+
+## What You Get
+
+| Feature | Details |
+|---------|---------|
+| **48-feature ML scoring** | Linguistic, structural, n-gram, identity, geo, MX, TLD, domain reputation |
+| **Pre-trained model** | 20-tree RF, Platt-calibrated, 98.6% fraud detection, 0.4% false negatives |
+| **Real-time API** | `POST /validate` — sub-20ms P50 latency, no auth required |
+| **Analytics dashboard** | Astro + React UI at `/dashboard` with time series, score distributions, SQL query builder |
+| **44 admin endpoints** | Config management, analytics, TLD profiles, model deployment, cache control |
+| **Auto-retraining** | Container-based pipeline trains on live traffic data, weekly via cron |
+| **71k+ disposable domains** | Auto-updated every 6 hours from GitHub sources |
+| **Rate limiting** | Per-IP throttling enabled by default |
+
+## How It Works
+
+```
+Request → Feature Extraction (48 signals) → Random Forest → Platt Calibration → Decision
+                                                                                   ↓
+                                                              allow (<0.56) / warn (0.56-0.87) / block (≥0.88)
+```
+
+1. Extract **48 features** from the email address — entropy, n-gram naturalness, digit position, year suffix detection, MX records, TLD risk, identity signals
+2. Evaluate with a **Random Forest** (20 trees, max depth 6) loaded from KV
+3. Apply **Platt scaling** to convert tree votes into calibrated probabilities
+4. Compare against **configurable thresholds** to decide allow/warn/block
 
 ## Architecture
 
-1. **Feature extraction** — Bun CLI exports a 45-feature matrix from labeled emails (`features:export`).
-2. **Model training** — Python/scikit-learn trains a Random Forest with conflict-zone weighting and OOB-based Platt calibration (`model:train` or `npm run pipeline`).
-3. **KV-backed models** — Upload `random_forest.json` to the `CONFIG` namespace and hot-swap without redeploying (60s cache TTL).
-4. **Edge inference** — Worker evaluates the feature vector against the RF model, applies calibrated thresholds, and logs to D1.
-5. **Dashboard** — Real-time analytics, score distributions, model comparison, and SQL query builder.
-
-## Working directories
-
-- `src/` — Worker runtime (middleware, detectors, services, model evaluators).
-- `config/production/` — Production config + trained models.
-- `cli/commands/` — Model training, data generation, calibration, deployment.
-- `docs/` — Documentation.
-- `dashboard/` — Astro + React analytics dashboard (builds to `public/dashboard/`).
-
-## Developing
-
-```bash
-npm install
-npm run dev            # worker
-npm run typecheck
-npm run test:unit
+```
+src/                  Worker runtime (middleware, detectors, models, services)
+config/production/    Production config + trained model (committed, KV-uploadable)
+cli/                  Bun-powered training, calibration, deployment tools
+dashboard/            Astro + React analytics UI (builds to public/dashboard/)
+container/            Dockerfile + entrypoint for automated retraining
+docs/                 Full documentation
+tests/                Vitest unit/integration/e2e/performance tests
+migrations/           D1 schema migrations
 ```
 
-CLI helpers: `npm run cli -- <command>` (model:train, features:export, deploy, analytics:stats, etc.).
-
-### Training workflow
+## Development
 
 ```bash
-# 1. Generate synthetic data (with proper name-stripping and diverse gibberish)
-npm run cli -- data:synthetic -- --count 500000 --legit-ratio 0.5 --seed 2025
+cp .dev.vars.example .dev.vars     # configure local secrets
+npm run dev                         # run worker locally
+npm run typecheck                   # strict TypeScript gate
+npm run test:unit                   # 280 tests
+npm run build:dashboard             # build dashboard
+```
 
-# 2. Export features (shuffle for representative sampling)
+## Training
+
+### Container pipeline (recommended — uses live traffic data)
+
+```bash
+# Trigger via admin API
+curl -X POST https://your-worker.dev/admin/training/trigger \
+  -H "X-API-Key: KEY" -H "Content-Type: application/json" \
+  -d '{"nTrees":20,"maxDepth":6}'
+```
+
+### Offline pipeline (synthetic data)
+
+```bash
+npm run cli -- data:synthetic -- --count 100000 --legit-ratio 0.55 --seed 2026
 npm run cli -- features:export -- --input data/main.csv --output data/features/export.csv --shuffle
-
-# 3. Train model
-npm run cli -- model:train -- --n-trees 50 --version "4.0.0-forest" --upload
-
-# Or use the full automated pipeline
-npm run pipeline -- \
-  --dataset data/main.csv \
-  --export-modes full \
-  --search '[{"label":"prod","nTrees":50,"maxDepth":6,"noSplit":true}]' \
-  --upload-model --apply-thresholds --sync-config
+python3 cli/commands/model/train_forest.py \
+  --dataset data/features/export.csv --output config/production/random-forest.json \
+  --n-trees 20 --max-depth 6 --no-split --version "my-model"
 ```
 
-See `docs/MODEL_TRAINING.md` for the complete training reference.
+See [docs/MODEL_TRAINING.md](docs/MODEL_TRAINING.md) for the full reference.
 
-## Dashboard
+## Documentation
 
-```bash
-cd dashboard && npm install && npm run build  # Output: ../public/dashboard/
-npm run dev  # Development: http://localhost:4321
-```
+- **[Setup Guide](docs/SETUP.md)** — First-time deployment
+- **[Architecture](docs/ARCHITECTURE.md)** — System design and data flow
+- **[Configuration](docs/CONFIGURATION.md)** — Runtime config, thresholds, feature flags
+- **[Model Training](docs/MODEL_TRAINING.md)** — Training pipeline reference
+- **[Detectors](docs/DETECTORS.md)** — Feature extraction reference (48 features)
+- **[Scoring](docs/SCORING.md)** — Scoring engine and calibration
+- **[Operations](docs/OPERATIONS.md)** — Deployment, monitoring, rollback
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** — Common issues and diagnostics
+- **[API Reference](https://fraud.erfi.dev/)** — Full endpoint documentation
 
-**Features**: Real-time metrics, block reasons, time series, model comparison, SQL query builder, auto-refresh.
+## License
 
-**Access**: https://fraud.erfi.dev/dashboard/
+Private repository.
