@@ -27,17 +27,17 @@
 	"kv_namespaces": [
 		{
 			"binding": "CONFIG",
-			"id": "CONFIG_KV_NAMESPACE_ID",
+			"id": "e24fcc002bc64157a1940650c348d335",
 			"remote": true
 		},
 		{
 			"binding": "DISPOSABLE_DOMAINS_LIST",
-			"id": "DISPOSABLE_DOMAINS_KV_NAMESPACE_ID",
+			"id": "6bb73f48f9804c888f5ce9406d3bf3d6",
 			"remote": true
 		},
 		{
 			"binding": "TLD_LIST",
-			"id": "TLD_LIST_KV_NAMESPACE_ID",
+			"id": "30a4c2d7396c44d5aab003b05fd95742",
 			"remote": true
 		},
 	],
@@ -100,7 +100,7 @@
 		{
 			"binding": "DB",
 			"database_name": "markov-db",
-			"database_id": "D1_DATABASE_ID",
+			"database_id": "1a2ed3c6-6b91-4f47-9db3-c73596d0f8fa",
 			"remote": true
 		}
 	]
