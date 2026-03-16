@@ -73,11 +73,15 @@ function getPageNumbers(current: number, total: number): number[] {
   return pages;
 }
 
+// Badge thresholds — kept in sync with config/production/config.json
+const BLOCK_THRESHOLD = 0.88;
+const WARN_THRESHOLD = 0.56;
+
 // --- Badges ---
 function RiskBadge({ score }: { score: number }) {
-  const color = score >= 0.65
+  const color = score >= BLOCK_THRESHOLD
     ? 'bg-red-500/15 text-red-400 border-red-500/30'
-    : score >= 0.35
+    : score >= WARN_THRESHOLD
       ? 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'
       : 'bg-green-500/15 text-green-400 border-green-500/30';
   return (

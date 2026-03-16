@@ -2,7 +2,7 @@
  * Training Samples Service
  *
  * Collects feature vectors from live validations into D1 for automated
- * retraining. Every /validate call stores its 45-feature vector + an
+ * retraining. Every /validate call stores its 48-feature vector + an
  * auto-assigned label so the training container can pull a fresh dataset
  * directly from D1 without any manual CSV pipeline.
  *

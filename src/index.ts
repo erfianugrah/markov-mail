@@ -498,7 +498,7 @@ ${E('GET', 'get', '/dashboard', 'Analytics dashboard', 'Session')}
 <a class="btn-s" href="https://github.com/erfianugrah/markov-mail">GitHub</a>
 </div>
 
-<div class="foot">Markov Mail v${pkg.version} &middot; Cloudflare Workers &middot; 45-feature RF &middot; Platt-calibrated &middot; &lt;20ms P50</div>
+<div class="foot">Markov Mail v${pkg.version} &middot; Cloudflare Workers &middot; 48-feature RF &middot; Platt-calibrated &middot; &lt;20ms P50</div>
 
 </div>
 <script>

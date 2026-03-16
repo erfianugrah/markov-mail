@@ -42,15 +42,36 @@ export interface SystemConfig {
 }
 
 /**
- * Fetch the active system configuration
+ * Fetch the active system configuration + live model version
  */
 export async function getSystemConfig(apiKey: string): Promise<SystemConfig> {
-  const response = await fetch(`${API_BASE}/admin/config`, {
-    headers: { 'X-API-Key': apiKey },
-  });
-  if (!response.ok) throw new Error(`Config fetch failed: ${response.status}`);
-  const data = await response.json() as { config: SystemConfig };
-  return data.config;
+  const headers = { 'X-API-Key': apiKey };
+
+  // Fetch config and latest model version in parallel
+  const [configRes, modelRes] = await Promise.all([
+    fetch(`${API_BASE}/admin/config`, { headers }),
+    fetch(`${API_BASE}/admin/analytics`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: "SELECT model_version FROM validations WHERE model_version IS NOT NULL ORDER BY timestamp DESC LIMIT 1",
+      }),
+    }).catch(() => null),
+  ]);
+
+  if (!configRes.ok) throw new Error(`Config fetch failed: ${configRes.status}`);
+  const data = await configRes.json() as { config: SystemConfig };
+  const config = data.config;
+
+  // Attach live model version from most recent validation
+  if (modelRes?.ok) {
+    const modelData = await modelRes.json() as { results?: Array<{ model_version: string }> };
+    if (modelData.results?.[0]?.model_version) {
+      config.modelVersion = modelData.results[0].model_version;
+    }
+  }
+
+  return config;
 }
 
 /**
