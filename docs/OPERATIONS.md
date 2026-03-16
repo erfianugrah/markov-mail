@@ -1,7 +1,7 @@
 # Operations Guide
 
-**Version**: 3.1.0
-**Last Updated**: 2026-02-23
+**Version**: 3.2.0
+**Last Updated**: 2026-03-16
 
 Complete operations guide for the Markov Mail fraud detection system, including training pipelines, deployments, monitoring, and troubleshooting.
 

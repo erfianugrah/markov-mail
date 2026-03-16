@@ -1,10 +1,12 @@
 # Calibration
 
-## Current Status (2026‑02‑23)
+## Current Status (2026‑03‑16)
 
 Random Forest models are now **calibrated with Platt scaling** using unbiased predictions. The training command captures the logistic coefficients and embeds them in the model metadata so the Worker can convert raw forest votes into well-behaved probabilities before applying the warn/block thresholds.
 
 **Key improvement (v3.1)**: When training with `--no-split` (production mode), calibration now uses **out-of-bag (OOB) predictions** instead of training predictions. Each sample's OOB score comes only from trees that did NOT see it during bootstrap, preventing the overconfident sigmoid that Platt-on-training-data produces.
+
+**Key improvement (v3.2)**: Calibration is now actually **applied at inference time** in `src/detectors/forest-engine.ts:predictForestScore()`. Prior to v3.2.0, the coefficients were computed and stored but never used at serving time — the entire calibration pipeline was dead code. Additionally, the fallback to in-sample `predict_proba(X_train)` has been removed; if OOB is unavailable, training aborts.
 
 ## Workflow
 
@@ -92,7 +94,7 @@ Random Forest models are now **calibrated with Platt scaling** using unbiased pr
 
 6. **Runtime usage**
 
-   `src/models/random-forest.ts` inspects `meta.calibration` and applies:
+   `src/detectors/forest-engine.ts:predictForestScore()` inspects `meta.calibration` and applies:
 
    ```
    calibrated = 1 / (1 + exp(-(intercept + coef * raw_score)))

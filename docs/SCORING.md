@@ -1,7 +1,7 @@
 # Scoring Engine
 
-**Version**: 3.1.0
-**Last Updated**: 2026-02-23
+**Version**: 3.2.0
+**Last Updated**: 2026-03-16
 
 ## Overview
 
@@ -186,13 +186,17 @@ if (!mxAnalysis.hasRecords) {
 
 ## Calibration
 
-**Status**: Platt scaling is applied at runtime (since v3.0.0, Nov 2025).
+**Status**: Platt scaling is applied at inference time in the forest engine (since v3.2.0, March 2026).
 
 Workflow:
 
 1. `npm run cli model:train` keeps a validation split (unless `--no-split`) and emits `data/calibration/latest.csv`.
-2. The trainer fits a single-variable logistic regression (`calibrated = σ(intercept + coef * raw_score)`) and records the coefficients in the model metadata.
-3. `src/models/random-forest.ts` reads `meta.calibration` and converts every forest vote into a calibrated probability before the middleware compares it with the warn/block thresholds.
+2. The trainer fits a single-variable logistic regression (`calibrated = σ(intercept + coef * raw_score)`) and records the coefficients in the model metadata under `meta.calibration`.
+3. `src/detectors/forest-engine.ts:predictForestScore()` reads `meta.calibration` and applies the sigmoid `1 / (1 + exp(-(coef * raw_score + intercept)))` after averaging tree votes, converting raw forest scores into calibrated probabilities. The sigmoid input is clamped to [-500, 500] to prevent overflow.
+
+**Important**: Prior to v3.2.0, the calibration coefficients were stored in the model metadata but never actually applied at inference time — the entire calibration pipeline was dead code. Scores were raw tree-vote averages. If you are upgrading, thresholds may need recalibration since scores now pass through the sigmoid.
+
+**Safety**: If OOB predictions are unavailable during `--no-split` training, the trainer now aborts instead of falling back to in-sample `predict_proba(X_train)`, which produced severely overfit calibration coefficients.
 
 Use `npm run cli model:calibrate -- --input data/calibration/latest.csv --output data/calibration/calibrated.csv` if you need to recompute calibrations on a newer dataset or generate ROC/PR reports. Follow it with `npm run cli model:thresholds` to derive warn/block cutoffs that satisfy your recall/FPR targets, then `npm run cli config:update-thresholds` (optionally `--dry-run`) to persist the new numbers everywhere. For CI, `npm run cli model:guardrail` chains these steps and fails if the resulting thresholds no longer meet the configured recall/FPR/FNR constraints. Always embed the final coefficients in the JSON (`meta.calibration`) so the Worker stays synchronized with the published thresholds.
 

@@ -118,6 +118,8 @@ Toggle runtime detectors/inputs without redeploying:
 
 - `enableMXCheck` controls both runtime MX lookups (via Cloudflare DNS over HTTPS) and the feature exporter’s defaults. Leave it `true` for production—the decision tree now expects `mx_*` inputs. When running fully offline you can disable it or pass `--skip-mx` to the exporter so those columns zero out cleanly.
 
+> **Note (v3.2.0)**: Rate limiting is now **enabled by default** in `config/production/config.json`. The previous default was `false`, which left the unauthenticated `/validate` endpoint unthrottled.
+
 ## Alert Webhook
 
 Set the `ALERT_WEBHOOK_URL` secret (Slack/Teams/webhook) if you want proactive notifications when high-risk geo/identity anomalies appear. The Worker sends a JSON payload whenever:

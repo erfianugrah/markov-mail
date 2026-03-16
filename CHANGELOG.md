@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+### 2026-03-16 - Security & ML Engineering Review Fixes
+
+**Comprehensive security and ML review applied across the entire codebase. See `FIXES.md` for the full tracker.**
+
+#### Security Fixes
+
+- **S1 – SQL injection hardening**: Added `UNION`, `EXCEPT`, `INTERSECT`, `INTO` to the SQL blocklist in `validateD1Query`. Now validates that ALL `FROM`/`JOIN` clauses reference allowed tables, not just one.
+- **S2 – Rate limiting enabled**: Production config now ships with `rateLimiting.enabled: true` (was `false`).
+- **S3 – Fail-open hardening**: Degraded-mode middleware errors now set `X-Fraud-Score: 0.5` (was `0`), so consumers treat degraded signals with caution rather than as clean.
+- **S4 – MX cache bounded**: `MX_CACHE` now has a 10,000-entry cap with LRU eviction to prevent memory exhaustion from unique-domain attacks.
+- **S5 – Auth timing leak fixed**: API key comparison now hashes both keys to fixed-length SHA-256 digests before `timingSafeEqual`, eliminating key-length leakage from the `&&` short-circuit.
+- **S6 – Dashboard brute-force protection**: `POST /dashboard/auth` now enforces 5 attempts per minute per IP.
+- **S7 – Path bypass tightened**: Fraud detection middleware now uses exact paths (`/admin`, `/dashboard`) or trailing-slash prefixes (`/admin/`, `/dashboard/`, `/assets/`) instead of broad `startsWith` patterns.
+- **S8 – PII retention warning**: Added documentation comment on the D1 write path noting GDPR implications.
+- **S9 – HMAC key derivation**: Dashboard session signing key is now derived from the API key via SHA-256 prefix instead of using the raw credential.
+- **S10 – TLD profile validation**: `PUT /admin/tld-profiles/:tld` now validates the request body schema (allowed fields, riskScore range).
+- **S11 – KV data validation**: TLD risk profiles loaded from KV now include runtime type guards instead of blind `as` casts.
+- **S13 – SQL echo removed**: Analytics responses no longer include the raw SQL query string.
+
+#### ML Fixes
+
+- **M1 – Platt calibration applied at inference**: `predictForestScore` now applies the sigmoid `1 / (1 + exp(-(coef * score + intercept)))` when `meta.calibration` is present. Previously the calibration coefficients were computed during training but never used at serving time — the entire calibration pipeline was dead code.
+- **M2 – Fallback Platt scaling removed**: `train_forest.py` no longer falls back to in-sample `predict_proba(X_train)` when OOB is unavailable. It now aborts with an error, forcing either OOB or a held-out split.
+- **M3 – Forest inference tests**: Added 26 golden-value + edge-case tests in `tests/unit/models/forest-engine.test.ts` covering NaN handling, missing features, calibration, feature alignment, and score range properties.
+- **M4 – NaN guard in tree traversal**: `traverseTree` now routes `NaN` and `undefined` feature values to the left branch (matching scikit-learn's missing-value convention) instead of always going right (IEEE 754 `NaN <= x` is `false`).
+- **M5 – Missing feature handling**: Missing features are now distinguished from zero-valued features. Previously both defaulted to `0`, which has specific semantic meaning for features like `sequential_count`.
+- **M6 – Feature alignment enforcement**: `checkFeatureAlignment` now returns a structured result and throws on critical mismatches (>20% of model features missing) instead of silently logging a warning.
+- **M8 – Diacritic normalization**: N-gram extraction now uses NFD normalization + combining mark removal instead of `[a-z]`-only regex, preserving base characters from accented forms (e.g., `rene` from `rené`).
+- **M9 – Chi-squared CDF**: Benford's law p-value calculation now uses the Wilson-Hilferty normal approximation instead of a 4-step function, preserving continuous statistical information.
+
+#### Infrastructure
+
+- **D1 database**: Migrated from deleted `ANALYTICS` (584052c2-...) to new `markov-db` (1a2ed3c6-...). Schema migration `0001_create_initial_schema.sql` applied.
+
 ### 2026-02-23 - Training Pipeline Fixes (PR #5)
 
 **Critical/High/Medium fixes across the entire training pipeline.**

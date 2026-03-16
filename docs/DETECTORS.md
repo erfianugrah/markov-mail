@@ -1,7 +1,7 @@
 # Detectors - Feature Extraction Reference
 
-**Version**: 3.0.0
-**Last Updated**: 2025-11-30
+**Version**: 3.2.0
+**Last Updated**: 2026-03-16
 
 ## Overview
 
@@ -159,8 +159,9 @@ Evaluates how “natural” the local part looks across seven language models (E
 | `ngram_is_natural` | flag | 1 if local part resembles natural language | 0/1 |
 
 **Detection Logic**:
+- **v3.2.0**: N-gram extraction now uses NFD normalization + combining mark removal instead of `[a-z]`-only regex. This preserves base characters from accented forms (e.g., `rene` from `rené`, `muller` from `müller`), significantly improving detection accuracy for French, German, Portuguese, and Turkish names.
 - Detects most likely language using frequency analysis
-- Scores how many bigrams/trigrams fall inside that language’s corpus
+- Scores how many bigrams/trigrams fall inside that language's corpus
 - Produces risk score inversely proportional to naturalness
 - Confidence scales with available n-grams (short strings remain low-risk)
 
@@ -326,6 +327,7 @@ Batch-level statistical analysis for detecting synthetic datasets.
 **Detection Logic**:
 - Extracts first digits from numeric sequences in emails
 - Compares distribution to Benford's expected frequencies
+- **v3.2.0**: Chi-squared p-value calculation now uses the Wilson-Hilferty normal approximation instead of a 4-step function that only returned 4 discrete values (0.10, 0.05, 0.01, 0.001). The continuous approximation preserves full statistical signal for downstream scoring.
 - High chi-squared = synthetic/fabricated data
 
 **Used By**: Offline fraud detection and dataset validation

@@ -1,7 +1,7 @@
 # Architecture
 
-**Version**: 3.0.1
-**Last Updated**: 2025-12-01
+**Version**: 3.2.0
+**Last Updated**: 2026-03-16
 
 ## Overview
 
@@ -470,20 +470,23 @@ flowchart TD
 ```
 
 **Security Layers**:
-1. **CORS**: Configured allowed origins
-2. **API Keys**: Required for `/validate` endpoint
-3. **Rate Limiting**: Cloudflare automatic DDoS protection
-4. **Input Validation**: Zod schemas for type safety
-5. **SQL Injection**: Parameterized queries only
-6. **XSS**: No user input rendered directly
+1. **CORS**: Restricted to `https://fraud.erfi.dev` with scoped methods/headers
+2. **API Key Auth**: SHA-256 hashed timing-safe comparison (no key-length leakage)
+3. **Rate Limiting**: Application-level per-IP throttling (enabled in production) + Cloudflare DDoS protection
+4. **Brute-Force Protection**: Dashboard login limited to 5 attempts/minute per IP
+5. **SQL Validation**: Blocklist of dangerous keywords (`UNION`, `DROP`, `INSERT`, etc.) + allowlisted tables with full `FROM`/`JOIN` validation
+6. **Input Validation**: Runtime schema validation on admin API bodies (TLD profiles, config updates)
+7. **Path Security**: Fraud detection middleware uses exact-path matching (no prefix ambiguity)
+8. **Fail-Open Safety**: Middleware errors produce `X-Fraud-Score: 0.5` (warn zone) rather than `0` (clean)
+9. **Memory Safety**: MX DNS cache bounded to 10,000 entries with LRU eviction
 
 ### Data Privacy
 
 **PII Handling**:
-- Email addresses stored in D1 for analytics
-- No passwords or sensitive credentials
-- Configurable data retention
-- GDPR compliance ready (deletion API available)
+- Email local parts, IPs, user agents, and geolocation stored in D1 for analytics
+- No passwords or sensitive credentials stored
+- **WARNING**: No automatic data retention enforcement — operators must schedule truncation via the admin API or cron. GDPR requires a defined retention period for EU user data.
+- GDPR deletion API available via `DELETE /admin/validations`
 
 **Secrets Management**:
 ```toml
@@ -494,8 +497,11 @@ flowchart TD
 # Secrets (not in version control)
 [secrets]
   X_API_KEY = "..." # via wrangler secret put
-  ADMIN_API_KEY = "..."
 ```
+
+**Session Security**:
+- Dashboard sessions use HMAC-SHA256 cookies with a **derived** signing key (SHA-256 of `"dashboard-session-key:" + API_KEY`), not the raw API key
+- Cookies scoped to `/dashboard` with `HttpOnly`, `Secure`, `SameSite=Strict`
 
 ## Monitoring & Observability
 

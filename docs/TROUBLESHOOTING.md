@@ -1,7 +1,7 @@
 # Troubleshooting Guide
 
-**Version**: 3.0.1
-**Last Updated**: 2025-12-01
+**Version**: 3.2.0
+**Last Updated**: 2026-03-16
 
 Comprehensive troubleshooting guide for Markov Mail fraud detection system, including common issues, diagnostic procedures, and historical problem analyses.
 
@@ -25,6 +25,9 @@ Comprehensive troubleshooting guide for Markov Mail fraud detection system, incl
 | High false negative rate (>10%) | Threshold too high or missing fraud patterns | [Model Performance](#model-performance-problems) |
 | Model not loading errors | KV upload failed or corrupt model | [Operations Guide](./OPERATIONS.md#model-not-loading) |
 | Validation hangs/timeouts | MX lookup timeouts or rate limiting | [Feature Extraction](#mx-lookup-failures) |
+| `Critical feature alignment failure` error | Model retrained with different features than runtime provides | See below |
+| Scores changed after v3.2.0 upgrade | Platt calibration now applied at inference (was dead code) | Recalibrate thresholds |
+| `OOB predictions unavailable` abort | Training with `--no-split` but OOB failed | Ensure `bootstrap=True` or use `--no-split` without it |
 
 ### Quick Checks
 

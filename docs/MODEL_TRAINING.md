@@ -1,7 +1,7 @@
 # Model Training v3.1 - Unified Random Forest Pipeline
 
-**Version**: 3.1.0
-**Date**: 2026-02-23
+**Version**: 3.2.0
+**Date**: 2026-03-16
 **Status**: Production Ready
 
 ## Overview
@@ -26,6 +26,11 @@ npm run cli model:train [options]
 - `--version <string>` - Model version string (default: auto-generated `YYYYMMDD-forest`)
 - `--upload` - Upload to KV after training
 - `--skip-mx` - Skip MX lookups (faster iteration)
+
+> **v3.2.0 Changes**:
+> - **Fallback Platt scaling removed**: When `--no-split` is used and OOB predictions are unavailable, the trainer now **aborts** instead of falling back to in-sample `predict_proba(X_train)`, which produced severely overfit calibration coefficients.
+> - **Calibration applied at inference**: `src/detectors/forest-engine.ts` now applies the Platt sigmoid at serving time. Previously the coefficients were stored in metadata but never used.
+> - **Feature alignment enforcement**: `checkFeatureAlignment()` now throws on critical mismatches (>20% of model features missing) instead of silently logging a warning.
 
 ### Model Types
 

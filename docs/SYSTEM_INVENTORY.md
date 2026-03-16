@@ -1,6 +1,6 @@
 # System Inventory - Markov Mail Fraud Detection
-**Version**: 3.0.1
-**Last Updated**: 2026-02-23
+**Version**: 3.2.0
+**Last Updated**: 2026-03-16
 **Status**: Production-Ready
 
 ---
@@ -11,7 +11,7 @@
 |--------|-------|
 | **Source Files** | 45 TypeScript (src/) |
 | **CLI Files** | 37 TypeScript/Python (cli/) |
-| **Test Files** | 23 (tests/) |
+| **Test Files** | 24 (tests/) |
 | **Source Lines** | ~13,000 (src/) |
 | **Dataset** | 1,000,000 labeled emails (data/main.csv) |
 | **Feature Count** | 45 features across 10 categories |
@@ -35,7 +35,7 @@
 #### Detectors (11 files)
 - `benfords-law.ts` - Statistical digit distribution analysis
 - `dated.ts` - Timestamp and date pattern detection
-- `forest-engine.ts` - Random Forest ensemble evaluator with feature alignment
+- `forest-engine.ts` - Random Forest ensemble evaluator with Platt calibration, NaN-safe traversal, and feature alignment enforcement
 - `linguistic-features.ts` - Phonetic and character analysis
 - `ngram-analysis.ts` - Markov chain n-gram scoring
 - `ngram-multilang.ts` - Multi-language bigram/trigram support
@@ -51,7 +51,7 @@
 
 #### Services (5 files)
 - `alerting.ts` - Alert notification service
-- `mx-resolver.ts` - DNS MX record resolution
+- `mx-resolver.ts` - DNS MX record resolution with bounded LRU cache (10k entries max)
 - Plus additional utility services
 
 #### Utils (5 files)
@@ -63,10 +63,10 @@
 
 #### Middleware (2 files)
 - `fraud-detection.ts` - Main pipeline (feature extraction + RF/DT evaluation)
-- `auth.ts` - Timing-safe API key authentication
+- `auth.ts` - SHA-256 hashed timing-safe API key authentication with length-leak prevention
 
 #### Routes (1 file)
-- `admin.ts` - Admin API endpoints with SQL validation
+- `admin.ts` - Admin API endpoints with hardened SQL validation (UNION/EXCEPT/INTERSECT blocked, all FROM/JOIN clauses validated)
 
 #### Entry Point
 - `index.ts` - Worker entry, CORS, routing, debug endpoint
@@ -115,8 +115,8 @@
 - **Fallback**: Decision Tree (`decision_tree.json` in KV)
 - **Hot-reload**: 60s cache TTL, version tracking via metadata
 - **Training**: Python/scikit-learn via `npm run cli -- model:train` or `npm run pipeline`
-- **Calibration**: OOB-based Platt scaling when `--no-split`, held-out test set otherwise
-- **Feature alignment**: `checkFeatureAlignment()` validates model↔runtime feature consistency on first evaluation
+- **Calibration**: OOB-based Platt scaling when `--no-split`, held-out test set otherwise. **Applied at inference time** in `forest-engine.ts` (v3.2.0+). Fallback to in-sample calibration has been removed.
+- **Feature alignment**: `checkFeatureAlignment()` validates model↔runtime feature consistency on first evaluation. **Throws on >20% mismatch** (v3.2.0+).
 
 ### Model Files
 - `config/production/random-forest.json` - Production RF model (committed)
@@ -175,6 +175,7 @@ Tables:
 
 ### Docs Directory (14 files)
 - `README.md` - Documentation index
+- `../FIXES.md` - Security & ML review fix tracker (v3.2.0)
 - `ARCHITECTURE.md` - System architecture and data flow
 - `CALIBRATION.md` - Score calibration methodology
 - `CONFIGURATION.md` - KV/D1 config management
