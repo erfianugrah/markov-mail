@@ -255,155 +255,260 @@ app.get('/analytics', async (c) => {
 	return serveAsset(c, '/analytics.html');
 });
 
-// Root endpoint - Styled landing page
+// Root endpoint - API documentation page
 app.get('/', (c) => {
-	const host = c.req.header('host') || 'fraud.erfi.dev';
+	const h = c.req.header('host') || 'fraud.erfi.dev';
+	// Accept header check: if the client wants JSON, return a machine-readable schema
+	const accept = c.req.header('accept') || '';
+	if (accept.includes('application/json') && !accept.includes('text/html')) {
+		return c.json({
+			name: 'markov-mail',
+			version: pkg.version,
+			description: 'Email fraud detection API powered by Random Forest classification',
+			base: `https://${h}`,
+			docs: `https://${h}/`,
+			dashboard: `https://${h}/dashboard`,
+			endpoints: {
+				validation: { method: 'POST', path: '/validate', auth: 'none' },
+				debug: { method: 'GET', path: '/debug', auth: 'api-key' },
+				config: { method: 'GET', path: '/admin/config', auth: 'api-key' },
+				analytics: { method: 'GET', path: '/admin/analytics', auth: 'api-key' },
+				health: { method: 'GET', path: '/admin/health', auth: 'api-key' },
+			},
+		});
+	}
+
+	const E = (m: string, c: string, p: string, d: string, auth = '') =>
+		`<div class="ep"><span class="m m-${m.toLowerCase()}">${m}</span><code class="p">${p}</code><span class="d">${d}</span>${auth ? `<span class="auth">${auth}</span>` : ''}</div>`;
+
+	const S = (title: string, id: string, body: string) =>
+		`<section id="${id}"><div class="sh" onclick="toggle('${id}')"><h2>${title}</h2><svg class="chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div><div class="sb">${body}</div></section>`;
+
 	const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Markov Mail - Email Fraud Detection API</title>
+<title>Markov Mail API Reference</title>
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{background:#12131a;color:#c8c8d0;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;-webkit-font-smoothing:antialiased}
-.glow{position:fixed;inset:0;background:radial-gradient(ellipse 700px 500px at 50% 20%,rgba(99,102,241,0.07) 0%,transparent 70%);pointer-events:none;z-index:0}
-.wrap{position:relative;z-index:1;max-width:720px;width:100%;padding:3rem 1.5rem}
-.badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
-.badge-green{background:rgba(74,222,128,0.12);color:#4ade80;border:1px solid rgba(74,222,128,0.2)}
-.badge-blue{background:rgba(96,165,250,0.12);color:#60a5fa;border:1px solid rgba(96,165,250,0.2)}
-h1{font-size:1.75rem;font-weight:700;color:#f0f0f5;margin:1rem 0 .25rem;letter-spacing:-.02em}
-.sub{color:#8b8b9e;font-size:.9rem;margin-bottom:2rem}
-.card{background:#1a1b25;border:1px solid #2a2b3a;border-radius:12px;overflow:hidden;margin-bottom:1.25rem}
-.card-head{padding:14px 20px;border-bottom:1px solid #2a2b3a;display:flex;align-items:center;gap:8px}
-.card-head h2{font-size:.8rem;font-weight:600;color:#e0e0e8;text-transform:uppercase;letter-spacing:.06em}
-.card-body{padding:16px 20px}
-.endpoint{display:flex;align-items:baseline;gap:10px;padding:10px 0;border-bottom:1px solid #22232f}
-.endpoint:last-child{border-bottom:none}
-.method{font-family:'SF Mono',Monaco,'Cascadia Code',monospace;font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;flex-shrink:0}
-.method-post{background:rgba(74,222,128,0.12);color:#4ade80}
-.method-get{background:rgba(96,165,250,0.12);color:#60a5fa}
-.path{font-family:'SF Mono',Monaco,'Cascadia Code',monospace;font-size:13px;color:#e0e0e8}
-.desc{font-size:12px;color:#6b6b80;margin-left:auto;text-align:right;flex-shrink:0}
-pre{background:#0f1017;border:1px solid #2a2b3a;border-radius:8px;padding:14px 18px;overflow-x:auto;font-family:'SF Mono',Monaco,'Cascadia Code',monospace;font-size:12.5px;line-height:1.7;color:#c8c8d0;tab-size:2}
-pre .cm{color:#5a5a6e}
-pre .str{color:#a5d6ff}
-pre .key{color:#c4a7e7}
-.try-it{margin-top:2rem;text-align:center}
-.try-it a{display:inline-flex;align-items:center;gap:8px;padding:10px 24px;border-radius:8px;background:rgba(99,102,241,0.15);color:#818cf8;border:1px solid rgba(99,102,241,0.25);font-size:13px;font-weight:600;text-decoration:none;transition:all .2s}
-.try-it a:hover{background:rgba(99,102,241,0.25);border-color:rgba(99,102,241,0.4)}
-.footer{margin-top:1rem;padding:1.5rem 0;text-align:center;font-size:11px;color:#4a4a5e}
-.footer a{color:#6366f1;text-decoration:none}
-.footer a:hover{text-decoration:underline}
-@media(max-width:600px){.desc{display:none}.endpoint{gap:8px}}
+body{background:#0c0d14;color:#b8b8c8;font-family:system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+.gl{position:fixed;inset:0;background:radial-gradient(ellipse 800px 400px at 50% 0%,rgba(99,102,241,0.06) 0%,transparent 70%);pointer-events:none}
+.wrap{max-width:860px;margin:0 auto;padding:2rem 1.5rem;position:relative;z-index:1}
+.hdr{display:flex;align-items:center;gap:14px;margin-bottom:.5rem}
+.hdr svg{flex-shrink:0}
+.bg{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:9999px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:rgba(74,222,128,0.1);color:#4ade80;border:1px solid rgba(74,222,128,0.18)}
+h1{font-size:1.6rem;font-weight:700;color:#f0f0f5;margin:.75rem 0 .25rem;letter-spacing:-.02em}
+.sub{color:#6b6b80;font-size:.85rem;margin-bottom:1.75rem}
+.sub a{color:#818cf8;text-decoration:none}.sub a:hover{text-decoration:underline}
+.nav{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:1.75rem}
+.nav a{padding:5px 12px;border-radius:6px;font-size:12px;font-weight:500;color:#8b8b9e;background:#16171f;border:1px solid #22232f;text-decoration:none;transition:all .15s}
+.nav a:hover{color:#c8c8d0;border-color:#3a3b4a;background:#1c1d27}
+section{background:#14151e;border:1px solid #22232f;border-radius:10px;margin-bottom:10px;overflow:hidden}
+.sh{padding:12px 18px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none}
+.sh:hover{background:#18192280}
+.sh h2{font-size:.75rem;font-weight:600;color:#d0d0d8;text-transform:uppercase;letter-spacing:.06em}
+.chev{transition:transform .2s;color:#5a5a6e}
+section.open .chev{transform:rotate(180deg)}
+.sb{display:none;border-top:1px solid #22232f}
+section.open .sb{display:block}
+.ep{display:flex;align-items:center;gap:10px;padding:9px 18px;border-bottom:1px solid #1a1b24;font-size:13px;flex-wrap:wrap}
+.ep:last-child{border-bottom:none}
+.m{font-family:'SF Mono',Monaco,Consolas,monospace;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;flex-shrink:0;letter-spacing:.03em}
+.m-get{background:rgba(96,165,250,0.12);color:#60a5fa}
+.m-post{background:rgba(74,222,128,0.12);color:#4ade80}
+.m-put{background:rgba(251,191,36,0.12);color:#fbbf24}
+.m-patch{background:rgba(192,132,252,0.12);color:#c084fc}
+.m-delete{background:rgba(248,113,113,0.12);color:#f87171}
+.p{font-family:'SF Mono',Monaco,Consolas,monospace;font-size:12.5px;color:#e0e0e8;flex-shrink:0}
+.d{font-size:12px;color:#5a5a6e;margin-left:auto;text-align:right}
+.auth{font-size:9px;font-weight:600;padding:2px 6px;border-radius:3px;background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.15);flex-shrink:0;text-transform:uppercase;letter-spacing:.04em}
+.ex{background:#0a0b12;border:1px solid #1e1f2a;border-radius:8px;margin:12px 18px 16px;overflow-x:auto}
+.ex pre{padding:14px 16px;font-family:'SF Mono',Monaco,Consolas,monospace;font-size:12px;line-height:1.7;color:#b8b8c8;margin:0;white-space:pre;tab-size:2}
+.ex .lab{display:block;padding:8px 16px 0;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#5a5a6e}
+.cm{color:#3e3f52}.s{color:#a5d6ff}.k{color:#c4a7e7}.n{color:#f0f0f5}.v{color:#4ade80}
+.note{margin:0 18px 16px;padding:10px 14px;border-radius:6px;font-size:12px;line-height:1.6;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.12);color:#9b9bae}
+.note strong{color:#c8c8d0}
+.tbl{width:100%;font-size:12px;border-collapse:collapse}
+.tbl th{text-align:left;padding:6px 18px;font-weight:600;color:#8b8b9e;font-size:10px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #22232f}
+.tbl td{padding:6px 18px;border-bottom:1px solid #1a1b24;color:#b8b8c8}
+.tbl td code{color:#e0e0e8;font-size:11px}
+.tbl tr:last-child td{border-bottom:none}
+.foot{text-align:center;padding:2rem 0 1rem;font-size:11px;color:#3e3f52}
+.foot a{color:#6366f1;text-decoration:none}
+.foot a:hover{text-decoration:underline}
+.acts{display:flex;gap:8px;margin:1rem 18px 16px;flex-wrap:wrap}
+.acts a{display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;transition:all .15s;border:1px solid}
+.btn-p{background:rgba(99,102,241,0.12);color:#818cf8;border-color:rgba(99,102,241,0.2)}.btn-p:hover{background:rgba(99,102,241,0.2)}
+.btn-s{background:rgba(74,222,128,0.08);color:#4ade80;border-color:rgba(74,222,128,0.15)}.btn-s:hover{background:rgba(74,222,128,0.15)}
+@media(max-width:640px){.d{display:none}.ep{gap:6px}}
 </style>
 </head>
 <body>
-<div class="glow"></div>
+<div class="gl"></div>
 <div class="wrap">
 
-<div style="display:flex;align-items:center;gap:12px;margin-bottom:.5rem">
-  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.6" stroke-linejoin="round">
-    <path d="M12 2 L3 6.5 L3 12 C3 18.5 6.8 23 12 24.5 C17.2 23 21 18.5 21 12 L21 6.5 Z"/>
-    <circle cx="12" cy="11" r="2.5" fill="#6366f1"/>
-    <rect x="11" y="13" width="2" height="4" rx="0.8" fill="#6366f1"/>
-  </svg>
-  <span class="badge badge-green">
-    <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="currentColor"/></svg>
-    Active
-  </span>
+<div class="hdr">
+<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.6" stroke-linejoin="round"><path d="M12 2 L3 6.5 L3 12 C3 18.5 6.8 23 12 24.5 C17.2 23 21 18.5 21 12 L21 6.5 Z"/><circle cx="12" cy="11" r="2.5" fill="#6366f1"/><rect x="11" y="13" width="2" height="4" rx="0.8" fill="#6366f1"/></svg>
+<span class="bg"><svg width="7" height="7" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="currentColor"/></svg>Active</span>
 </div>
+<h1>Markov Mail API</h1>
+<p class="sub">v${pkg.version} &middot; Email fraud detection at the edge &middot; <a href="https://github.com/erfianugrah/markov-mail">GitHub</a></p>
 
-<h1>Markov Mail</h1>
-<p class="sub">Email fraud detection API powered by Random Forest classification at the edge</p>
+<nav class="nav">
+<a href="#validation">Validation</a>
+<a href="#config">Config</a>
+<a href="#analytics">Analytics</a>
+<a href="#domains">Domains</a>
+<a href="#tld">TLD Profiles</a>
+<a href="#training">Training</a>
+<a href="#cache">Cache</a>
+<a href="#auth">Auth</a>
+</nav>
 
-<div class="card">
-  <div class="card-head">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b6b80" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-    <h2>Endpoints</h2>
-  </div>
-  <div class="card-body">
-    <div class="endpoint">
-      <span class="method method-post">POST</span>
-      <span class="path">/validate</span>
-      <span class="desc">Score an email address</span>
-    </div>
-    <div class="endpoint">
-      <span class="method method-post">POST</span>
-      <span class="path">/*</span>
-      <span class="desc">Auto-validates any POST with email field</span>
-    </div>
-    <div class="endpoint">
-      <span class="method method-get">GET</span>
-      <span class="path">/dashboard</span>
-      <span class="desc">Analytics dashboard</span>
-    </div>
-    <div class="endpoint">
-      <span class="method method-get">GET</span>
-      <span class="path">/debug</span>
-      <span class="desc">Request signals &amp; fingerprint</span>
-    </div>
-    <div class="endpoint">
-      <span class="method method-get">GET</span>
-      <span class="path">/admin/*</span>
-      <span class="desc">Config, analytics, model management</span>
-    </div>
-  </div>
+${S('Email Validation', 'validation', `
+${E('POST', 'post', '/validate', 'Score an email address')}
+<div class="ex">
+<span class="lab">Request</span>
+<pre>curl -s -X POST https://${h}/validate \\
+  -H <span class="s">"Content-Type: application/json"</span> \\
+  -d <span class="s">'{"email":"user@example.com","name":"Jane Doe"}'</span></pre>
 </div>
-
-<div class="card">
-  <div class="card-head">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b6b80" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-    <h2>Quick Start</h2>
-  </div>
-  <div class="card-body" style="padding:0">
-    <pre><span class="cm"># Validate an email</span>
-curl -s -X POST https://${host}/validate \\
-  -H <span class="str">"Content-Type: application/json"</span> \\
-  -d <span class="str">'{"email":"test@example.com"}'</span> | jq
-
-<span class="cm"># Response</span>
-{
-  <span class="key">"valid"</span>: true,
-  <span class="key">"riskScore"</span>: 0.12,
-  <span class="key">"decision"</span>: <span class="str">"allow"</span>,
-  <span class="key">"signals"</span>: { ... }
+<div class="note"><strong>Request fields:</strong> <code>email</code> (required), <code>name</code> (optional — improves identity signals), <code>consumer</code> (optional), <code>flow</code> (optional)</div>
+<div class="ex">
+<span class="lab">Response</span>
+<pre>{
+  <span class="k">"valid"</span>: <span class="v">true</span>,
+  <span class="k">"riskScore"</span>: <span class="n">0.12</span>,
+  <span class="k">"decision"</span>: <span class="s">"allow"</span>,
+  <span class="k">"signals"</span>: {
+    <span class="k">"entropyScore"</span>: <span class="n">0.34</span>,
+    <span class="k">"formatValid"</span>: <span class="v">true</span>,
+    <span class="k">"isDisposableDomain"</span>: <span class="v">false</span>,
+    <span class="k">"randomForestScore"</span>: <span class="n">0.12</span>,
+    <span class="k">"patternType"</span>: <span class="s">"natural"</span>,
+    <span class="k">"mxSignals"</span>: { <span class="k">"hasRecords"</span>: <span class="v">true</span>, <span class="k">"primaryProvider"</span>: <span class="s">"google"</span> }
+  },
+  <span class="k">"fingerprint"</span>: { <span class="k">"hash"</span>: <span class="s">"a1b2c3..."</span>, <span class="k">"country"</span>: <span class="s">"US"</span> },
+  <span class="k">"latency_ms"</span>: <span class="n">8</span>
 }</pre>
-  </div>
+</div>
+<div class="note"><strong>Decisions:</strong> <code>allow</code> (score &lt; 0.35), <code>warn</code> (0.35–0.64), <code>block</code> (&ge; 0.65). Blocked non-/validate POSTs return <code>403</code>.</div>
+${E('POST', 'post', '/*', 'Auto-validates any POST with email field')}
+${E('POST', 'post', '/signup', 'Example: signup with fraud detection')}
+${E('POST', 'post', '/login', 'Example: login with fraud detection')}
+${E('POST', 'post', '/newsletter', 'Example: newsletter with fraud detection')}
+`)}
+
+${S('Configuration', 'config', `
+${E('GET', 'get', '/admin/config', 'Get current merged config', 'API Key')}
+${E('GET', 'get', '/admin/config/defaults', 'Get default config values', 'API Key')}
+${E('PUT', 'put', '/admin/config', 'Replace full config', 'API Key')}
+${E('PATCH', 'patch', '/admin/config', 'Deep-merge partial config', 'API Key')}
+${E('POST', 'post', '/admin/config/reset', 'Reset to defaults', 'API Key')}
+${E('POST', 'post', '/admin/config/validate', 'Validate without saving', 'API Key')}
+<div class="ex">
+<span class="lab">Example: Update thresholds</span>
+<pre>curl -X PATCH https://${h}/admin/config \\
+  -H <span class="s">"X-API-Key: \$KEY"</span> -H <span class="s">"Content-Type: application/json"</span> \\
+  -d <span class="s">'{"riskThresholds":{"block":0.70,"warn":0.40}}'</span></pre>
+</div>
+<div class="note"><strong>Config fields:</strong> <code>riskThresholds</code>, <code>baseRiskScores</code>, <code>features</code>, <code>logging</code>, <code>headers</code>, <code>actionOverride</code>, <code>riskWeights</code>, <code>rateLimiting</code>, <code>adjustments</code>, <code>ood</code></div>
+`)}
+
+${S('Analytics &amp; Data', 'analytics', `
+${E('GET', 'get', '/admin/analytics?type=summary', 'Pre-built query (13 types)', 'API Key')}
+${E('POST', 'post', '/admin/analytics', 'Custom SQL query', 'API Key')}
+${E('GET', 'get', '/admin/analytics/queries', 'List all query types', 'API Key')}
+${E('GET', 'get', '/admin/analytics/info', 'Database info &amp; guidance', 'API Key')}
+${E('POST', 'post', '/admin/analytics/truncate', 'Delete old validation data', 'API Key')}
+${E('DELETE', 'delete', '/admin/analytics/test-data', 'Remove test patterns', 'API Key')}
+<div class="ex">
+<span class="lab">Example: Query block reasons</span>
+<pre>curl https://${h}/admin/analytics?type=blockReasons&hours=48 \\
+  -H <span class="s">"X-API-Key: \$KEY"</span></pre>
+</div>
+<div class="note"><strong>Query types:</strong> summary, blockReasons, riskDistribution, topCountries, highRisk, performance, timeline, fingerprints, disposableDomains, patternFamilies, identitySignals, geoSignals, mxProviders</div>
+`)}
+
+${S('Disposable Domains', 'domains', `
+${E('GET', 'get', '/admin/disposable-domains/metadata', 'Domain list stats', 'API Key')}
+${E('POST', 'post', '/admin/disposable-domains/update', 'Refresh from GitHub sources', 'API Key')}
+${E('DELETE', 'delete', '/admin/disposable-domains/cache', 'Clear domain cache', 'API Key')}
+<div class="note"><strong>71,000+</strong> disposable email domains tracked. Auto-refreshed every 6 hours via cron.</div>
+`)}
+
+${S('TLD Risk Profiles', 'tld', `
+${E('GET', 'get', '/admin/tld-profiles/metadata', 'Profile stats &amp; risk tiers', 'API Key')}
+${E('GET', 'get', '/admin/tld-profiles/:tld', 'Get single TLD profile', 'API Key')}
+${E('PUT', 'put', '/admin/tld-profiles/:tld', 'Update TLD risk profile', 'API Key')}
+${E('POST', 'post', '/admin/tld-profiles/sync', 'Sync hardcoded profiles to KV', 'API Key')}
+${E('DELETE', 'delete', '/admin/tld-profiles/cache', 'Clear TLD cache', 'API Key')}
+<div class="ex">
+<span class="lab">Example: Adjust TLD risk</span>
+<pre>curl -X PUT https://${h}/admin/tld-profiles/xyz \\
+  -H <span class="s">"X-API-Key: \$KEY"</span> -H <span class="s">"Content-Type: application/json"</span> \\
+  -d <span class="s">'{"riskScore":0.8,"riskTier":"high","notes":"abuse reports"}'</span></pre>
+</div>
+<div class="note"><strong>Allowed fields:</strong> <code>riskScore</code> (0-1), <code>riskTier</code>, <code>category</code>, <code>notes</code>, <code>registrationVolume</code>, <code>abuseRate</code></div>
+`)}
+
+${S('Model Training', 'training', `
+${E('GET', 'get', '/admin/training/dataset', 'Dataset stats (counts, labels)', 'API Key')}
+${E('GET', 'get', '/admin/training/dataset/download', 'Download full training dataset', 'API Key')}
+${E('DELETE', 'delete', '/admin/training/dataset', 'Prune old samples', 'API Key')}
+${E('POST', 'post', '/admin/training/trigger', 'Start container retraining', 'API Key')}
+${E('GET', 'get', '/admin/training/status', 'Training history &amp; status', 'API Key')}
+${E('POST', 'post', '/admin/training/model', 'Upload &amp; deploy trained model', 'API Key')}
+<div class="ex">
+<span class="lab">Example: Trigger retraining</span>
+<pre>curl -X POST https://${h}/admin/training/trigger \\
+  -H <span class="s">"X-API-Key: \$KEY"</span> -H <span class="s">"Content-Type: application/json"</span> \\
+  -d <span class="s">'{"nTrees":20,"maxDepth":6}'</span></pre>
+</div>
+<div class="note"><strong>Pipeline:</strong> Feature vectors collected from live traffic &rarr; Container trains RF model &rarr; Platt calibration &rarr; Guardrails &rarr; Auto-deploy to KV</div>
+`)}
+
+${S('Cache Management', 'cache', `
+${E('DELETE', 'delete', '/admin/cache/all', 'Clear all caches', 'API Key')}
+${E('DELETE', 'delete', '/admin/cache/models', 'Clear model caches only', 'API Key')}
+${E('DELETE', 'delete', '/admin/cache/heuristics', 'Clear heuristics cache', 'API Key')}
+${E('DELETE', 'delete', '/admin/config/cache', 'Clear config cache', 'API Key')}
+<div class="note"><strong>Cache TTLs:</strong> Config 60s, Heuristics 60s, Models 5min, MX DNS 15min (10k entry LRU), TLD profiles 24h</div>
+`)}
+
+${S('Authentication &amp; System', 'auth', `
+${E('GET', 'get', '/admin/health', 'Health check', 'API Key')}
+${E('GET', 'get', '/debug', 'Request signals &amp; fingerprint', 'API Key')}
+${E('GET', 'get', '/admin/ab-test/status', 'A/B experiment status', 'API Key')}
+${E('POST', 'post', '/dashboard/auth', 'Dashboard login (rate-limited)')}
+${E('GET', 'get', '/dashboard', 'Analytics dashboard', 'Session')}
+<div class="note"><strong>Auth methods:</strong> <code>X-API-Key</code> header or <code>Authorization: Bearer &lt;key&gt;</code> for admin endpoints. Dashboard uses HttpOnly session cookies (24h TTL). Login rate-limited to 5 attempts/min/IP.</div>
+<table class="tbl">
+<tr><th>Decision</th><th>Score Range</th><th>HTTP Response</th></tr>
+<tr><td><code>allow</code></td><td>&lt; 0.35</td><td>200 OK</td></tr>
+<tr><td><code>warn</code></td><td>0.35 – 0.64</td><td>200 OK + headers</td></tr>
+<tr><td><code>block</code></td><td>&ge; 0.65</td><td>403 Forbidden (non-/validate)</td></tr>
+</table>
+`)}
+
+<div class="acts">
+<a class="btn-p" href="/dashboard">Open Dashboard</a>
+<a class="btn-s" href="https://github.com/erfianugrah/markov-mail">GitHub</a>
 </div>
 
-<div class="card">
-  <div class="card-head">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b6b80" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-    <h2>How It Works</h2>
-  </div>
-  <div class="card-body" style="font-size:13px;line-height:1.8;color:#9b9bae">
-    <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;align-items:baseline">
-      <span style="color:#6366f1;font-weight:600;font-size:12px">1.</span><span>Extract <strong style="color:#e0e0e8">45 features</strong> — linguistic, structural, n-gram, identity, geo, MX, TLD</span>
-      <span style="color:#6366f1;font-weight:600;font-size:12px">2.</span><span>Evaluate with <strong style="color:#e0e0e8">Random Forest</strong> — trained on labeled email patterns</span>
-      <span style="color:#6366f1;font-weight:600;font-size:12px">3.</span><span>Apply <strong style="color:#e0e0e8">Platt calibration</strong> — convert tree votes to calibrated probabilities</span>
-      <span style="color:#6366f1;font-weight:600;font-size:12px">4.</span><span>Return <strong style="color:#e0e0e8">decision</strong> — allow, warn, or block with full signal breakdown</span>
-    </div>
-  </div>
-</div>
-
-<div class="try-it">
-  <a href="/dashboard">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
-    Open Dashboard
-  </a>
-</div>
-
-<div class="footer">
-  Markov Mail v${pkg.version} &middot; Cloudflare Workers &middot; <a href="https://github.com/erfianugrah/markov-mail">GitHub</a>
-</div>
+<div class="foot">Markov Mail v${pkg.version} &middot; Cloudflare Workers &middot; 45-feature RF &middot; Platt-calibrated &middot; &lt;20ms P50</div>
 
 </div>
+<script>
+function toggle(id){document.getElementById(id).classList.toggle('open')}
+document.querySelectorAll('section').forEach(s=>s.classList.add('open'));
+</script>
 </body>
 </html>`;
 	return new Response(html, {
-		headers: { 'Content-Type': 'text/html; charset=utf-8' },
+		headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' },
 	});
 });
 
