@@ -18,6 +18,9 @@ import { getExperimentStatus } from '../ab-testing/config-loader';
 import { clearRiskHeuristicsCache } from '../services/risk-heuristics';
 import { clearRandomForestCache } from '../models/random-forest';
 import { clearDecisionTreeCache } from '../models/decision-tree';
+import { validateForestModel } from '../detectors/forest-engine';
+import { logTrainingStarted, logTrainingCompleted } from '../services/training-logger';
+import { buildTrainingDataset, getTrainingSampleStats, pruneTrainingSamples } from '../services/training-samples';
 
 const admin = new Hono<{ Bindings: Env }>();
 
@@ -1124,6 +1127,288 @@ admin.delete('/tld-profiles/cache', (c) => {
 		message: 'TLD profile cache cleared',
 		note: 'Next validation will reload profiles from KV',
 	});
+});
+
+// =============================================================================
+// Training Endpoints (Container Retraining Pipeline)
+// =============================================================================
+
+/**
+ * GET /admin/training/dataset
+ * Returns training dataset stats from D1 (sample counts, label distribution,
+ * sources) without loading the full dataset.
+ */
+admin.get('/training/dataset', async (c) => {
+	try {
+		if (!c.env.DB) {
+			return c.json({ success: false, error: 'D1 database not configured' }, 503);
+		}
+
+		const stats = await getTrainingSampleStats(c.env.DB);
+
+		if (stats.total === 0) {
+			return c.json({
+				success: true,
+				message: 'No training samples yet. Send emails to /validate to start collecting.',
+				metadata: stats,
+			});
+		}
+
+		return c.json({
+			success: true,
+			metadata: stats,
+		});
+	} catch (error) {
+		logger.error({
+			event: 'training_dataset_metadata_error',
+			error: error instanceof Error ? error.message : String(error),
+		}, 'Failed to read training dataset stats');
+		return handleError(error, c);
+	}
+});
+
+/**
+ * GET /admin/training/dataset/download
+ * Assembles and returns the full training dataset from D1 in the
+ * TrainingDatasetJSON format expected by the container.
+ */
+admin.get('/training/dataset/download', async (c) => {
+	try {
+		if (!c.env.DB) {
+			return c.json({ success: false, error: 'D1 database not configured' }, 503);
+		}
+
+		const dataset = await buildTrainingDataset(c.env.DB);
+
+		if (dataset.samples === 0) {
+			return c.json({
+				success: false,
+				error: 'No training samples in D1. Send emails to /validate to collect data.',
+			}, 404);
+		}
+
+		return c.json(dataset);
+	} catch (error) {
+		logger.error({
+			event: 'training_dataset_download_error',
+			error: error instanceof Error ? error.message : String(error),
+		}, 'Failed to build training dataset from D1');
+		return handleError(error, c);
+	}
+});
+
+/**
+ * DELETE /admin/training/dataset
+ * Prune old training samples from D1. Defaults to samples older than 14 days.
+ * Called automatically after training, or manually for housekeeping.
+ */
+admin.delete('/training/dataset', async (c) => {
+	try {
+		if (!c.env.DB) {
+			return c.json({ success: false, error: 'D1 database not configured' }, 503);
+		}
+
+		const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+		const olderThanDays = typeof body.olderThanDays === 'number' ? body.olderThanDays : 14;
+
+		const deleted = await pruneTrainingSamples(c.env.DB, olderThanDays);
+
+		return c.json({
+			success: true,
+			message: `Pruned ${deleted} training samples older than ${olderThanDays} days`,
+			deleted,
+			olderThanDays,
+		});
+	} catch (error) {
+		logger.error({
+			event: 'training_dataset_prune_error',
+			error: error instanceof Error ? error.message : String(error),
+		}, 'Failed to prune training samples');
+		return handleError(error, c);
+	}
+});
+
+/**
+ * POST /admin/training/trigger
+ * Manually triggers a retraining run by starting the TrainerContainer.
+ * Requires the TRAINER binding (Durable Object / Container).
+ */
+admin.post('/training/trigger', async (c) => {
+	try {
+		if (!c.env.TRAINER) {
+			return c.json({
+				success: false,
+				error: 'TRAINER container binding not configured. Add container config to wrangler.jsonc.',
+			}, 503);
+		}
+
+		// Optional config overrides from request body
+		const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+
+		const trainConfig = {
+			nTrees: (body.nTrees as number) ?? 10,
+			maxDepth: (body.maxDepth as number) ?? 6,
+			minSamplesLeaf: (body.minSamplesLeaf as number) ?? 20,
+			conflictWeight: (body.conflictWeight as number) ?? 20,
+		};
+
+		// Get a container instance using a fixed ID (singleton trainer)
+		const id = c.env.TRAINER!.idFromName('trainer');
+		const stub = c.env.TRAINER!.get(id);
+
+		// Send train request to the container
+		const containerReq = new Request('http://container/train', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				workerUrl: new URL(c.req.url).origin,
+				apiKey: c.env['X-API-KEY'],
+				config: trainConfig,
+			}),
+		});
+
+		const containerRes = await stub.fetch(containerReq);
+		const result = await containerRes.json();
+
+		// Log the trigger event to D1
+		if (c.env.DB) {
+			await logTrainingStarted(c.env.DB, 'manual', `${trainConfig.nTrees}T-manual`);
+		}
+
+		return c.json({
+			success: true,
+			message: 'Training triggered',
+			config: trainConfig,
+			containerResponse: result,
+		});
+	} catch (error) {
+		logger.error({
+			event: 'training_trigger_error',
+			error: error instanceof Error ? error.message : String(error),
+		}, 'Failed to trigger training');
+		return handleError(error, c);
+	}
+});
+
+/**
+ * GET /admin/training/status
+ * Returns the latest training run status from D1 training_metrics table.
+ */
+admin.get('/training/status', async (c) => {
+	try {
+		if (!c.env.DB) {
+			return c.json({ success: false, error: 'D1 database not configured' }, 503);
+		}
+		const result = await c.env.DB.prepare(
+			`SELECT * FROM training_metrics
+			 ORDER BY timestamp DESC
+			 LIMIT 20`
+		).all();
+
+		const latest = result.results?.[0] ?? null;
+		const history = result.results ?? [];
+
+		return c.json({
+			success: true,
+			latest,
+			history,
+			total: history.length,
+		});
+	} catch (error) {
+		logger.error({
+			event: 'training_status_error',
+			error: error instanceof Error ? error.message : String(error),
+		}, 'Failed to fetch training status');
+		return handleError(error, c);
+	}
+});
+
+/**
+ * POST /admin/training/model
+ * Accepts a trained model JSON, validates it with validateForestModel(),
+ * checks size constraints, writes to KV, clears the model cache, and
+ * logs the deployment event to D1.
+ *
+ * This is the endpoint the container calls after a successful training run.
+ */
+admin.post('/training/model', async (c) => {
+	try {
+		const body = await c.req.json();
+
+		// 1. Validate model structure
+		if (!validateForestModel(body)) {
+			return c.json({
+				success: false,
+				error: 'Model validation failed: does not conform to ForestModel schema',
+			}, 400);
+		}
+
+		// 2. Check size
+		const modelJson = JSON.stringify(body);
+		const sizeBytes = new TextEncoder().encode(modelJson).byteLength;
+		const maxSize = 25 * 1024 * 1024; // 25 MB
+
+		if (sizeBytes > maxSize) {
+			return c.json({
+				success: false,
+				error: `Model too large: ${(sizeBytes / 1024 / 1024).toFixed(2)} MB (max 25 MB)`,
+			}, 413);
+		}
+
+		// 3. Determine KV key based on tree count
+		const kvKey = body.meta.tree_count > 1
+			? 'random_forest.json'
+			: 'decision_tree.json';
+
+		// 4. Write to KV
+		if (!c.env.CONFIG) {
+			return c.json({ success: false, error: 'CONFIG KV namespace not configured' }, 503);
+		}
+		await c.env.CONFIG.put(kvKey, modelJson);
+
+		// 5. Clear in-memory model caches (forces reload on next request)
+		clearRandomForestCache();
+		clearDecisionTreeCache();
+
+		// 6. Log to D1
+		if (c.env.DB) {
+			await logTrainingCompleted(c.env.DB, {
+				modelVersion: body.meta.version,
+				triggerType: 'manual',
+				fraudCount: 0,  // not available at upload time
+				legitCount: 0,
+				totalSamples: 0,  // not available at upload time (features.length is feature count, not sample count)
+				trainingDurationSecs: 0,
+				accuracy: 0,
+			});
+		}
+
+		logger.info({
+			event: 'model_deployed',
+			version: body.meta.version,
+			key: kvKey,
+			trees: body.meta.tree_count,
+			features: body.meta.features.length,
+			sizeBytes,
+		}, `Model deployed to KV as ${kvKey}`);
+
+		return c.json({
+			success: true,
+			message: `Model deployed to KV as "${kvKey}"`,
+			version: body.meta.version,
+			key: kvKey,
+			trees: body.meta.tree_count,
+			features: body.meta.features.length,
+			sizeBytes,
+			calibration: body.meta.calibration ?? null,
+		});
+	} catch (error) {
+		logger.error({
+			event: 'training_model_upload_error',
+			error: error instanceof Error ? error.message : String(error),
+		}, 'Failed to upload trained model');
+		return handleError(error, c);
+	}
 });
 
 export default admin;

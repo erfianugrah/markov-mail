@@ -39,6 +39,7 @@ import { getWellKnownMX } from '../utils/known-mx-providers';
 import { sendAnomalyAlert } from '../services/alerting';
 import { extractLocalPartFeatureSignals, type LocalPartFeatureSignals } from '../detectors/linguistic-features';
 import { logger } from '../logger';
+import { writeTrainingSample } from '../services/training-samples';
 import {
 	evaluateDecisionTree,
 	loadDecisionTreeModel,
@@ -714,6 +715,24 @@ export async function fraudDetectionMiddleware(c: Context, next: Next) {
 			mxTTL: mxAnalysis?.ttl,
 			patternClassificationVersion: PATTERN_CLASSIFICATION_VERSION,
 		}));
+
+		// Persist feature vector + label to D1 for automated retraining
+		// Hash the email itself (not the request fingerprint) so each distinct
+		// email gets its own row instead of all requests from one client colliding.
+		if (c.env.DB && featureVector && email) {
+			const emailBytes = new TextEncoder().encode(email.toLowerCase());
+			const emailDigest = await crypto.subtle.digest('SHA-256', emailBytes);
+			const emailHash = [...new Uint8Array(emailDigest)].map(b => b.toString(16).padStart(2, '0')).join('');
+			c.executionCtx.waitUntil(writeTrainingSample(c.env.DB, {
+				emailHash,
+				featureVector,
+				riskScore,
+				decision,
+				isDisposable: domainValidation?.isDisposable ?? false,
+				isFreeProvider: domainValidation?.isFreeProvider ?? false,
+				modelVersion: randomForestVersion !== 'unavailable' ? randomForestVersion : decisionTreeVersion,
+			}));
+		}
 
 		c.set('fraudDetection', {
 			decision,

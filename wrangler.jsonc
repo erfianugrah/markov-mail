@@ -40,16 +40,44 @@
 	],
 	/**
 	 * Cron Triggers
-	 * Every 6 hours:
-	 * 1. Update disposable domain list from external sources (GitHub)
-	 * 2. Model training (removed – training now happens offline via the Python exporter)
+	 * 1. Every 6 hours: Update disposable domain list from external sources (GitHub)
+	 * 2. Weekly (Sunday 3AM UTC): Automated model retraining via container
 	 * https://developers.cloudflare.com/workers/configuration/cron-triggers/
 	 */
 	"triggers": {
 		"crons": [
-			"0 */6 * * *"
-		] // Every 6 hours at :00 (12am, 6am, 12pm, 6pm UTC)
+			"0 */6 * * *", // Every 6 hours at :00 (disposable domain update)
+			"0 3 * * SUN"  // Weekly: Sunday 3AM UTC (model retraining)
+		]
 	},
+	/**
+	 * Container: Model Training
+	 * Runs a Bun-based training server that trains Random Forest models,
+	 * validates via guardrails, and uploads to KV.
+	 * https://developers.cloudflare.com/containers/
+	 */
+	"containers": [
+		{
+			"class_name": "TrainerContainer",
+			"image": "./container/Dockerfile",
+			"image_build_context": ".",
+			"max_instances": 1
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"class_name": "TrainerContainer",
+				"name": "TRAINER"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"new_sqlite_classes": ["TrainerContainer"],
+			"tag": "v1"
+		}
+	],
 	/**
 	 * Static Assets
 	 * New Astro dashboard at /dashboard/, favicon, and JS libraries

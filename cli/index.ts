@@ -102,7 +102,6 @@ const COMMANDS = {
 		file: 'commands/data/clean_enron.ts',
 		usage: 'data:enron:clean [--input <path>] [--output <path>]',
 	},
-
 	// Testing commands
 	'test:live': {
 		description: 'Run live tests against production with curated test cases',

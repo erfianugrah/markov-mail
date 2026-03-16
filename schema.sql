@@ -1,5 +1,9 @@
--- Decision-tree reset schema
+-- markov-mail schema (single source of truth)
+-- Apply with: npx wrangler d1 execute markov-db --remote --file schema.sql
 
+-- =========================================================================
+-- 1. Validations — every /validate call
+-- =========================================================================
 CREATE TABLE IF NOT EXISTS validations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -87,13 +91,39 @@ CREATE INDEX IF NOT EXISTS idx_validations_domain ON validations(domain);
 CREATE INDEX IF NOT EXISTS idx_validations_block_reason ON validations(block_reason) WHERE decision = 'block';
 CREATE INDEX IF NOT EXISTS idx_validations_experiment ON validations(experiment_id, variant) WHERE experiment_id IS NOT NULL;
 
+-- =========================================================================
+-- 2. Training samples — auto-collected from every validation
+--    Feature vectors + labels for automated retraining.
+--    Pruned weekly after the container finishes training.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS training_samples (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    email_hash TEXT NOT NULL,
+    feature_vector TEXT NOT NULL,        -- JSON object {"feature_name": value, ...}
+    label INTEGER NOT NULL CHECK(label IN (0, 1)),
+    label_source TEXT NOT NULL DEFAULT 'model'
+        CHECK(label_source IN ('model', 'manual', 'known_disposable', 'known_provider')),
+    risk_score REAL,
+    decision TEXT CHECK(decision IN ('allow', 'warn', 'block')),
+    model_version TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_training_samples_hash ON training_samples(email_hash);
+CREATE INDEX IF NOT EXISTS idx_training_samples_timestamp ON training_samples(timestamp);
+CREATE INDEX IF NOT EXISTS idx_training_samples_label ON training_samples(label);
+
+-- =========================================================================
+-- 3. Training metrics — audit trail for retraining runs
+-- =========================================================================
 CREATE TABLE IF NOT EXISTS training_metrics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     event TEXT NOT NULL CHECK(event IN (
         'training_started', 'training_completed', 'training_failed',
         'validation_passed', 'validation_failed', 'lock_acquired',
-        'lock_failed', 'anomaly_detected', 'candidate_created'
+        'lock_failed', 'anomaly_detected', 'candidate_created',
+        'data_pruned'
     )),
     model_version TEXT,
     trigger_type TEXT CHECK(trigger_type IN ('scheduled', 'manual', 'online', NULL)),
@@ -116,6 +146,9 @@ CREATE INDEX IF NOT EXISTS idx_training_timestamp ON training_metrics(timestamp)
 CREATE INDEX IF NOT EXISTS idx_training_event ON training_metrics(event);
 CREATE INDEX IF NOT EXISTS idx_training_model_version ON training_metrics(model_version);
 
+-- =========================================================================
+-- 4. A/B test metrics
+-- =========================================================================
 CREATE TABLE IF NOT EXISTS ab_test_metrics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -141,6 +174,9 @@ CREATE INDEX IF NOT EXISTS idx_ab_test_timestamp ON ab_test_metrics(timestamp);
 CREATE INDEX IF NOT EXISTS idx_ab_test_experiment ON ab_test_metrics(experiment_id);
 CREATE INDEX IF NOT EXISTS idx_ab_test_event ON ab_test_metrics(event);
 
+-- =========================================================================
+-- 5. Admin metrics
+-- =========================================================================
 CREATE TABLE IF NOT EXISTS admin_metrics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,

@@ -18,6 +18,9 @@ declare global {
 		DISPOSABLE_DOMAINS_LIST?: KVNamespace;  // Namespace for disposable domain list
 		TLD_LIST?: KVNamespace;  // Namespace for TLD risk profiles
 
+		// Container bindings (optional, for automated retraining)
+		TRAINER?: DurableObjectNamespace;  // TrainerContainer DO binding
+
 		// Feature flags (optional, for Phase 2)
 		AUTO_PROMOTE_TO_CANARY?: string;  // Set to "true" to enable auto-promotion
 		ALERT_WEBHOOK_URL?: string;

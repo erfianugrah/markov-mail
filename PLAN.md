@@ -1,3 +1,477 @@
+# Container-Based Automated Retraining
+
+Run Random Forest retraining inside a Cloudflare Container on a cron schedule,
+then PUT the new model into KV — fully automated, zero-dependency on Python or
+scikit-learn. Everything is hand-rolled in TypeScript.
+
+## Overview
+
+```
+                        weekly cron (e.g. "0 3 * * 0")
+                                   │
+                        ┌──────────▼───────────┐
+                        │  markov-mail Worker   │
+                        │  scheduled() handler  │
+                        └──────────┬───────────┘
+                                   │ getContainer().start()
+                        ┌──────────▼───────────┐
+                        │  TrainerContainer     │
+                        │  (Durable Object)     │
+                        │                       │
+                        │  1. Fetch dataset      │
+                        │     from Worker API    │
+                        │  2. Compute features   │
+                        │  3. Train RF (hand-    │
+                        │     rolled CART)       │
+                        │  4. Platt calibration  │
+                        │  5. Run guardrails     │
+                        │  6. POST model back    │
+                        │     to Worker → KV     │
+                        │                       │
+                        │  sleepAfter = '30s'   │
+                        └───────────────────────┘
+```
+
+**Why Containers?** The training pipeline currently requires Python + scikit-learn
+running locally via CLI. A Container lets us run a long-running compute job
+(minutes, not the 30s Worker CPU limit) on Cloudflare's network, with the model
+hot-swapped into KV without any manual intervention.
+
+**Why hand-roll?** By implementing CART + bagging + Platt scaling in TypeScript,
+the container image only needs a Node.js/Bun runtime — no Python, no pip, no
+venv. The entire training algorithm runs in ~500 lines and produces the exact
+same `ForestModel` JSON format the inference engine already consumes.
+
+---
+
+## Phase 1: Hand-Rolled Random Forest Trainer
+
+**Goal:** Pure TypeScript implementation of Random Forest training that produces
+the identical `ForestModel` JSON consumed by `src/detectors/forest-engine.ts`.
+
+### 1.1 CART Decision Tree (Gini Impurity)
+
+New file: `src/training/cart.ts`
+
+Algorithm for each node:
+1. **Stopping criteria** — create leaf (`{t:'l', v: P(fraud)}`) when:
+   - `depth >= maxDepth`
+   - `samples.length < minSamplesLeaf * 2` (can't split further)
+   - Node is pure (all same label)
+   - No valid split found (all features constant)
+
+2. **Best split search:**
+   - Select `floor(sqrt(numFeatures))` random candidate features (RF convention)
+   - For each candidate feature:
+     - Sort sample indices by feature value
+     - Scan all midpoints between adjacent distinct values
+     - Compute weighted Gini impurity: `G = (nL/n)*gini(L) + (nR/n)*gini(R)`
+       where `gini(S) = 1 - p(0)^2 - p(1)^2`
+     - Track the split `(feature, threshold)` with lowest `G`
+   - Optimization: use the sorted-scan approach (O(n) per feature after sort)
+     rather than brute-force O(n^2)
+
+3. **Recurse** on left (`feature <= threshold`) and right (`feature > threshold`)
+
+4. **Output format:** Exact match to `CompactTreeNode`:
+   ```ts
+   { t: 'n', f: 'bigram_entropy', v: 3.142857, l: {...}, r: {...} }
+   { t: 'l', v: 0.847523 }  // leaf: P(fraud)
+   ```
+
+### 1.2 Random Forest (Bagging + Feature Subsampling)
+
+New file: `src/training/random-forest.ts`
+
+1. **Bootstrap sampling:** For each tree, sample `n` rows with replacement from
+   the training set. Track which rows were NOT selected (out-of-bag / OOB set).
+
+2. **Sample weights:** Support conflict-zone weighting (existing pattern):
+   rows where `bigram_entropy > threshold && domain_reputation_score >= threshold`
+   get `conflictWeight` (default 20x). Implemented via weighted bootstrap —
+   sample with replacement where probability is proportional to weight.
+
+3. **Tree training:** Call CART with the bootstrap sample and random feature
+   subset at each node.
+
+4. **OOB predictions:** After all trees are trained, for each training sample,
+   average the predictions from only the trees that did NOT see it in their
+   bootstrap sample. This gives unbiased predictions for calibration (H3 fix
+   equivalence).
+
+5. **Feature importance:** Computed as mean decrease in Gini impurity across
+   all splits for each feature, normalized to sum to 1.0. Tracked during tree
+   training by accumulating `(n_samples_at_node / n_total) * gini_decrease`
+   for each feature's splits.
+
+6. **Output:** `ForestModel` matching the existing schema:
+   ```ts
+   {
+     meta: {
+       version: string,        // e.g. "20260315-forest-auto"
+       features: string[],     // sorted feature names
+       tree_count: number,
+       feature_importance: Record<string, number>,
+       calibration: { method: 'platt', coef, intercept, samples },
+       config: { n_trees, max_depth, min_samples_leaf, conflict_weight, ... }
+     },
+     forest: CompactTreeNode[]
+   }
+   ```
+
+### 1.3 Platt Scaling (1D Logistic Regression)
+
+New file: `src/training/platt-scaling.ts`
+
+Fit `P(fraud) = 1 / (1 + exp(-(coef * rawScore + intercept)))` to the OOB
+predictions vs true labels using Newton-Raphson (IRLS):
+
+1. Initialize `coef = 0`, `intercept = 0`
+2. For up to 100 iterations:
+   - Compute predicted probabilities: `p_i = sigmoid(coef * x_i + intercept)`
+   - Compute gradient and Hessian of log-loss
+   - Newton update: `[coef, intercept] -= H^{-1} * grad`
+   - Converge when `|delta| < 1e-8`
+3. Target correction (Platt's original paper): use `(y_i * (N+ + 1) + 1) / (N+ + 2)`
+   instead of raw `y_i` to avoid overfitting on small calibration sets.
+
+Output: `ForestCalibrationMeta` (`{ method: 'platt', coef, intercept, samples }`)
+
+### 1.4 Guardrails (Threshold Verification)
+
+New file: `src/training/guardrails.ts`
+
+Port the constraint verification from `cli/commands/model/guardrail.ts`:
+
+1. **Threshold scan:** For thresholds from 0.05 to 0.95 in 0.01 steps:
+   - Classify calibrated OOB predictions against each threshold
+   - Compute recall, FPR, FNR at each threshold
+2. **Threshold recommendation:**
+   - Find warn threshold: highest threshold where `recall >= 0.95 && FPR <= 0.05`
+   - Find block threshold: highest threshold where `recall >= 0.95 && FNR <= 0.05`
+   - Verify gap: `blockThreshold - warnThreshold >= 0.01`
+3. **Reject on failure:** If constraints can't be satisfied, abort and do NOT
+   write to KV. Log the failure to D1 `training_metrics` table.
+
+### 1.5 Validation Against Existing Engine
+
+The trained model must be loadable by the existing inference path without
+changes. Verification:
+
+- `validateForestModel(model)` returns `true`
+- `checkFeatureAlignment(model, sampleVector)` passes (< 20% missing)
+- `predictForestScore(model, testVector)` returns a value in `[0, 1]`
+- Model JSON is < 25 MB (KV limit)
+- `meta.tree_count === forest.length`
+- `meta.calibration.coef > 0` (positive direction)
+
+---
+
+## Phase 2: Training Data Pipeline
+
+**Goal:** Get labeled training data into the container without local filesystem
+access (container disk is ephemeral).
+
+### 2.1 Training Dataset in KV
+
+Store pre-computed feature vectors as a JSON blob in the `CONFIG` KV namespace
+under key `training_dataset.json`:
+
+```ts
+interface TrainingDataset {
+  version: string;
+  created: string;       // ISO timestamp
+  samples: number;
+  features: string[];    // sorted feature names
+  rows: {
+    features: number[];  // values in same order as features[]
+    label: 0 | 1;
+    weight?: number;     // optional sample weight
+  }[];
+}
+```
+
+**Why KV and not D1?** The existing labeled CSVs have ~5K-20K rows x 45 features.
+As JSON this is 2-8 MB — well within KV's 25 MB value limit. D1 has a 10M row
+limit and would require a schema change to store feature vectors.
+
+**Upload path:** New CLI command `npm run cli training-data:upload` that:
+1. Reads the existing CSV feature export (`data/features/export.csv`)
+2. Converts to the `TrainingDataset` JSON format
+3. PUTs to `CONFIG` KV under key `training_dataset.json`
+
+**Future: D1-based incremental data** (Phase 4 stretch goal)
+- New `training_samples` table with the full 45-feature vector
+- `fraud-detection.ts` middleware writes feature vectors to this table on every
+  validation (via `waitUntil`)
+- Container queries D1 for recent samples, merges with base dataset
+
+### 2.2 Admin API Endpoints
+
+New routes on the existing admin router (`src/routes/admin.ts`):
+
+```
+GET  /admin/training/dataset          → returns dataset metadata (samples, version, features)
+GET  /admin/training/dataset/download → returns full dataset JSON
+POST /admin/training/dataset/upload   → accepts dataset JSON, validates, writes to KV
+POST /admin/training/trigger          → manually triggers a retraining run
+GET  /admin/training/status           → returns latest training run status from D1
+POST /admin/training/model            → accepts trained model JSON, validates, writes to KV
+```
+
+The container communicates with these endpoints via HTTP using the admin API key
+passed as an env var.
+
+### 2.3 Worker-Side Model Upload Handler
+
+The `POST /admin/training/model` endpoint:
+1. Validates the model using `validateForestModel()`
+2. Checks size < 25 MB
+3. Writes to `CONFIG` KV under the appropriate key:
+   - `random_forest.json` if `meta.tree_count > 1`
+   - `decision_tree.json` if `meta.tree_count === 1`
+4. Clears the in-memory model cache (forces reload on next request)
+5. Logs to D1 `training_metrics` with event `model_deployed`
+6. Returns the model version and write confirmation
+
+---
+
+## Phase 3: Cloudflare Container Integration
+
+**Goal:** Wire the trainer into a Durable Object-backed Container that runs on
+a cron schedule.
+
+### 3.1 Container Class
+
+New file: `src/container/trainer.ts`
+
+```ts
+import { Container } from '@cloudflare/containers';
+
+export class TrainerContainer extends Container {
+  defaultPort = 8787;
+  sleepAfter = '30s';  // stop after 30s idle (training is done)
+
+  override onStart() { /* log container start */ }
+  override onStop()  { /* log container stop  */ }
+}
+```
+
+### 3.2 Container Entrypoint
+
+New file: `container/train.ts` (runs inside the container)
+
+This is a standalone HTTP server (Bun/Node) that:
+1. Starts listening on port 8787
+2. On `GET /health` → returns 200
+3. On `POST /train` with body `{ workerUrl, apiKey, config }`:
+   a. Fetches training dataset from `workerUrl + '/admin/training/dataset/download'`
+   b. Parses into feature matrix + label vector
+   c. Trains Random Forest using `src/training/random-forest.ts`
+   d. Runs Platt calibration using `src/training/platt-scaling.ts`
+   e. Runs guardrails using `src/training/guardrails.ts`
+   f. POSTs the trained model to `workerUrl + '/admin/training/model'`
+   g. Returns training summary (metrics, duration, model version)
+4. If guardrails fail → returns the failure details, does NOT upload
+
+### 3.3 Dockerfile
+
+New file: `container/Dockerfile`
+
+```dockerfile
+FROM oven/bun:1-slim
+WORKDIR /app
+COPY container/ .
+COPY src/training/ src/training/
+RUN bun install
+EXPOSE 8787
+CMD ["bun", "run", "train.ts"]
+```
+
+Minimal image: ~150 MB (Bun slim). No Python, no pip, no system deps.
+
+### 3.4 Scheduled Handler
+
+Modify `src/index.ts` scheduled handler:
+
+```ts
+scheduled: async (event, env, ctx) => {
+  // Existing: disposable domain update
+  ctx.waitUntil(updateDisposableDomains(env.DISPOSABLE_DOMAINS_LIST));
+
+  // New: weekly model retraining
+  if (shouldRetrain(event.cron)) {
+    const container = getContainer(env.TRAINER);
+    await container.start({
+      envVars: {
+        WORKER_URL: 'https://fraud.erfi.dev',
+        API_KEY: env['X-API-KEY'],
+        TRAIN_CONFIG: JSON.stringify({
+          nTrees: 10,
+          maxDepth: 6,
+          minSamplesLeaf: 20,
+          conflictWeight: 20,
+        }),
+      },
+    });
+    // Container will fetch data, train, upload model, then sleep
+  }
+};
+```
+
+### 3.5 Wrangler Config Changes
+
+Add to `wrangler.jsonc`:
+
+```jsonc
+{
+  // existing config...
+  "triggers": {
+    "crons": [
+      "0 */6 * * *",     // existing: disposable domain update
+      "0 3 * * 0"        // new: weekly retraining (Sunday 3AM UTC)
+    ]
+  },
+  "containers": [{
+    "class_name": "TrainerContainer",
+    "image": "./container/Dockerfile"
+  }],
+  "durable_objects": {
+    "bindings": [{
+      "class_name": "TrainerContainer",
+      "name": "TRAINER"
+    }]
+  },
+  "migrations": [{
+    "new_sqlite_classes": ["TrainerContainer"],
+    "tag": "v1"
+  }]
+}
+```
+
+---
+
+## Phase 4: Observability & Safety
+
+### 4.1 D1 Training Metrics
+
+All training events are logged to the existing `training_metrics` table:
+
+| Event                  | When                                         |
+|------------------------|----------------------------------------------|
+| `training_started`     | Container begins training                    |
+| `training_completed`   | Model passes guardrails and uploaded to KV   |
+| `training_failed`      | Guardrails failed or runtime error           |
+| `validation_passed`    | Guardrails passed with metrics               |
+| `validation_failed`    | Guardrails failed with details               |
+| `candidate_created`    | Model trained but not yet validated           |
+
+Stored fields: `model_version`, `trigger_type` ('scheduled'|'manual'),
+`fraud_count`, `legit_count`, `total_samples`, `training_duration`,
+`accuracy`, `precision_metric`, `recall`, `f1_score`, `false_positive_rate`.
+
+### 4.2 Rollback Safety
+
+The model upload path is atomic (single KV `put`). If the new model degrades
+performance, rollback is:
+1. `npm run cli kv:put random_forest.json < config/production/random-forest.json`
+2. Or via admin API: `POST /admin/training/model` with the previous model JSON
+3. The old model is always preserved in `config/production/` in the repo
+
+### 4.3 Model Comparison Gate (Future)
+
+Before uploading, compare new model against the current production model on a
+held-out validation set. Only promote if the new model doesn't regress on key
+metrics (recall, FPR). This is the A/B testing infrastructure already in place.
+
+---
+
+## Implementation Order
+
+| Step | What                                      | Files                                       | Est. |
+|------|-------------------------------------------|---------------------------------------------|------|
+| 1    | CART tree trainer                         | `src/training/cart.ts`                      | Core |
+| 2    | Random Forest (bagging + OOB)             | `src/training/random-forest.ts`             | Core |
+| 3    | Platt scaling                             | `src/training/platt-scaling.ts`             | Core |
+| 4    | Guardrails (threshold scan + verify)      | `src/training/guardrails.ts`                | Core |
+| 5    | Unit tests for training                   | `tests/unit/training/`                      | Core |
+| 6    | Training data upload CLI command          | `cli/commands/data/training-upload.ts`      | Data |
+| 7    | Admin API training endpoints              | `src/routes/admin.ts` (extend)              | Data |
+| 8    | Container entrypoint                      | `container/train.ts`                        | Wire |
+| 9    | Container class + Dockerfile              | `src/container/trainer.ts`, `Dockerfile`    | Wire |
+| 10   | Scheduled handler + wrangler changes      | `src/index.ts`, `wrangler.jsonc`            | Wire |
+| 11   | D1 metrics logging                        | `src/services/training-logger.ts`           | Obs. |
+| 12   | Integration test (local container)        | `tests/e2e/training/`                       | Test |
+
+Steps 1-5 are the core algorithm work. Steps 6-7 are the data pipeline. Steps
+8-10 wire it into the container. Steps 11-12 are observability and testing.
+
+---
+
+## Key Design Decisions
+
+1. **No Python.** The entire training pipeline is TypeScript. The existing
+   `train_forest.py` (scikit-learn) remains for offline/manual training, but
+   the automated container path is pure TS.
+
+2. **KV for training data, not D1.** The feature matrix (5K-20K rows x 45 cols)
+   fits comfortably in a single KV value (<10 MB). D1 would require schema
+   changes and is slower for bulk reads.
+
+3. **OOB calibration only.** The container trains on 100% of data (no
+   train/test split) and uses out-of-bag predictions for Platt scaling,
+   matching the existing `--no-split` production mode.
+
+4. **Container HTTP, not RPC.** The container communicates with the Worker via
+   HTTP to the admin API. This keeps the container code decoupled and testable
+   outside of Cloudflare (run `bun container/train.ts` locally).
+
+5. **Guardrails are mandatory.** A model that fails constraints (recall < 0.95,
+   FPR > 0.05, FNR > 0.05) is never uploaded. The container logs the failure
+   and exits. No human in the loop for rejection.
+
+6. **Weekly schedule, not daily.** The model changes slowly (email fraud
+   patterns evolve over weeks). Weekly retraining limits compute cost and
+   avoids model churn. Configurable via wrangler cron expression.
+
+7. **Same inference path.** The trained model is identical in format to the
+   scikit-learn output. The inference engine (`forest-engine.ts`),
+   model loader (`random-forest.ts`), and middleware (`fraud-detection.ts`)
+   require zero changes.
+
+---
+
+## Risk Assessment
+
+| Risk                                    | Mitigation                                         |
+|-----------------------------------------|----------------------------------------------------|
+| Hand-rolled RF diverges from sklearn    | Validate against sklearn output on same dataset    |
+| Container cold start delays cron        | Acceptable — training is batch, not latency-bound  |
+| Bad model goes live                     | Guardrails gate + atomic KV write + easy rollback  |
+| Training data stale                     | Future: D1 incremental data pipeline (Phase 4)     |
+| KV 25 MB limit hit                      | Size check before upload; cap n_trees/max_depth    |
+| Container beta instability              | Fallback: CLI pipeline remains fully functional    |
+| OOB calibration insufficient samples    | Require min 100 OOB samples per tree; abort below  |
+
+---
+
+## Verification Checklist
+
+- [ ] `cart.ts` produces identical tree structure to sklearn on a toy dataset
+- [ ] `random-forest.ts` OOB predictions match sklearn OOB within 0.01 RMSE
+- [ ] `platt-scaling.ts` matches sklearn LogisticRegression on same inputs
+- [ ] `guardrails.ts` rejects models that fail constraints
+- [ ] Trained model passes `validateForestModel()` and `checkFeatureAlignment()`
+- [ ] Model JSON < 25 MB for 10 trees, depth 6, 45 features
+- [ ] Container starts, trains, uploads, and sleeps on cron trigger
+- [ ] `training_metrics` D1 table populated correctly
+- [ ] Rollback via CLI/admin API works within 60s
+- [ ] `npm run typecheck` passes
+- [ ] `npm run test` passes (existing + new tests)
+
+---
+---
+
 # Remediation Plan – Full Code Review
 
 Comprehensive findings from a full-codebase code review covering `src/`, `dashboard/`,
