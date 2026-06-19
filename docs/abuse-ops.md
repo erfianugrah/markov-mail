@@ -14,8 +14,8 @@ doctrine; this doc maps it onto **Forminator** + **markov-mail** and records the
 decisions we've made (or deferred).
 
 > **Abuse is the unintended monetization of anything.**
-> Sources: Heroku abuse-ops Black Hat talk (Cureton & Stojanovic) + the
-> "Facets of Abuse / First Principles of Abuse Operations" doctrine.
+> Framing: the facets-of-abuse, intent-aspects, and first-principles model of
+> abuse operations.
 
 ## Where Forminator sits
 
