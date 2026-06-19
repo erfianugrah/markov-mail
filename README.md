@@ -111,6 +111,7 @@ See [docs/MODEL_TRAINING.md](docs/MODEL_TRAINING.md) for the full reference.
 - **[Detectors](docs/DETECTORS.md)** — Feature extraction reference (48 features)
 - **[Scoring](docs/SCORING.md)** — Scoring engine and calibration
 - **[Operations](docs/OPERATIONS.md)** — Deployment, monitoring, rollback
+- **[Abuse Operations](docs/abuse-ops.md)** — Shared abuse-ops framework + verified-gaps audit for the combined forminator + markov-mail system
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** — Common issues and diagnostics
 - **[API Reference](https://fraud.erfi.dev/)** — Full endpoint documentation
 
